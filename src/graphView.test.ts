@@ -19,6 +19,22 @@ test('new offscreen boundaries wait for another scroll even if earlier rows were
  assert.deepEqual(visibleHistorySources(frontiers,positions,{...view,top:4200}),['next-page']);
  assert.deepEqual(visibleHistorySources(frontiers,positions,{...view,top:6000}),[]);
 });
+test('a fast downward scroll captures skipped boundaries without fetching beyond the traversed viewport',()=>{
+ const positions=new Map([['skipped',{x:48,y:1960}],['visible',{x:48,y:3300}],['later',{x:48,y:4600}],['toolbar',{x:48,y:79}],['outside',{x:400,y:1960}]]);
+ const frontiers=[{sha:'skipped',sources:['gap','pending','gap']},{sha:'visible',sources:['gap','current']},...['later','toolbar','outside'].map(sha=>({sha,sources:[sha]}))];
+ assert.deepEqual(visibleHistorySources(frontiers,positions,{left:0,top:3000,width:390,height:796,inset:80,previousTop:0},['pending']),['gap','current']);
+});
+test('a fast upward scroll captures skipped boundaries in the opposite direction',()=>{
+ const positions=new Map([['skipped',{x:48,y:4409}],['above',{x:48,y:2000}],['below',{x:48,y:6400}]]);
+ const frontiers=[...positions.keys()].map(sha=>({sha,sources:[sha]}));
+ assert.deepEqual(visibleHistorySources(frontiers,positions,{left:0,top:2500,width:390,height:796,inset:80,previousTop:5500}),['skipped']);
+});
+test('layout scans do not inherit a prior scroll range or start loading hidden history',()=>{
+ const frontier=[{sha:'gap',sources:['next']}],positions=new Map([['gap',{x:48,y:1960}]]),view={left:0,top:3000,width:390,height:796,inset:80};
+ assert.deepEqual(visibleHistorySources(frontier,positions,{...view,previousTop:0}),['next']);
+ assert.deepEqual(visibleHistorySources(frontier,positions,view),[]);
+ assert.deepEqual(visibleHistorySources(frontier,positions,{...view,previousTop:3000}),[]);
+});
 
 test('mobile frames reserve half the width only while message columns preserve 12px lane spacing',()=>{
  for(const width of [280,320,390,430,800])for(const maxLane of [0,1,8,40,500]){
