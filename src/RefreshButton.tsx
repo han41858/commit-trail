@@ -21,9 +21,9 @@ export function RefreshButton({nextAt,interval,sweeping,disabled,onRefresh}:Prop
   <span className="refresh-symbol" aria-hidden="true">↻</span>
  </button>;
 }
-export function RefreshTimer({nextAt,interval,sweeping,running,paused}:{nextAt:number;interval:number;sweeping:boolean;running:boolean;paused:boolean}){
- const label=running?'Refreshing repositories':paused?'Auto refresh paused':'Auto refresh timer';
- return <span className="refresh-button monitor-timer" role="img" aria-label={label} aria-busy={running} title={label}>
+export function RefreshTimer({nextAt,interval,sweeping,running,paused,disabled,onRefresh}:Props&{running:boolean;paused:boolean}){
+ const label=running?'Refreshing repositories':paused?'Refresh repositories (auto refresh paused)':'Refresh repositories';
+ return <button type="button" className="refresh-button monitor-timer" disabled={disabled} onClick={onRefresh} aria-label={label} aria-busy={running} title={label}>
   <RefreshFill nextAt={nextAt} interval={interval} sweeping={sweeping}/><span className="refresh-symbol" aria-hidden="true">↻</span>
- </span>;
+ </button>;
 }
