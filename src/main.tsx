@@ -93,7 +93,10 @@ function App(){
   update();const observer=new ResizeObserver(update);observer.observe(el);window.addEventListener('resize',update);
   return()=>{observer.disconnect();window.removeEventListener('resize',update);};
  },[]);
- const [selected,setSelected]=useState<Commit|null>(null);
+ const [selection,setSelection]=useState<{repository:string;commit:Commit}|null>(null);
+ const selected=selection?.repository===state.repo?selection.commit:null;
+ const selectCommit=useCallback((repository:string,commit:Commit)=>setSelection({repository,commit}),[]);
+ const clearSelection=useCallback(()=>setSelection(null),[]);
  const details=selected!==null;
  const detailsPosition=useMonitorDetailsPosition(primaryPaneRef,detailsRef,monitorState.active&&primaryActive&&details,selected?.sha||'',primaryOrder);
  const reverse=state.reverse;
@@ -111,13 +114,15 @@ function App(){
   setMonitorSetup(false);setOptions(false);setAuth(false);
   const current=history.getSnapshot(),repository=configuration.repositories[0]||'';
   if(configuration.mode==='monitor'&&repository){
+   setSelection(chosen=>chosen&&configuration.repositories.includes(chosen.repository)?chosen:null);
    lastMonitorSelection.current=[...configuration.repositories];monitorRepositories.set(configuration.repositories);
-   if(!current.repo){setInput(repository);setSelected(null);void measured.open(repository,authToken.current);}
+   if(!current.repo){setInput(repository);setSelection(null);void measured.open(repository,authToken.current);}
    monitor.start(configuration.repositories,authToken.current);
   }else{
+   setSelection(chosen=>chosen?.repository===repository?chosen:null);
    monitor.stop();setInput(repository);
-   if(!repository){measured.cancel();history.clear();void info.open('','');setSelected(null);}
-   else if(current.repo!==repository||!current.meta&&!current.busy&&!current.error){setSelected(null);void measured.open(repository,authToken.current);}
+   if(!repository){measured.cancel();history.clear();void info.open('','');setSelection(null);}
+   else if(current.repo!==repository||!current.meta&&!current.busy&&!current.error){setSelection(null);void measured.open(repository,authToken.current);}
   }
  },[configurationKey,history,monitor,monitorRepositories]);
  useEffect(()=>{
@@ -127,19 +132,19 @@ function App(){
    if(target instanceof Element&&target.closest('[data-debug-ui],[data-pwa-ui]'))return;
    if(options&&!optionsRef.current?.contains(target))setOptions(false);
    if(auth&&!authRef.current?.contains(target)&&!tokenButtonRef.current?.contains(target))setAuth(false);
-   if(details&&!detailsRef.current?.contains(target)&&(!monitorState.active||primaryPaneRef.current?.contains(target)))setSelected(null);
+   if(details&&!detailsRef.current?.contains(target)&&(!monitorState.active||primaryPaneRef.current?.contains(target)))setSelection(null);
   };
-  const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setOptions(false);setAuth(false);setSelected(null);}};
+  const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setOptions(false);setAuth(false);setSelection(null);}};
   document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);
   return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);};
  },[options,auth,details,monitorState.active]);
- function applyToken(){const value=token.trim();if(value!==appliedToken)lastMonitorSelection.current=undefined;leaveMonitor();setMonitorSetup(false);monitor.authenticationChanged(appliedToken,value);monitorRepositories.authenticationChanged(appliedToken,value);recent.authenticationChanged(appliedToken,value);const error=saveStoredToken(value);authToken.current=value;recent.reload();monitorRepositories.reconcile();setToken(value);setAppliedToken(value);setAuthRevision(v=>v+1);setTokenStorageError(error);history.setToken(value);setTokenApplied(value!=='');setAuth(true);if(state.repo){setSelected(null);void measured.open(state.repo,value);}}
- function removeToken(){lastMonitorSelection.current=undefined;leaveMonitor();setMonitorSetup(false);monitor.authenticationChanged(appliedToken,'');monitorRepositories.authenticationChanged(appliedToken,'');recent.authenticationChanged(appliedToken,'');measured.cancel();const error=saveStoredToken('');authToken.current='';recent.reload();monitorRepositories.reconcile();history.clear();void info.open('','');setToken('');setAppliedToken('');setAuthRevision(v=>v+1);setTokenApplied(false);setTokenStorageError(error);setSelected(null);setAuth(!!error);}
+ function applyToken(){const value=token.trim();if(value!==appliedToken)lastMonitorSelection.current=undefined;leaveMonitor();setMonitorSetup(false);monitor.authenticationChanged(appliedToken,value);monitorRepositories.authenticationChanged(appliedToken,value);recent.authenticationChanged(appliedToken,value);const error=saveStoredToken(value);authToken.current=value;recent.reload();monitorRepositories.reconcile();setToken(value);setAppliedToken(value);setAuthRevision(v=>v+1);setTokenStorageError(error);history.setToken(value);setTokenApplied(value!=='');setAuth(true);if(state.repo){setSelection(null);void measured.open(state.repo,value);}}
+ function removeToken(){lastMonitorSelection.current=undefined;leaveMonitor();setMonitorSetup(false);monitor.authenticationChanged(appliedToken,'');monitorRepositories.authenticationChanged(appliedToken,'');recent.authenticationChanged(appliedToken,'');measured.cancel();const error=saveStoredToken('');authToken.current='';recent.reload();monitorRepositories.reconcile();history.clear();void info.open('','');setToken('');setAppliedToken('');setAuthRevision(v=>v+1);setTokenApplied(false);setTokenStorageError(error);setSelection(null);setAuth(!!error);}
  function open(value:string){
   // A standalone PWA has no address bar. Handle the explicit local command
   // before repository loading so it cannot clear history or send an API request.
   if(value.trim()===':debug'){setInput(state.repo);debug.setMode('panel');return;}
-  setSelected(null);
+  setSelection(null);
   let repository:string;try{repository=parseRepo(lowercaseRepoInput(value));}catch{void measured.open(value,appliedToken);return;}
   const target={mode:'single' as const,repositories:[repository]};
   if(repositoryLocationKey(target)===configurationKey)void measured.open(repository,appliedToken);else navigate(target);
@@ -149,8 +154,8 @@ function App(){
   if(repository===state.repo&&state.meta){recent.touch(repository);return;}
   open(repository);
  }
- function openTokenPopup(){setErrorDismissed(true);setOptions(false);setSelected(null);setAuth(true);}
- function select(commit:Commit){setSelected(commit);if(monitorState.active)detailsRef.current?.focus({preventScroll:true});}
+ function openTokenPopup(){setErrorDismissed(true);setOptions(false);setSelection(null);setAuth(true);}
+ function select(commit:Commit){selectCommit(state.repo,commit);if(monitorState.active)detailsRef.current?.focus({preventScroll:true});}
  return <div className={`app${monitorState.active?' app-monitor':''}`} data-theme={resolvedTheme} style={{'--toolbar-bottom':`${topInset-20}px`} as React.CSSProperties}>
   {monitorState.active&&<header className="monitor-controls" aria-label="Repository monitor controls">
    <RefreshTimer nextAt={Math.max(refreshState.nextAt,monitorState.retryAt)} interval={seconds*1000} sweeping={autoRefresh&&!monitorLimited} running={monitorState.running.size>0} paused={!autoRefresh||monitorLimited}/>
@@ -160,16 +165,16 @@ function App(){
   <main className={`graph-stage${monitorState.active?' monitor-stage':''}`} aria-label={monitorState.active?'Repository monitor':undefined}>
    <section className={monitorState.active?'monitor-column':'single-repository'} ref={primaryPaneRef} hidden={!primaryActive} style={{order:primaryOrder}} aria-label={monitorState.active?`Repository ${state.repo}`:undefined}>
    {state.commits.length>0?<Graph active={primaryActive} containerResponsive={monitorState.active} label={monitorState.active?`Commit graph for ${state.repo}`:undefined} key={`${state.repo}:${state.base}:${reverse}`} theme={resolvedTheme} commits={state.commits} branches={state.branches} branch={state.base} reverse={reverse} selected={selected?.sha||''} onSelect={select} hasMore={state.more&&!state.error&&!monitorLimited} loading={state.busy} onLoadMore={sources=>{if(monitor.canRequest())void history.loadMore(sources);}} frontiers={state.frontiers} pendingSources={state.pendingSources} topInset={monitorState.active?34:topInset} refreshVersion={state.refreshVersion} baseHead={state.baseHead} info={extras.bySha} onVisible={shas=>{if(primaryActive&&monitor.canRequest())info.watch(shas);}}/>:monitorState.active?<div className="monitor-empty" role="status">{state.busy?'Loading…':state.error?'Repository unavailable':'No commits'}</div>:<div className="empty"><img className="empty-mark" src={logo} alt="" width="160" height="160"/><h1>Watch your Git history unfold.</h1>{!state.busy&&<p>Choose a repository. Explore its branches as they evolve.</p>}{!state.busy&&<button type="button" className="demo-button" aria-label={`Explore ${DEMO_REPO}`} onClick={()=>{setInput(DEMO_REPO);open(DEMO_REPO);}}><span>Explore</span><span className="demo-repository">{DEMO_REPO}</span></button>}</div>}
-   {details&&primaryActive&&<CommitDetails panelRef={detailsRef} style={detailsPosition} repository={monitorState.active?state.repo:undefined} commit={selected} onClose={()=>setSelected(null)} info={extras} onMore={monitor.canRequest()?info.loadMore:undefined}/>}
+   {details&&primaryActive&&<CommitDetails panelRef={detailsRef} style={detailsPosition} repository={monitorState.active?state.repo:undefined} commit={selected} onClose={clearSelection} info={extras} onMore={monitor.canRequest()?info.loadMore:undefined}/>}
    {monitorState.active&&primaryActive&&<MonitorStatus state={state} extras={extras} refreshing={!!primaryEntry&&monitorState.running.has(primaryEntry)} limited={monitorLimited}/>}
    </section>
-   {monitorState.active&&monitorState.entries.map((entry,index)=>entry.primary?null:<MonitorPane key={entry.repository} entry={entry} order={index} theme={resolvedTheme} session={monitor} refreshing={monitorState.running.has(entry)} limited={monitorLimited}/>)}
+   {monitorState.active&&monitorState.entries.map((entry,index)=>entry.primary?null:<MonitorPane key={entry.repository} entry={entry} order={index} theme={resolvedTheme} session={monitor} refreshing={monitorState.running.has(entry)} limited={monitorLimited} selected={selection?.repository===entry.repository?selection.commit:null} onSelect={selectCommit} onClose={clearSelection}/>)}
   </main>
   <header className="topbar" ref={toolbarRef}>
    <a className="brand" href="./" aria-label="GitStream home"><img src={logo} alt="" width="36" height="36"/> GitStream</a>
    <RepositoryInput value={input} current={state.meta?state.repo:''} onChange={setInput} onOpen={open} onRecent={openRecent} recent={recent} popupOpen={auth||options||details||monitorSetup}/>
-   <div className="view-controls"><div className="base-control"><BranchPicker history={history} state={state} onPicked={()=>{setSelected(null);}}/></div>
-    <button className="direction-toggle" aria-label={reverse?'Oldest first; newer commits below':'Newest first; older commits below'} title={reverse?'Oldest first; newer commits below':'Newest first; older commits below'} aria-pressed={reverse} onClick={()=>{setSelected(null);void history.setDirection(!reverse);}}>{reverse?'↓ Newer':'↓ Older'}</button>
+   <div className="view-controls"><div className="base-control"><BranchPicker history={history} state={state} onPicked={()=>{setSelection(null);}}/></div>
+    <button className="direction-toggle" aria-label={reverse?'Oldest first; newer commits below':'Newest first; older commits below'} title={reverse?'Oldest first; newer commits below':'Newest first; older commits below'} aria-pressed={reverse} onClick={()=>{setSelection(null);void history.setDirection(!reverse);}}>{reverse?'↓ Newer':'↓ Older'}</button>
     <RefreshButton nextAt={refreshState.nextAt} interval={seconds*1000} sweeping={autoRefresh&&!!state.meta&&refreshState.lastSuccess!==null&&!refreshState.running&&refreshRetrySeconds===0} disabled={!state.meta||(!state.commits.length&&state.busy)||refreshState.running||refreshRetrySeconds>0} onRefresh={()=>void loop.refresh()}/>
     <button className="token-button" ref={tokenButtonRef} aria-label={tokenApplied?'Access token (applied)':'Access token'} title={tokenApplied?'Access token applied':'Access token'} aria-expanded={auth} onClick={()=>{if(auth)setAuth(false);else openTokenPopup();}}><svg className={`ticket-icon${tokenApplied?' applied':''}`} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a3 3 0 0 0 0-6z"/><path d="M15 5v2M15 11v2M15 17v2"/></svg><span className="token-label">Token</span></button>
     <button type="button" className="monitor-trigger" ref={monitorButtonRef} aria-label="Split view" title="Split view" onClick={()=>{setOptions(false);setAuth(false);setMonitorSetup(true);}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></button>
