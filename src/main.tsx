@@ -158,7 +158,7 @@ function App(){
  function select(commit:Commit){selectCommit(state.repo,commit);if(monitorState.active)detailsRef.current?.focus({preventScroll:true});}
  return <div className={`app${monitorState.active?' app-monitor':''}`} data-theme={resolvedTheme} style={{'--toolbar-bottom':`${topInset-20}px`} as React.CSSProperties}>
   {monitorState.active&&<header className="monitor-controls" aria-label="Repository monitor controls">
-   <RefreshTimer nextAt={Math.max(refreshState.nextAt,monitorState.retryAt)} interval={seconds*1000} sweeping={autoRefresh&&!monitorLimited} running={monitorState.running.size>0} paused={!autoRefresh||monitorLimited}/>
+   <RefreshTimer nextAt={Math.max(refreshState.nextAt,monitorState.retryAt)} interval={seconds*1000} sweeping={autoRefresh&&!monitorLimited} running={monitorState.running.size>0} paused={!autoRefresh||monitorLimited} disabled={monitorLimited||refreshState.running} onRefresh={()=>void loop.refresh()}/>
    <div className="monitor-repositories">{monitorState.entries.map(entry=><h2 className="monitor-repository" key={entry.repository}><a href={`https://github.com/${entry.repository}`} target="_blank" rel="noopener noreferrer" title={entry.repository}>{entry.repository}</a></h2>)}</div>
    <button type="button" className="monitor-exit" aria-label="Return to single view" title="Return to single view" onClick={leaveMonitor}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h14"/></svg></button>
   </header>}
