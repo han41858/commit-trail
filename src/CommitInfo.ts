@@ -3,7 +3,7 @@ export type ReleaseInfo={id:number;tag_name:string;name:string|null;draft:boolea
 export type ActionRun={id:number;workflow_id:number;head_sha:string;name:string|null;status:string|null;conclusion:string|null;run_attempt?:number;updated_at:string;run_started_at?:string|null;html_url:string};
 export type ActionJob={id:number;run_id:number;run_attempt?:number;status:string;conclusion:string|null};
 export type JobInfo={attempt:number;jobs:ActionJob[];total:number;complete:boolean;next:number};
-export type ActionState='queued'|'running'|'success'|'failure'|'cancelled'|'neutral';
+export type ActionState='queued'|'running'|'success'|'failure'|'cancelled'|'skipped';
 export type ActionSummary={state:ActionState;done:number|null;total:number|null;ratio:number|null};
 export type CommitInfo={tags:TagInfo[];releases:ReleaseInfo[];runs:ActionRun[];actions:ActionSummary|null};
 export const attempt=(run:ActionRun)=>run.run_attempt||1;
@@ -13,7 +13,8 @@ const runJobs=(run:ActionRun,info:JobInfo)=>[...new Map(info.jobs.filter(job=>jo
 export function actionSummary(input:readonly ActionRun[],details:ReadonlyMap<number,JobInfo>):ActionSummary|null{
  const byId=new Map<number,ActionRun>();for(const run of input)if(newerRun(byId.get(run.id),run))byId.set(run.id,run);
  const runs=[...byId.values()];if(!runs.length)return null;
- const state:ActionState=runs.some(activeRun)?runs.some(run=>run.status==='in_progress')?'running':'queued':runs.some(run=>run.status!=='completed')?'neutral':runs.some(run=>['failure','timed_out'].includes(run.conclusion||''))?'failure':runs.every(run=>run.conclusion==='success')?'success':runs.every(run=>run.conclusion==='cancelled')?'cancelled':'neutral';
+ const failed=runs.some(run=>run.status==='completed'&&['failure','timed_out','startup_failure'].includes(run.conclusion||''));
+ const state:ActionState=runs.some(activeRun)?runs.some(run=>run.status==='in_progress')?'running':'queued':failed?'failure':runs.every(run=>run.status==='completed'&&run.conclusion==='success')?'success':runs.every(run=>run.status==='completed'&&run.conclusion==='cancelled')?'cancelled':'skipped';
  let done=0,total=0;
  for(const run of runs){
   const info=details.get(run.id);
@@ -29,7 +30,7 @@ export function completedJobCount(run:ActionRun,details:ReadonlyMap<number,JobIn
  if(summary?.done===null||summary?.done===undefined||summary.total===null)return null;
  return {completed:summary.done,total:summary.total};
 }
-export const actionText=(state:ActionState)=>({queued:'Queued / waiting',running:'In progress',success:'Success',failure:'Failure / timed out',cancelled:'Cancelled',neutral:'Neutral / other result'}[state]);
+export const actionText=(state:ActionState)=>({queued:'Queued / waiting',running:'In progress',success:'Success',failure:'Failure / timed out / startup failure',cancelled:'Cancelled',skipped:'Skipped / not run'}[state]);
 export type RunStatus={icon:'success'|'failure'|'timed_out'|'cancelled'|'skipped'|'neutral'|'action_required'|'startup_failure'|'stale'|'running'|'queued'|'unknown';label:string};
 const finalRunStatuses:Record<string,RunStatus>={success:{icon:'success',label:'Success'},failure:{icon:'failure',label:'Failure'},timed_out:{icon:'timed_out',label:'Timed out'},cancelled:{icon:'cancelled',label:'Cancelled'},skipped:{icon:'skipped',label:'Skipped'},neutral:{icon:'neutral',label:'Neutral'},action_required:{icon:'action_required',label:'Action required'},startup_failure:{icon:'startup_failure',label:'Startup failure'},stale:{icon:'stale',label:'Stale'}};
 export function runStatus(run:ActionRun):RunStatus{
