@@ -90,7 +90,9 @@ Hashed Vite assets use immutable caching; the HTML keeps Vercel's default cachin
 
 Vercel GitHub bot comments are disabled through the project’s commit/PR comment settings and `github.silent` in `vercel.json`.
 
-Month separators span the viewport with `YYYY.MM` above the line at the right. They group committer timestamps (or valid author timestamps when unavailable) by year and month in the browser's local time zone and attach to the earliest commit near the first of each month in both directions. Single and split views use the same rule. A partial oldest month waits for older context instead of being labeled at the month end. Changing the current calendar month does not add a separator without a commit in that month; commit ordering and API requests are unchanged.
+Month separators span the viewport with `YYYY.MM` above the line at the right. They group committer timestamps (or valid author timestamps when unavailable) by year and month in the browser's local time zone. The selected branch's loaded first-parent history confirms month boundaries; when its tip is not loaded, the available timeline supplies that context. A partial oldest month still waits for older context, so an unrelated old branch cannot make a partial base month complete.
+
+For each confirmed month, the line attaches to the earliest timestamp among **all loaded commits**, including merged side branches. Loading an earlier candidate moves the line to that commit; equal timestamps use a stable SHA tie-break. Older and Newer views retain the same anchor while its position reverses with the graph. Single and split views share this rule. Changing the current calendar month does not add a separator without a commit in that month; commit ordering and API requests are unchanged.
 
 
 ## Automatic updates and metadata
