@@ -30,7 +30,6 @@ export class History {
  private failedSources=new Set<string>();
  private discoveryTask:{signal:AbortSignal;promise:Promise<void>}|null=null;
  private commits=new Map<string,Commit>();
- private queried=new Set<string>();
  private started=false;
  private historyHead='';
  private nextPage=0;
@@ -79,7 +78,7 @@ export class History {
   for(const controller of this.controllers){debug.cancelSignal(controller.signal);controller.abort();}this.controllers.clear();this.generation++;
   this.refreshReader?.cancel();this.refreshReader=null;this.branchScan=null;this.catalogComplete=!this.refsNext;this.refreshing=null;
   this.commitPool=new RequestPool();this.commitPages.clear();this.commitRequests.clear();this.sourceTasks.clear();this.failedSources.clear();this.discoveryTask=null;
-  this.commits.clear();this.queried.clear();
+  this.commits.clear();
   this.admitted.clear();this.sideCommits.clear();this.retryRefs=false;this.started=false;this.historyHead='';this.nextPage=0;this.forwardWindow=[];
  }
  private fetchCommits(ref:string,page:number,signal:AbortSignal,since?:number){
@@ -87,7 +86,13 @@ export class History {
   const cached=this.commitPages.get(key);if(cached){debug.cache('commits',debug.forSignal(signal));return Promise.resolve(cached);}
   const existing=this.commitRequests.get(key);if(existing){debug.cache('commits',debug.forSignal(signal),'shared');return existing;}
   const repo=this.snapshot.repo,token=this.token;
-  const request=this.commitPool.run(signal,()=>commitsPage(repo,ref,page,token,signal,since)).then(result=>{signal.throwIfAborted();if(/^[a-f0-9]{40}$/i.test(ref))this.commitPages.set(key,result);return result;}).finally(()=>{
+  const request=this.commitPool.run(signal,()=>commitsPage(repo,ref,page,token,signal,since)).then(result=>{
+   signal.throwIfAborted();const immutable=/^[a-f0-9]{40}$/i.test(ref);
+   // Validate an unfiltered head page before caching it or accepting new refs.
+   // Later forward pages and since-filtered discovery may omit the head.
+   if(immutable&&page===1&&since===undefined&&(!Array.isArray(result.data)||!result.data.some(commit=>commit.sha===ref)))throw new Error('GitHub did not return the requested commit. Retry to continue this branch.');
+   if(immutable)this.commitPages.set(key,result);return result;
+  }).finally(()=>{
    if(this.commitRequests.get(key)===request)this.commitRequests.delete(key);
   });
   this.commitRequests.set(key,request);return request;
@@ -110,7 +115,8 @@ export class History {
   }
   for(const commit of this.commits.values()){
     if(this.snapshot.reverse&&!this.sideCommits.has(commit.sha))continue;
-    const sources=[...new Set(commit.parents.map(parent=>parent.sha))].filter(sha=>!this.commits.has(sha)&&!this.queried.has(sha));
+    // A queried parent may have been pruned; only a loaded commit closes a gap.
+    const sources=[...new Set(commit.parents.map(parent=>parent.sha))].filter(sha=>!this.commits.has(sha));
     if(sources.length)frontiers.push({sha:commit.sha,sources});
   }
   const range=this.historyRange();
@@ -355,10 +361,10 @@ export class History {
     const result=await this.fetchCommits(this.historyHead,this.nextPage,signal);this.current(signal);
     this.nextPage--;this.forwardWindow=result.data;this.integrate(result.data);
    }else{
-    if(this.commits.has(source)||this.queried.has(source))return;
+    if(this.commits.has(source))return;
     const result=await this.fetchCommits(source,1,signal);this.current(signal);
     if(!result.data.some(commit=>commit.sha===source)&&!this.commits.has(source))throw new Error('GitHub did not return the requested commit. Retry to continue this branch.');
-    this.queried.add(source);if(this.snapshot.reverse)for(const commit of result.data)this.sideCommits.add(commit.sha);this.integrate(result.data);
+    if(this.snapshot.reverse)for(const commit of result.data)this.sideCommits.add(commit.sha);this.integrate(result.data);
    }
    this.failedSources.delete(source);
   }catch(error){if(!signal.aborted)this.failedSources.add(source);throw error;}
