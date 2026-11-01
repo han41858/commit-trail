@@ -23,6 +23,88 @@ async function using(handler:Handler,check:(history:History,requests:URL[])=>Pro
  }finally{history.cancel();globalThis.fetch=original;}
 }
 const histories=(requests:URL[])=>requests.filter(url=>url.pathname.endsWith('/commits')).map(url=>[url.searchParams.get('sha'),url.searchParams.get('page')]);
+const gitSha=(n:number)=>n.toString(16).padStart(40,'0');
+
+test('a parent pruned after branch deletion can be restored when a later merge needs it',async()=>{
+ let phase: 'initial'|'deleted'|'merged'='initial';
+ const main=gitSha(1),root=gitSha(2),parent=gitSha(1100),feature=gitSha(1000),merge=gitSha(5000),head=gitSha(5001);
+ const baseline=[dated(main,'2026-11-01',root),dated(root,'2026-10-01')];
+ const side=Array.from({length:100},(_,i)=>dated(gitSha(1000+i),new Date(Date.parse('2026-10-31T23:00:00Z')-i*60000).toISOString(),i===99?parent:gitSha(1001+i)));
+ const merged=[...Array.from({length:99},(_,i)=>dated(gitSha(5001+i),new Date(Date.parse('2026-11-02T00:00:00Z')-i*60000).toISOString(),i===98?merge:gitSha(5002+i))),dated(merge,'2026-11-01T22:10:00Z',main,feature)];
+ await using(url=>{
+  if(url.pathname.endsWith('/branches'))return response([ref('main',phase==='merged'?head:main),...(phase==='initial'?[ref('feature',feature)]:[])]);
+  if(url.pathname.endsWith('/activity'))return response(phase==='initial'?[push('feature','2026-11-01')]:[]);
+  if(url.pathname.endsWith('/commits')){
+   const sha=url.searchParams.get('sha');
+   if(sha==='main')return response(baseline);
+   if(sha===head)return response(merged,true);
+   if(sha===feature)return response(side,true);
+   if(sha===parent)return response([dated(parent,'2026-10-31T20:00:00Z',root),baseline[1]]);
+  }
+ },async(h,requests)=>{
+  await h.open('a/b');await h.loadMore([parent]);assert.ok(h.getSnapshot().commits.some(c=>c.sha===parent));
+  phase='deleted';await h.refresh();assert.deepEqual(new Set(h.getSnapshot().commits.map(c=>c.sha)),new Set([main,root]));
+  phase='merged';await h.refresh();await h.loadMore([feature]);
+  assert.ok(h.getSnapshot().frontiers.some(f=>f.sources.includes(parent)),'a prior successful query must not hide a now-missing parent');
+  await Promise.all([h.loadMore([parent]),h.loadMore([parent])]);
+  const state=h.getSnapshot(),known=new Set(state.commits.map(c=>c.sha));
+  assert.ok(known.has(parent));assert.equal(state.more,false);
+  for(const c of state.commits)for(const p of c.parents)assert.ok(known.has(p.sha));
+  assert.equal(histories(requests).filter(([sha])=>sha===parent).length,1,'restore the immutable cached page without another HTTP request');
+ });
+});
+
+for(const invalid of ['empty','wrong-head'])test(`an immutable ${invalid} parent response is not cached and Retry can recover`,async()=>{
+ const main=gitSha(1),parent=gitSha(2),wrong=gitSha(3);let failed=true;
+ await using(url=>{
+  if(url.pathname.endsWith('/branches'))return response([ref('main',main)]);
+  if(url.pathname.endsWith('/activity'))return response([]);
+  if(url.pathname.endsWith('/commits'))return response(url.searchParams.get('sha')==='main'?[commit(main,parent)]:failed?(invalid==='empty'?[]:[commit(wrong)]):[commit(parent)]);
+ },async(h,requests)=>{
+  await h.open('a/b');await h.loadMore([parent]);assert.match(h.getSnapshot().error,/requested commit/);assert.ok(!h.getSnapshot().commits.some(c=>c.sha===wrong));
+  failed=false;await h.retry();
+  assert.equal(h.getSnapshot().error,'');assert.equal(h.getSnapshot().more,false);assert.ok(h.getSnapshot().commits.some(c=>c.sha===parent));
+  assert.equal(histories(requests).filter(([sha])=>sha===parent).length,2);
+ });
+});
+
+test('a refresh missing its immutable head keeps the old graph and retries the head on the next poll',async()=>{
+ const main=gitSha(1),root=gitSha(2),head=gitSha(3);let changed=false,failed=true;
+ await using(url=>{
+  if(url.pathname.endsWith('/branches'))return response([ref('main',changed?head:main)]);
+  if(url.pathname.endsWith('/activity'))return response([]);
+  if(url.pathname.endsWith('/commits'))return response(url.searchParams.get('sha')==='main'||failed?[commit(main,root),commit(root)]:[commit(head,main),commit(main,root),commit(root)]);
+ },async(h,requests)=>{
+  await h.open('a/b');const before=h.getSnapshot();changed=true;await h.refresh();
+  assert.equal(h.getSnapshot().baseHead,main);assert.equal(h.getSnapshot().commits,before.commits);assert.equal(h.getSnapshot().branches,before.branches);assert.match(h.getSnapshot().refreshError,/requested commit/);
+  failed=false;await h.refresh();assert.equal(h.getSnapshot().baseHead,head);assert.equal(h.getSnapshot().refreshError,'');assert.ok(h.getSnapshot().commits.some(c=>c.sha===head));
+  assert.equal(histories(requests).filter(([sha])=>sha===head).length,2);
+ });
+});
+
+test('immutable forward pages do not need to contain the pinned head',async()=>{
+ const head=gitSha(1),middle=gitSha(2),root=gitSha(3);
+ await using(url=>{
+  if(url.pathname.endsWith('/branches'))return response([ref('main',head)]);
+  if(url.pathname.endsWith('/activity'))return response([]);
+  if(url.pathname.endsWith('/commits'))return url.searchParams.get('page')==='3'?response([commit(root)]):url.searchParams.get('page')==='2'?response([commit(middle,root)],true,3):response([commit(head,middle)],true,3);
+ },async h=>{
+  await h.open('a/b');await h.setDirection(true);await h.loadMore();await h.loadMore();
+  assert.equal(h.getSnapshot().error,'');assert.equal(h.getSnapshot().more,false);assert.deepEqual(new Set(h.getSnapshot().commits.map(c=>c.sha)),new Set([head,middle,root]));
+ });
+});
+
+test('a since-filtered immutable branch page may legitimately omit an old head',async()=>{
+ const main=gitSha(1),root=gitSha(2),old=gitSha(3);
+ await using(url=>{
+  if(url.pathname.endsWith('/branches'))return response([ref('main',main),ref('old',old)]);
+  if(url.pathname.endsWith('/activity'))return response([push('old','2026-10-31')]);
+  if(url.pathname.endsWith('/commits'))return response(url.searchParams.get('sha')==='main'?[dated(main,'2026-11-01',root),dated(root,'2026-10-01')]:[]);
+ },async(h,requests)=>{
+  await h.open('a/b');assert.equal(h.getSnapshot().error,'');assert.equal(h.getSnapshot().discoveryError,'');assert.ok(!h.getSnapshot().commits.some(c=>c.sha===old));
+  assert.ok(requests.some(url=>url.searchParams.get('sha')===old&&url.searchParams.has('since')));
+ });
+});
 
 test('a crossed long path keeps loading across layouts until it rejoins known ancestry above the viewport',async()=>{
  for(const reverse of [false,true]){
