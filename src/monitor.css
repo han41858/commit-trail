@@ -6,11 +6,11 @@
 .monitor-column[hidden]{display:none}
 .monitor-controls{position:absolute;z-index:4;top:max(6px,env(safe-area-inset-top,0px));left:var(--safe-left);right:var(--safe-right);height:32px}
 .monitor-repositories{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:1px;height:100%}
-.monitor-repository{min-width:0;margin:0;padding:0 8px;font-size:14px;line-height:32px;font-weight:500;text-align:center}
+.monitor-repository{display:flex;align-items:center;justify-content:center;min-width:0;margin:0;padding:0 8px;font-size:14px;line-height:32px;font-weight:500;text-align:center}
 .monitor-repository:first-child{padding-left:44px}.monitor-repository:last-child{padding-right:44px}
-.monitor-repository a{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:underline;text-underline-offset:3px}
-.monitor-controls>.monitor-timer,.monitor-controls>.monitor-exit{position:absolute;top:2px}.monitor-controls>.monitor-timer{left:8px}.monitor-controls>.monitor-exit{right:8px}
-.monitor-timer{display:grid;place-items:center;width:28px;height:28px;border:1px solid var(--border);border-radius:7px;font-size:18px;pointer-events:none}
+.monitor-repository a{display:block;max-width:100%;min-width:0;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:underline;text-underline-offset:3px}
+.monitor-controls>.monitor-timer,.monitor-controls>.monitor-exit{position:absolute;z-index:1;top:2px}.monitor-controls>.monitor-timer{left:8px}.monitor-controls>.monitor-exit{right:8px}
+.monitor-timer{display:grid;place-items:center;width:28px;height:28px;border:1px solid var(--border);border-radius:7px;font-size:18px}
 .monitor-exit{width:28px;height:28px;padding:5px}
 .monitor-status{position:absolute;z-index:1;left:4px;right:4px;bottom:4px;display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;width:max-content;max-width:calc(100% - 8px);max-height:35%;overflow:auto;padding:4px 6px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:10px;overflow-wrap:anywhere}
 .monitor-status p{margin:0;flex-basis:100%;color:var(--warning);line-height:1.4}

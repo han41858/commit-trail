@@ -2,7 +2,14 @@ import {test} from 'node:test';import assert from 'node:assert/strict';
 import {actionSummary,runElapsed,actionsElapsed,runStatus,completedJobCount,type ActionRun,type ActionJob,type JobInfo} from './CommitInfo';
 const run=(id:number,status='completed',conclusion:string|null='success',extra:Partial<ActionRun>={}):ActionRun=>({id,workflow_id:id,head_sha:'sha',name:'Build',status,conclusion,run_attempt:1,updated_at:'2026-10-30T00:00:00Z',html_url:'https://github.com/a/b/actions/runs/'+id,...extra});
 const detail=(id:number,statuses:string[],extra:Partial<JobInfo>={}):JobInfo=>({attempt:1,jobs:statuses.map((status,index)=>({id:id*100+index,run_id:id,status,conclusion:status==='completed'?'success':null})),total:statuses.length,complete:true,next:0,...extra});
-for(const [conclusions,expected] of [[['success'],'success'],[['failure'],'failure'],[['timed_out'],'failure'],[['cancelled'],'cancelled'],[['success','cancelled'],'neutral'],[['skipped'],'neutral'],[['future_result'],'neutral']] as const)test(`Actions final result ${conclusions.join('/')} is ${expected}`,()=>{assert.equal(actionSummary(conclusions.map((c,i)=>run(i,'completed',c)),new Map())?.state,expected);});
+for(const [conclusions,expected] of [[['success'],'success'],[['failure'],'failure'],[['timed_out'],'failure'],[['startup_failure'],'failure'],[['cancelled'],'cancelled'],[['success','cancelled'],'skipped'],[['success','skipped'],'skipped'],[['skipped'],'skipped'],[['neutral'],'skipped'],[['action_required'],'skipped'],[['stale'],'skipped'],[['future_result'],'skipped']] as const)test(`Actions final result ${conclusions.join('/')} is ${expected}`,()=>{assert.equal(actionSummary(conclusions.map((c,i)=>run(i,'completed',c)),new Map())?.state,expected);});
+test('known failures remain red beside skipped or unknown results while active work retains precedence',()=>{
+ for(const failure of ['failure','timed_out','startup_failure']){
+  for(const other of [run(2,'completed','skipped'),run(2,'completed','neutral'),run(2,'future_status',null)])assert.equal(actionSummary([run(1,'completed',failure),other],new Map())?.state,'failure');
+  assert.equal(actionSummary([run(1,'completed',failure),run(2,'in_progress',null)],new Map())?.state,'running');
+  assert.equal(actionSummary([run(1,'completed',failure),run(2,'queued',null)],new Map())?.state,'queued');
+ }
+});
 test('multiple workflows aggregate actual completed jobs and deduplicate jobs and runs',()=>{
  const runs=[run(1),run(2,'in_progress',null),run(3,'queued',null),run(2,'in_progress',null)];
  const jobs=new Map([[1,detail(1,['completed','completed','completed'])],[2,detail(2,['completed','completed','in_progress','queued'])],[3,detail(3,['queued','queued','queued'])]]);jobs.get(2)!.jobs.push(jobs.get(2)!.jobs[0]);
@@ -17,9 +24,9 @@ test('the latest attempt replaces old jobs and can lower progress',()=>{
  const runs=[run(1),run(1,'in_progress',null,{run_attempt:2})];assert.equal(actionSummary(runs,new Map([[1,detail(1,['completed'])]]))?.ratio,null);
  assert.deepEqual(actionSummary(runs,new Map([[1,detail(1,['queued','completed'],{attempt:2})]])),{state:'running',done:1,total:2,ratio:.5});
 });
-test('every completed job counts regardless of conclusion and unknown status stays neutral',()=>{
+test('every completed job counts regardless of conclusion and unknown status uses the gray fallback',()=>{
  const jobs=detail(1,['completed','completed','completed','completed']);jobs.jobs.forEach((job,i)=>job.conclusion=['failure','cancelled','skipped','success'][i]);assert.equal(actionSummary([run(1,'in_progress',null)],new Map([[1,jobs]]))?.ratio,1);
- assert.equal(actionSummary([run(1,'future_status','success')],new Map())?.state,'neutral');assert.equal(actionSummary([],new Map()),null);
+ assert.equal(actionSummary([run(1,'future_status','success')],new Map())?.state,'skipped');assert.equal(actionSummary([],new Map()),null);
 });
 test('workflow badges keep final results distinct and never infer success before completion',()=>{
  for(const conclusion of ['success','failure','timed_out','cancelled','skipped','neutral','action_required','startup_failure','stale'])assert.equal(runStatus(run(1,'completed',conclusion)).icon,conclusion);
