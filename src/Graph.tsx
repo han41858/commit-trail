@@ -89,7 +89,8 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
    const ready=visibleHistorySources(frontiers,positions,{left:el.scrollLeft,top:el.scrollTop,width:el.clientWidth,height:el.clientHeight-48,inset:Math.max(0,padding-20)},pendingSources);
    if(ready.length)onLoadMore(ready);
   };
-  // Layout changes may reveal a gap, but unseen history never starts a request.
+  // A predecessor page can leave another gap above this viewport. Re-evaluate
+  // after layout and queue cleanup so that path continues without another scroll.
   captureFrontiers.current();
  },[positions,frontiers,pendingSources,padding,hasMore,onLoadMore,view.width,view.height,pageVisible]);
  useEffect(()=>{

@@ -3,9 +3,12 @@ export const GRAPH_ORIGIN=48,LANE_SPACING=34;
 export function visibleHistorySources(frontiers:readonly HistoryFrontier[],positions:ReadonlyMap<string,{x:number;y:number}>,view:{left:number;top:number;width:number;height:number;inset:number},pending:readonly string[]=[]){
  if(view.width<=0||view.height<=view.inset)return [];
  const sources=new Set<string>(),excluded=new Set(pending);
+ // Earlier gaps can still feed lanes in this viewport. Keep following their
+ // successor pages after layout changes until the boundary moves below it.
+ const bottom=view.top+view.height;
  for(const frontier of frontiers){
   const point=positions.get(frontier.sha);
-  if(!point||point.x<view.left||point.x>view.left+view.width||point.y<view.top+view.inset||point.y>view.top+view.height)continue;
+  if(!point||point.x<view.left||point.x>view.left+view.width||point.y>bottom)continue;
   for(const source of frontier.sources)if(!excluded.has(source))sources.add(source);
  }
  return [...sources];
