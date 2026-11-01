@@ -3,37 +3,31 @@ import assert from 'node:assert/strict';
 import {graphFrame,branchDisplayNames,branchLabelText,visibleHistorySources,GRAPH_ORIGIN} from './graphView';
 import {layout,type Commit} from './model';
 
-test('history requests use only currently visible boundaries and exclude toolbar, outside lanes and pending work',()=>{
- const positions=new Map([['visible',{x:48,y:1200}],['above',{x:48,y:1099}],['below',{x:48,y:1601}],['left',{x:-1,y:1200}],['right',{x:391,y:1200}]]);
+test('history requests include earlier gaps but exclude below-viewport, outside lanes and pending work',()=>{
+ const positions=new Map([['visible',{x:48,y:1200}],['above',{x:48,y:99}],['below',{x:48,y:1601}],['left',{x:-1,y:1200}],['right',{x:391,y:1200}]]);
  const frontiers=[{sha:'visible',sources:['same','pending','second','same']},...['above','below','left','right','missing'].map(sha=>({sha,sources:[sha]}))];
  const view={left:0,top:1000,width:390,height:600,inset:100};
- assert.deepEqual(visibleHistorySources(frontiers,positions,view,['pending']),['same','second']);
+ assert.deepEqual(visibleHistorySources(frontiers,positions,view,['pending']),['same','second','above']);
  assert.deepEqual(visibleHistorySources(frontiers,positions,{...view,width:0}),[]);
  assert.deepEqual(visibleHistorySources(frontiers,positions,{...view,height:50}),[]);
 });
-test('new offscreen boundaries wait for another scroll even if earlier rows were previously visible',()=>{
- const view={left:0,top:1000,width:390,height:600,inset:100},frontiers=[{sha:'gap',sources:['next-page']}];
- assert.deepEqual(visibleHistorySources(frontiers,new Map([['gap',{x:48,y:1500}]]),view),['next-page']);
- const positions=new Map([['gap',{x:48,y:4600}]]);
- assert.deepEqual(visibleHistorySources(frontiers,positions,view),[]);
- assert.deepEqual(visibleHistorySources(frontiers,positions,{...view,top:4200}),['next-page']);
- assert.deepEqual(visibleHistorySources(frontiers,positions,{...view,top:6000}),[]);
+test('successor boundaries are rechecked above the viewport and stop once they move below it',()=>{
+ const view={left:0,top:3000,width:390,height:796,inset:80},frontiers=[{sha:'gap',sources:['next']}];
+ for(const y of [100,1960,3000,3796])assert.deepEqual(visibleHistorySources(frontiers,new Map([['gap',{x:48,y}]]),view),['next']);
+ assert.deepEqual(visibleHistorySources(frontiers,new Map([['gap',{x:48,y:3797}]]),view),[]);
 });
-test('a fast downward scroll captures skipped boundaries without fetching beyond the traversed viewport',()=>{
- const positions=new Map([['skipped',{x:48,y:1960}],['visible',{x:48,y:3300}],['later',{x:48,y:4600}],['toolbar',{x:48,y:79}],['outside',{x:400,y:1960}]]);
- const frontiers=[{sha:'skipped',sources:['gap','pending','gap']},{sha:'visible',sources:['gap','current']},...['later','toolbar','outside'].map(sha=>({sha,sources:[sha]}))];
- assert.deepEqual(visibleHistorySources(frontiers,positions,{left:0,top:3000,width:390,height:796,inset:80,previousTop:0},['pending']),['gap','current']);
+test('large End and Home jumps select the current prefix without remembering a previous viewport',()=>{
+ const positions=new Map([['early',{x:48,y:100}],['middle',{x:48,y:1960}],['late',{x:48,y:4409}],['future',{x:48,y:6400}]]);
+ const frontiers=[...positions.keys()].map(sha=>({sha,sources:[sha]})),view={left:0,top:0,width:390,height:796,inset:80};
+ assert.deepEqual(visibleHistorySources(frontiers,positions,{...view,top:5500}),['early','middle','late']);
+ assert.deepEqual(visibleHistorySources(frontiers,positions,{...view,top:2500}),['early','middle']);
+ assert.deepEqual(visibleHistorySources(frontiers,positions,view),['early']);
 });
-test('a fast upward scroll captures skipped boundaries in the opposite direction',()=>{
- const positions=new Map([['skipped',{x:48,y:4409}],['above',{x:48,y:2000}],['below',{x:48,y:6400}]]);
- const frontiers=[...positions.keys()].map(sha=>({sha,sources:[sha]}));
- assert.deepEqual(visibleHistorySources(frontiers,positions,{left:0,top:2500,width:390,height:796,inset:80,previousTop:5500}),['skipped']);
-});
-test('layout scans do not inherit a prior scroll range or start loading hidden history',()=>{
- const frontier=[{sha:'gap',sources:['next']}],positions=new Map([['gap',{x:48,y:1960}]]),view={left:0,top:3000,width:390,height:796,inset:80};
- assert.deepEqual(visibleHistorySources(frontier,positions,{...view,previousTop:0}),['next']);
- assert.deepEqual(visibleHistorySources(frontier,positions,view),[]);
- assert.deepEqual(visibleHistorySources(frontier,positions,{...view,previousTop:3000}),[]);
+test('layout insertion admits only newly required ancestry before the current viewport bottom',()=>{
+ const view={left:0,top:1000,width:390,height:600,inset:100},frontiers=[{sha:'gap',sources:['next']}];
+ assert.deepEqual(visibleHistorySources(frontiers,new Map([['gap',{x:48,y:1200}]]),view),['next']);
+ assert.deepEqual(visibleHistorySources(frontiers,new Map([['gap',{x:48,y:4600}]]),view),[]);
+ assert.deepEqual(visibleHistorySources(frontiers,new Map([['gap',{x:48,y:900}]]),view),['next']);
 });
 
 test('mobile frames reserve half the width only while message columns preserve 12px lane spacing',()=>{

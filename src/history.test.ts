@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {History} from './history';
-import {layout,type Commit} from './model';
+import {layout,ROW,type Commit} from './model';
+import {visibleHistorySources} from './graphView';
 const commit=(sha:string,...parents:string[]):Commit=>({sha,parents:parents.map(sha=>({sha})),commit:{message:sha,author:null,committer:null},html_url:`https://github.com/a/b/commit/${sha}`});
 const ref=(name:string,sha=name)=>({name,commit:{sha}});
 const response=(data:unknown,next=false,lastPage?:number)=>new Response(JSON.stringify(data),{headers:{Link:[...(next?['<https://api.github.com/next>; rel="next"']:[]),...(lastPage?[`<https://api.github.com/commits?page=${lastPage}>; rel="last"`]:[])].join(', ')}});
@@ -22,6 +23,43 @@ async function using(handler:Handler,check:(history:History,requests:URL[])=>Pro
  }finally{history.cancel();globalThis.fetch=original;}
 }
 const histories=(requests:URL[])=>requests.filter(url=>url.pathname.endsWith('/commits')).map(url=>[url.searchParams.get('sha'),url.searchParams.get('page')]);
+
+test('a crossed long path keeps loading across layouts until it rejoins known ancestry above the viewport',async()=>{
+ for(const reverse of [false,true]){
+  const date=(index:number)=>new Date(Date.parse('2026-11-01T00:00:00Z')-index*60000).toISOString();
+  const main=(i:number)=>dated(`m${i}`,date(i),...(i<999?[`m${i+1}`]:[]),...(i===40?['g0']:i===950&&!reverse?['below-viewport']:[]));
+  const side=(i:number)=>dated(`g${i}`,date(40.5+i),i===299?'m500':`g${i+1}`);
+  await using(url=>{
+   if(url.pathname.endsWith('/branches'))return response([ref('main','m0')]);
+   if(url.pathname.endsWith('/activity'))return response([]);
+   if(url.pathname.endsWith('/commits')){
+    const sha=url.searchParams.get('sha')!,isSide=sha.startsWith('g'),index=sha==='main'?0:Number(sha.slice(1));
+    return response(Array.from({length:Math.min(100,(isSide?300:1000)-index)},(_,n)=>(isSide?side:main)(index+n)));
+   }
+  },async(h,requests)=>{
+   await h.open('a/b');for(let i=100;i<1000;i+=100)await h.loadMore([`m${i}`]);
+   // The jump accepted one page; its successor is still above the viewport.
+   await h.loadMore(['g0']);assert.equal(h.getSnapshot().commits.length,1100);
+   const tasks:Promise<void>[]=[];
+   const scan=()=>{
+    const state=h.getSnapshot();if(state.error)return;
+    const data=layout(state.commits,new Map(),'m0'),ordered=reverse?[...data.ordered].reverse():data.ordered;
+    const positions=new Map(ordered.map((c,i)=>[c.sha,{x:48+(data.lanes.get(c.sha)||0)*34,y:100+i*ROW}]));
+    const top=positions.get(reverse?'m10':'m700')!.y-100;
+    const ready=visibleHistorySources(state.frontiers,positions,{left:0,top,width:1280,height:796,inset:80},state.pendingSources);
+    if(ready.length)tasks.push(h.loadMore(ready));
+   };
+   const stop=h.subscribe(scan);
+   try{
+    scan();for(let i=0;i<20;i++)await turn();await Promise.all(tasks);
+    assert.equal(h.getSnapshot().commits.length,1300,reverse?'Newer':'Older');
+    assert.deepEqual(histories(requests).filter(([sha])=>sha?.startsWith('g')),[['g0','1'],['g100','1'],['g200','1']]);
+    assert.ok(!histories(requests).some(([sha])=>sha==='below-viewport'));
+    assert.ok(!h.getSnapshot().frontiers.some(frontier=>frontier.sources.some(source=>source.startsWith('g'))));
+   }finally{stop();}
+  });
+ }
+});
 
 test('initial history ignores alphabetically listed branch heads and starts only at the chosen branch',async()=>{
  await using(url=>{

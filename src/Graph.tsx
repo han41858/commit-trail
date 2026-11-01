@@ -13,7 +13,7 @@ type Props={active?:boolean;containerResponsive?:boolean;label?:string;theme:str
 export function Graph({active=true,containerResponsive=false,label,theme,commits,branches,branch,reverse,onSelect,selected,hasMore,loading,onLoadMore,frontiers,pendingSources,topInset,baseHead,refreshVersion=0,info,onVisible}:Props){
  const container=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),prior=useRef(new Map<string,number>());
  const priorColors=useRef(emptyGraphColors());
- const captureFrontiers=useRef<(scrolled?:boolean)=>void>(()=>{}),lastCapturedTop=useRef<number|null>(null);
+ const captureFrontiers=useRef<()=>void>(()=>{});
  const badgeHits=useRef<{x:number;y:number;width:number;height:number;names:string[]}[]>([]);
  const [view,setView]=useState({top:0,width:containerResponsive?0:window.innerWidth,height:window.innerHeight});
  const [documentVisible,setDocumentVisible]=useState(()=>!document.hidden);
@@ -43,7 +43,7 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
  const displayNames=useMemo(()=>branchDisplayNames(branches.map(ref=>ref.name)),[branches]);
  const lastOrder=useRef<string[]>([]),scrollTop=useRef(0),lastRefresh=useRef(refreshVersion),followingLatest=useRef<number|null>(null),followingFrame=useRef<number|null>(null);
  const cancelFollowFrame=()=>{if(followingFrame.current!==null){cancelAnimationFrame(followingFrame.current);followingFrame.current=null;}};
- const stopFollowing=()=>{const el=container.current;cancelFollowFrame();if(followingLatest.current!==null&&el){followingLatest.current=null;el.scrollTo({top:el.scrollTop,behavior:'auto'});scrollTop.current=el.scrollTop;lastCapturedTop.current=el.scrollTop;captureFrontiers.current();}};
+ const stopFollowing=()=>{const el=container.current;cancelFollowFrame();if(followingLatest.current!==null&&el){followingLatest.current=null;el.scrollTo({top:el.scrollTop,behavior:'auto'});scrollTop.current=el.scrollTop;captureFrontiers.current();}};
  useLayoutEffect(()=>{
   cancelFollowFrame();if(!pageVisible)return;
   const el=container.current!,after=ordered.map(c=>c.sha);
@@ -72,7 +72,7 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
  },[ordered,padding,reverse,refreshVersion,pageVisible]);
  useEffect(()=>{
   const media=window.matchMedia('(prefers-reduced-motion:reduce)');
-  const update=()=>{const el=container.current;if(media.matches&&followingLatest.current!==null&&el){cancelFollowFrame();const top=followingLatest.current;followingLatest.current=null;el.scrollTo({top,behavior:'auto'});scrollTop.current=el.scrollTop;lastCapturedTop.current=el.scrollTop;setView(v=>({...v,top:el.scrollTop}));}};
+  const update=()=>{const el=container.current;if(media.matches&&followingLatest.current!==null&&el){cancelFollowFrame();const top=followingLatest.current;followingLatest.current=null;el.scrollTo({top,behavior:'auto'});scrollTop.current=el.scrollTop;setView(v=>({...v,top:el.scrollTop}));}};
   media.addEventListener('change',update);return()=>media.removeEventListener('change',update);
  },[]);
  useLayoutEffect(()=>{const el=container.current!;const update=()=>{const {clientWidth:width,clientHeight:height}=el;setView(v=>v.width===width&&v.height===height?v:{...v,width,height});};update();const observer=new ResizeObserver(update);observer.observe(el);return()=>observer.disconnect();},[containerResponsive]);
@@ -82,18 +82,15 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
   const el=container.current!;onVisible(ordered.slice(first,last).filter(c=>{const x=positions.get(c.sha)!.x;return x>=el.scrollLeft-20&&x<=el.scrollLeft+view.width+20;}).map(c=>c.sha));
  },[ordered,positions,padding,view,onVisible,pageVisible]);
  const icons=(sha:string,x:number)=>{const data=info?.get(sha),items:{text:string;x:number;title:string}[]=[];if(data?.tags.length)items.push({text:'🏷️',x:0,title:data.tags.map(tag=>tag.name).join(' · ')});if(data?.releases.length)items.push({text:'🚀',x:0,title:data.releases.map(release=>release.name||release.tag_name).join(' · ')});items.forEach((icon,index)=>{icon.x=x-20-(items.length-1-index)*19;});return items;};
- // Callback or pending-request updates can occur before a queued scroll event.
- // Only geometry/visibility changes invalidate the scroll's starting viewport.
- useLayoutEffect(()=>{lastCapturedTop.current=container.current!.scrollTop;},[positions,padding,view.width,view.height,pageVisible]);
  useLayoutEffect(()=>{
-  captureFrontiers.current=(scrolled=false)=>{
-   const el=container.current!,previousTop=scrolled?lastCapturedTop.current??undefined:undefined;
-   if(scrolled||followingLatest.current!==null)lastCapturedTop.current=el.scrollTop;
+  captureFrontiers.current=()=>{
    if(!hasMore||!pageVisible||followingLatest.current!==null)return;
-   const ready=visibleHistorySources(frontiers,positions,{left:el.scrollLeft,top:el.scrollTop,width:el.clientWidth,height:el.clientHeight-48,inset:Math.max(0,padding-20),previousTop},pendingSources);
+   const el=container.current!;
+   const ready=visibleHistorySources(frontiers,positions,{left:el.scrollLeft,top:el.scrollTop,width:el.clientWidth,height:el.clientHeight-48,inset:Math.max(0,padding-20)},pendingSources);
    if(ready.length)onLoadMore(ready);
   };
-  // Metadata/request updates scan only the current viewport without erasing a scroll.
+  // A predecessor page can leave another gap above this viewport. Re-evaluate
+  // after layout and queue cleanup so that path continues without another scroll.
   captureFrontiers.current();
  },[positions,frontiers,pendingSources,padding,hasMore,onLoadMore,view.width,view.height,pageVisible]);
  useEffect(()=>{
@@ -169,5 +166,5 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
   const p=positions.get(c.sha)!;
   return Math.abs(y-p.y)<=22&&(Math.abs(x-p.x)<=22||icons(c.sha,p.x).some(icon=>Math.abs(x-icon.x)<=9)||(showMessages&&x>=messageX&&x<=messageX+messageWidth))?c:undefined;
  }
- return <div className="graph-scroll fit-width" ref={container} tabIndex={0} aria-label={label||"Commit graph. Scroll to load more history."} onWheelCapture={stopFollowing} onTouchStartCapture={stopFollowing} onPointerDownCapture={stopFollowing} onKeyDownCapture={event=>{if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))stopFollowing();}} onScroll={e=>{const top=e.currentTarget.scrollTop;scrollTop.current=top;if(followingLatest.current!==null&&top===followingLatest.current)followingLatest.current=null;captureFrontiers.current(true);setView(v=>v.top===top?v:{...v,top});}}><div style={{height,width:'100%',position:'relative'}}><canvas aria-label={`Commit history graph. Tap a node${showMessages?' or message':''} to inspect it.`} ref={canvas} style={{position:'sticky',top:0,width:'100%',height:view.height,display:'block'}} onClick={e=>{const c=pick(e.clientX,e.clientY);if(c)onSelect(c);}} onMouseMove={e=>{const badge=badgeAt(e.clientX,e.clientY);if(badge){e.currentTarget.title=badge.names.join(' · ');return;}const c=pick(e.clientX,e.clientY);if(!c){e.currentTarget.title='';return;}const extra=info?.get(c.sha),p=positions.get(c.sha)!,el=container.current!,x=e.clientX-el.getBoundingClientRect().left+el.scrollLeft;const icon=icons(c.sha,p.x).find(icon=>Math.abs(x-icon.x)<=9);e.currentTarget.title=[`${c.sha.slice(0,7)} · ${emojify(c.commit.message.split('\n')[0])}`,icon?.title,extra?.actions&&['running','queued'].includes(extra.actions.state)?`${actionText(extra.actions.state)}${extra.actions.ratio!==null?` · ${extra.actions.done}/${extra.actions.total} jobs`:''}`:'',...(extra?.runs||[]).map(run=>`${run.name||'Workflow'} · ${runStatus(run).label} · Elapsed ${runElapsed(run)||'—'} · Attempt ${attempt(run)}`)].filter(Boolean).join('\n');if(icon)onSelect(c);}}/>{pendingActions.map(commit=>{const point=positions.get(commit.sha)!,radius=commit.sha===selected?10.5:7.5;return <span key={commit.sha} className="actions-pending-ring" role="img" aria-label="GitHub Actions in progress; job counts not confirmed" style={{left:point.x-radius-1,top:point.y-radius-1,width:radius*2+2,height:radius*2+2}}/>;})}</div></div>;
+ return <div className="graph-scroll fit-width" ref={container} tabIndex={0} aria-label={label||"Commit graph. Scroll to load more history."} onWheelCapture={stopFollowing} onTouchStartCapture={stopFollowing} onPointerDownCapture={stopFollowing} onKeyDownCapture={event=>{if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))stopFollowing();}} onScroll={e=>{const top=e.currentTarget.scrollTop;scrollTop.current=top;if(followingLatest.current!==null&&top===followingLatest.current)followingLatest.current=null;captureFrontiers.current();setView(v=>v.top===top?v:{...v,top});}}><div style={{height,width:'100%',position:'relative'}}><canvas aria-label={`Commit history graph. Tap a node${showMessages?' or message':''} to inspect it.`} ref={canvas} style={{position:'sticky',top:0,width:'100%',height:view.height,display:'block'}} onClick={e=>{const c=pick(e.clientX,e.clientY);if(c)onSelect(c);}} onMouseMove={e=>{const badge=badgeAt(e.clientX,e.clientY);if(badge){e.currentTarget.title=badge.names.join(' · ');return;}const c=pick(e.clientX,e.clientY);if(!c){e.currentTarget.title='';return;}const extra=info?.get(c.sha),p=positions.get(c.sha)!,el=container.current!,x=e.clientX-el.getBoundingClientRect().left+el.scrollLeft;const icon=icons(c.sha,p.x).find(icon=>Math.abs(x-icon.x)<=9);e.currentTarget.title=[`${c.sha.slice(0,7)} · ${emojify(c.commit.message.split('\n')[0])}`,icon?.title,extra?.actions&&['running','queued'].includes(extra.actions.state)?`${actionText(extra.actions.state)}${extra.actions.ratio!==null?` · ${extra.actions.done}/${extra.actions.total} jobs`:''}`:'',...(extra?.runs||[]).map(run=>`${run.name||'Workflow'} · ${runStatus(run).label} · Elapsed ${runElapsed(run)||'—'} · Attempt ${attempt(run)}`)].filter(Boolean).join('\n');if(icon)onSelect(c);}}/>{pendingActions.map(commit=>{const point=positions.get(commit.sha)!,radius=commit.sha===selected?10.5:7.5;return <span key={commit.sha} className="actions-pending-ring" role="img" aria-label="GitHub Actions in progress; job counts not confirmed" style={{left:point.x-radius-1,top:point.y-radius-1,width:radius*2+2,height:radius*2+2}}/>;})}</div></div>;
 }
