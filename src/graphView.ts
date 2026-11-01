@@ -32,7 +32,5 @@ export function branchLabelText(names:readonly string[],display:ReadonlyMap<stri
  const suffix=names.length>1?` +${names.length-1}`:'',name=display.get(names[0])||names[0]||'';
  const letters=Array.from(name),available=Math.max(1,limit-suffix.length);
  if(letters.length<=available)return name+suffix;
- if(available<3)return '…'+suffix;
- const first=Math.ceil((available-1)/2),last=available-1-first;
- return letters.slice(0,first).join('')+'…'+letters.slice(-last).join('')+suffix;
+ return letters.slice(0,available-1).join('')+'…'+suffix;
 }

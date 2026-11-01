@@ -103,9 +103,16 @@ test('branch display names remove repeated namespaces while keeping colliding su
  assert.equal(names.get('alice/topic'),'alice/topic');assert.equal(names.get('bob/topic'),'bob/topic');
  assert.equal(names.get('alice/feature/shared'),'alice/feature/shared');assert.equal(names.get('bob/feature/shared'),'bob/feature/shared');
 });
-test('long branch labels preserve both ends and shared references use one count',()=>{
+test('long branch labels keep their beginning and shared references use one count',()=>{
  const name='agents/fix-a-very-long-window-bug-4721',display=branchDisplayNames([name,'main','master','dev']);
- const short=branchLabelText([name],display,16);assert.equal(Array.from(short).length,16);assert.ok(short.startsWith('fix-'));assert.ok(short.endsWith('4721'));assert.ok(short.includes('…'));
+ const short=branchLabelText([name],display,16);assert.equal(short,'fix-a-very-long…');assert.equal(Array.from(short).length,16);
  assert.equal(branchLabelText(['main','master','dev'],display,16),'main +2');
- const unicode=branchLabelText(['修复窗口滚动时丢失分支显示的问题'],new Map(),10);assert.equal(Array.from(unicode).length,10);assert.ok(!unicode.includes('�'));
+ const unicode=branchLabelText(['修复窗口滚动时丢失分支显示的问题'],new Map(),10);assert.equal(Array.from(unicode).length,10);assert.ok(unicode.endsWith('…'));assert.ok(!unicode.includes('�'));
+});
+test('trailing branch ellipses handle narrow labels, Unicode and shared-reference suffixes',()=>{
+ const name='bugfix/invalid-token-refresh-failure',display=branchDisplayNames([name,'main','dev']);
+ assert.equal(branchLabelText([name],display,1),'…');assert.equal(branchLabelText([name],display,2),'i…');
+ assert.equal(branchLabelText([name,'main','dev'],display,16),'invalid-toke… +2');
+ assert.equal(branchLabelText(['fix-🚀-very-long-name'],new Map(),8),'fix-🚀-v…');
+ assert.equal(branchLabelText(['main'],new Map(),4),'main');
 });
