@@ -15,7 +15,9 @@
 .monitor-status{position:absolute;z-index:1;left:4px;right:4px;bottom:4px;display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;width:max-content;max-width:calc(100% - 8px);max-height:35%;overflow:auto;padding:4px 6px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:10px;overflow-wrap:anywhere}
 .monitor-status p{margin:0;flex-basis:100%;color:var(--warning);line-height:1.4}
 .monitor-empty{padding:48px 8px 0;text-align:center;font-size:11px;color:var(--muted)}
-.monitor-column .details{position:absolute;z-index:3;left:4px;right:4px;top:auto;bottom:4px;width:auto;max-height:65%;padding:36px 10px 10px;border-radius:7px}
+.monitor-column .details{position:fixed;z-index:5;left:8px;right:auto;top:auto;bottom:8px;width:min(480px,calc(100vw - 16px));max-height:65dvh;padding:36px 10px 10px;border-radius:7px}
+.monitor-column .details:focus-within{z-index:6}
+.monitor-column .commit-repository{position:absolute;top:10px;left:12px;right:80px;margin:0;color:var(--muted);font-size:11px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .monitor-column .details h2{font-size:12px}.monitor-column .commit-meta{flex-wrap:wrap;gap:4px}.monitor-column .commit-authored{font-size:9px}
 .monitor-setup-backdrop{position:absolute;inset:0;z-index:10;background:#0005;display:grid;place-items:center;padding:max(12px,env(safe-area-inset-top,0px)) max(12px,var(--safe-right)) max(12px,var(--safe-bottom)) max(12px,var(--safe-left))}
 .monitor-setup{position:relative;inset:auto;width:min(480px,100%);max-height:100%;overflow:auto;padding:24px;font-size:12px}

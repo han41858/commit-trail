@@ -17,6 +17,7 @@ import {MonitorSession} from './MonitorSession';
 import {MonitorRepositories,MONITOR_REPOSITORIES_KEY} from './MonitorRepositories';
 import {MonitorSetup} from './MonitorSetup';
 import {MonitorPane,MonitorStatus} from './MonitorPane';
+import {useMonitorDetailsPosition} from './useMonitorDetailsPosition';
 import {useRepositoryLocation} from './useRepositoryLocation';
 import {repositoryLocationKey} from './repositoryLocation';
 import {lowercaseRepoInput,parseRepo,type Commit} from './model';
@@ -82,6 +83,7 @@ function App(){
  const wasMonitoring=useRef(false);
  useEffect(()=>{if(wasMonitoring.current&&!monitorState.active)monitorButtonRef.current?.focus();wasMonitoring.current=monitorState.active;},[monitorState.active]);
  const primaryEntry=monitorState.entries.find(entry=>entry.primary);
+ const primaryOrder=primaryEntry?monitorState.entries.indexOf(primaryEntry):0;
  const primaryActive=!monitorState.active||!!primaryEntry;
  const monitorScope=monitorState.entries.map(entry=>entry.repository).join('|');
  const monitorLimited=monitorState.retryAt>Date.now();
@@ -93,6 +95,7 @@ function App(){
  },[]);
  const [selected,setSelected]=useState<Commit|null>(null);
  const details=selected!==null;
+ const detailsPosition=useMonitorDetailsPosition(primaryPaneRef,detailsRef,monitorState.active&&primaryActive&&details,selected?.sha||'',primaryOrder);
  const reverse=state.reverse;
  useEffect(()=>{void measured.openInfo(state.meta?state.repo:'',appliedToken);return()=>info.cancel();},[info,state.repo,!!state.meta,appliedToken,authRevision]);
  useEffect(()=>{loop.configure(monitorState.active?`monitor:${monitorScope}:${authRevision}`:state.meta?`${state.repo}:${authRevision}`:'',autoRefresh,seconds*1000);},[loop,state.repo,!!state.meta,authRevision,autoRefresh,seconds,monitorState.active,monitorScope]);
@@ -147,7 +150,7 @@ function App(){
   open(repository);
  }
  function openTokenPopup(){setErrorDismissed(true);setOptions(false);setSelected(null);setAuth(true);}
- function select(commit:Commit){setSelected(commit);}
+ function select(commit:Commit){setSelected(commit);if(monitorState.active)detailsRef.current?.focus({preventScroll:true});}
  return <div className={`app${monitorState.active?' app-monitor':''}`} data-theme={resolvedTheme} style={{'--toolbar-bottom':`${topInset-20}px`} as React.CSSProperties}>
   {monitorState.active&&<header className="monitor-controls" aria-label="Repository monitor controls">
    <RefreshTimer nextAt={Math.max(refreshState.nextAt,monitorState.retryAt)} interval={seconds*1000} sweeping={autoRefresh&&!monitorLimited} running={monitorState.running.size>0} paused={!autoRefresh||monitorLimited}/>
@@ -155,9 +158,9 @@ function App(){
    <button type="button" className="monitor-exit" aria-label="Return to single view" title="Return to single view" onClick={leaveMonitor}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h14"/></svg></button>
   </header>}
   <main className={`graph-stage${monitorState.active?' monitor-stage':''}`} aria-label={monitorState.active?'Repository monitor':undefined}>
-   <section className={monitorState.active?'monitor-column':'single-repository'} ref={primaryPaneRef} hidden={!primaryActive} style={{order:primaryEntry?monitorState.entries.indexOf(primaryEntry):0}} aria-label={monitorState.active?`Repository ${state.repo}`:undefined}>
+   <section className={monitorState.active?'monitor-column':'single-repository'} ref={primaryPaneRef} hidden={!primaryActive} style={{order:primaryOrder}} aria-label={monitorState.active?`Repository ${state.repo}`:undefined}>
    {state.commits.length>0?<Graph active={primaryActive} containerResponsive={monitorState.active} label={monitorState.active?`Commit graph for ${state.repo}`:undefined} key={`${state.repo}:${state.base}:${reverse}`} theme={resolvedTheme} commits={state.commits} branches={state.branches} branch={state.base} reverse={reverse} selected={selected?.sha||''} onSelect={select} hasMore={state.more&&!state.error&&!monitorLimited} loading={state.busy} onLoadMore={sources=>{if(monitor.canRequest())void history.loadMore(sources);}} frontiers={state.frontiers} pendingSources={state.pendingSources} topInset={monitorState.active?34:topInset} refreshVersion={state.refreshVersion} baseHead={state.baseHead} info={extras.bySha} onVisible={shas=>{if(primaryActive&&monitor.canRequest())info.watch(shas);}}/>:monitorState.active?<div className="monitor-empty" role="status">{state.busy?'Loading…':state.error?'Repository unavailable':'No commits'}</div>:<div className="empty"><img className="empty-mark" src={logo} alt="" width="160" height="160"/><h1>Watch your Git history unfold.</h1>{!state.busy&&<p>Choose a repository. Explore its branches as they evolve.</p>}{!state.busy&&<button type="button" className="demo-button" aria-label={`Explore ${DEMO_REPO}`} onClick={()=>{setInput(DEMO_REPO);open(DEMO_REPO);}}><span>Explore</span><span className="demo-repository">{DEMO_REPO}</span></button>}</div>}
-   {details&&primaryActive&&<CommitDetails panelRef={detailsRef} commit={selected} onClose={()=>setSelected(null)} info={extras} onMore={monitor.canRequest()?info.loadMore:undefined}/>}
+   {details&&primaryActive&&<CommitDetails panelRef={detailsRef} style={detailsPosition} repository={monitorState.active?state.repo:undefined} commit={selected} onClose={()=>setSelected(null)} info={extras} onMore={monitor.canRequest()?info.loadMore:undefined}/>}
    {monitorState.active&&primaryActive&&<MonitorStatus state={state} extras={extras} refreshing={!!primaryEntry&&monitorState.running.has(primaryEntry)} limited={monitorLimited}/>}
    </section>
    {monitorState.active&&monitorState.entries.map((entry,index)=>entry.primary?null:<MonitorPane key={entry.repository} entry={entry} order={index} theme={resolvedTheme} session={monitor} refreshing={monitorState.running.has(entry)} limited={monitorLimited}/>)}
