@@ -1,10 +1,30 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {CommitInfoStore} from './CommitInfoStore';
+import {commitVersionIcons} from './graphView';
 const response=(data:unknown,next=false)=>new Response(JSON.stringify(data),{headers:next?{Link:'<https://api.github.com/next>; rel="next"'}:{}});
 const run=(id:number,status='in_progress',attempt=1,sha='a')=>({id,workflow_id:id,name:'Build',head_sha:sha,status,conclusion:status==='completed'?'success':null,run_attempt:attempt,updated_at:`2026-10-30T00:00:0${attempt}Z`,html_url:'https://github.com/a/b/actions/runs/'+id});
 async function using(handler:(url:URL)=>Response|undefined|Promise<Response|undefined>,check:(store:CommitInfoStore,requests:URL[])=>Promise<void>){const old=fetch,store=new CommitInfoStore(),requests:URL[]=[];try{globalThis.fetch=async input=>{const url=new URL(String(input));requests.push(url);const result=await handler(url);if(result)return result;if(url.pathname.endsWith('/actions/runs'))return response({workflow_runs:[]});if(url.pathname.endsWith('/tags')||url.pathname.endsWith('/releases'))return response([]);throw new Error('Unexpected metadata request '+url.pathname);};await check(store,requests);}finally{store.cancel();globalThis.fetch=old;}}
 test('tags and releases paginate, deduplicate and resolve nested annotated tags without target_commitish guesses',async()=>{
  await using(url=>{const page=url.searchParams.get('page');if(url.pathname.endsWith('/tags'))return page==='1'?response([{name:'v1',commit:{sha:'a'}},{name:'alias',commit:{sha:'a'}}],true):response([{name:'v1',commit:{sha:'a'}},{name:'v2',commit:{sha:'b'}}]);if(url.pathname.endsWith('/releases'))return response([{id:1,name:'RC',tag_name:'rc',prerelease:true,draft:false,published_at:'2026-10-30',html_url:'https://github.com/a/b/releases/tag/rc'},{id:2,name:'Draft',tag_name:'v1',prerelease:false,draft:true,html_url:'https://github.com/a/b/releases/tag/v1'}]);if(url.pathname.endsWith('/git/ref/tags/rc'))return response({object:{type:'tag',sha:'t1'}});if(url.pathname.endsWith('/git/tags/t1'))return response({object:{type:'tag',sha:'t2'}});if(url.pathname.endsWith('/git/tags/t2'))return response({object:{type:'commit',sha:'a'}});},async(store,requests)=>{
   await store.open('a/b','');const first=store.getSnapshot().bySha.get('a')!;assert.equal(first.tags.length,3);assert.equal(first.releases.length,2);await store.refresh(true);assert.ok(store.getSnapshot().bySha.has('b'));assert.equal(store.getSnapshot().bySha.get('a')!.tags.filter(t=>t.name==='v1').length,1);assert.equal(requests.filter(u=>u.pathname.endsWith('/git/tags/t2')).length,1);
+ });
+});
+test('metadata refresh switches the graph version icon without discarding details or adding requests',async()=>{
+ let phase=0;
+ await using(url=>{
+  if(url.pathname.endsWith('/tags'))return response(phase===3?[]:[{name:'v1',commit:{sha:'a'}},{name:'alias',commit:{sha:'a'}}]);
+  if(url.pathname.endsWith('/releases'))return response(phase===1?[{id:1,name:'Version 1',tag_name:'v1',html_url:'https://github.com/a/b/releases/tag/v1'},{id:2,name:'Alias release',tag_name:'alias',html_url:'https://github.com/a/b/releases/tag/alias'}]:[]);
+ },async(store,requests)=>{
+  await store.open('a/b','');
+  const expected=['🏷️','🚀','🏷️',undefined];
+  for(phase=0;phase<expected.length;phase++){
+   if(phase)await store.refresh();
+   const info=store.getSnapshot().bySha.get('a'),count=requests.length;
+   assert.deepEqual(commitVersionIcons(info,48),expected[phase]?[{text:expected[phase],x:28,title:phase===1?'Version 1 · Alias release':'v1 · alias'}]:[]);
+   if(phase<3)assert.deepEqual(info!.tags.map(tag=>tag.name),['v1','alias']);
+   assert.equal(info?.releases.length||0,phase===1?2:0);
+   assert.equal(requests.length,count);
+   assert.deepEqual(requests.slice(phase*3).map(url=>url.pathname).sort(),['/repos/a/b/actions/runs','/repos/a/b/releases','/repos/a/b/tags']);
+  }
  });
 });
 test('completed runs stop Job requests; a new attempt resumes tracking with latest jobs only',async()=>{
