@@ -3,6 +3,7 @@ import type {GraphColors} from './graphColors';
 export type Point={x:number;y:number};
 export type BranchTrack={name:string;lane:number;color?:number;points:Point[];connections?:Point[][]};
 export type BranchLabel=Point&{names:string[];lane:number;color?:number;boxX?:number;boxY?:number;boxHeight?:number};
+export type BranchLabelObstacle=Point&{radius:number};
 
 export function branchTracks(commits:Commit[],branches:Branch[],base:string,spine:Set<string>,positions:Map<string,Point>,reverse:boolean,colors?:GraphColors,lanes?:ReadonlyMap<string,number>):BranchTrack[]{
  const map=new Map(commits.map(c=>[c.sha,c]));const tracks:BranchTrack[]=[];
@@ -69,10 +70,19 @@ function sharedHeadTracks(tracks:BranchTrack[]){
 export function branchLabelContentBottom(tracks:BranchTrack[],height:number,gap=2){
  return sharedHeadTracks(tracks).reduce((bottom,{track,names})=>Math.max(bottom,track.points[0].y-height/2+names.length*(height+gap)-gap),0);
 }
-export function visibleBranchLabels(tracks:BranchTrack[],top:number,bottom:number,left=-Infinity,right=Infinity,measure=(names:string[],_point:Point)=>Math.min(34,Math.max(...names.map(name=>name.length)))*6.5+16,height=22,gap=2):BranchLabel[]{
+export function visibleBranchLabels(tracks:BranchTrack[],top:number,bottom:number,left=-Infinity,right=Infinity,measure=(names:string[],_point:Point)=>Math.min(34,Math.max(...names.map(name=>name.length)))*6.5+16,height=22,gap=2,obstacles:readonly BranchLabelObstacle[]=[]):BranchLabel[]{
  if(top>bottom||left>right)return [];
  const labels:BranchLabel[]=[],rects:{x:number;y:number;width:number;height:number}[]=[];
- const overlaps=(rect:typeof rects[number])=>rects.some(other=>rect.x<other.x+other.width+4&&rect.x+rect.width+4>other.x&&rect.y<other.y+other.height+gap&&rect.y+rect.height+gap>other.y);
+ const nodes=obstacles.map(point=>({x:point.x-point.radius-3,y:point.y-point.radius-3,width:(point.radius+3)*2,height:(point.radius+3)*2}));
+ const barriers=()=>[...nodes,...rects.map(rect=>({x:rect.x-4,y:rect.y-gap,width:rect.width+8,height:rect.height+gap*2}))];
+ const intersects=(a:typeof rects[number],b:typeof rects[number])=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+ // Prefer clear space farther right before the left side or another path anchor.
+ const beside=(rect:typeof rects[number])=>{
+  const nearby=barriers().filter(other=>rect.y<other.y+other.height&&rect.y+rect.height>other.y);
+  const xs=[rect.x,...nodes.filter(other=>rect.y<other.y+other.height&&rect.y+rect.height>other.y).flatMap(other=>[other.x+other.width,other.x-rect.width])].sort((a,b)=>Number(a<rect.x)-Number(b<rect.x)||Math.abs(a-rect.x)-Math.abs(b-rect.x)||b-a);
+  const x=xs.find(x=>x>=left+8&&x+rect.width<=right-8&&!nearby.some(other=>intersects({...rect,x},other)));
+  return x===undefined?undefined:{...rect,x};
+ };
  for(const {track,names} of sharedHeadTracks(tracks)){
   const stackHeight=names.length*(height+gap)-gap;
   const box=(point:Point)=>{const width=measure(names,point),x=point.x+12+width<=right-8?point.x+12:point.x-width-12>=left+8?point.x-width-12:Math.max(left+8,Math.min(point.x+12,right-width-8));return {x,y:Math.max(top+6,Math.min(point.y-height/2,bottom-stackHeight)),width,height:stackHeight};};
@@ -82,7 +92,8 @@ export function visibleBranchLabels(tracks:BranchTrack[],top:number,bottom:numbe
   if(stackHeight>bottom-top-6){
    const head=track.points[0],y=head.y-height/2;
    if(head.x<left||head.x>right||y>bottom||y+stackHeight<top)continue;
-   place({...head,names,lane:track.lane,color:track.color,boxX:box(head).x,boxY:y,boxHeight:stackHeight});continue;
+   const rect=box(head),position=beside({...rect,y})||rect;
+   place({...head,names,lane:track.lane,color:track.color,boxX:position.x,boxY:y,boxHeight:stackHeight});continue;
   }
   let fallback:BranchLabel|undefined,placed=false;
   for(let row=0;row<=Math.ceil((bottom-top)/(height+gap+2));row++){
@@ -93,16 +104,16 @@ export function visibleBranchLabels(tracks:BranchTrack[],top:number,bottom:numbe
     const delta=Math.abs(candidate.y-target);if(delta<distance){point=candidate;distance=delta;}
    }
    if(!point)break;
-   const label:BranchLabel={...point,names,lane:track.lane,color:track.color,boxHeight:stackHeight},rect=box(point);
-   label.boxX=rect.x;label.boxY=rect.y;fallback??=label;
-   if(overlaps(rect))continue;
+   const label:BranchLabel={...point,names,lane:track.lane,color:track.color,boxHeight:stackHeight},rect=box(point),position=beside(rect);
+   label.boxX=position?.x??rect.x;label.boxY=rect.y;fallback??=label;
+   if(!position)continue;
    place(label);placed=true;break;
   }
   // A short path cannot offer another anchor; move its badges, not the DAG.
   if(!placed&&fallback){
    const width=measure(names,fallback);
-   const ys=[top+6,...rects.flatMap(rect=>[rect.y+rect.height+gap,rect.y-stackHeight-gap])].filter(y=>y>=top+6&&y+stackHeight<=bottom).sort((a,b)=>Math.abs(a-fallback!.boxY!)-Math.abs(b-fallback!.boxY!));
-   const y=ys.find(y=>!overlaps({x:fallback!.boxX!,y,width,height:stackHeight}));if(y!==undefined)fallback.boxY=y;
+   const ys=[top+6,...barriers().flatMap(rect=>[rect.y+rect.height,rect.y-stackHeight])].filter(y=>y>=top+6&&y+stackHeight<=bottom).sort((a,b)=>Math.abs(a-fallback!.boxY!)-Math.abs(b-fallback!.boxY!));
+   for(const y of ys){const position=beside({x:fallback.boxX!,y,width,height:stackHeight});if(position){fallback.boxX=position.x;fallback.boxY=y;break;}}
    place(fallback);
   }
  }
