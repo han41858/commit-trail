@@ -9,7 +9,7 @@
   <a href="https://github.com/han41858/git-stream/releases"><img src="https://img.shields.io/github/v/release/han41858/git-stream?sort=date&amp;display_name=tag&amp;label=Latest%20Release" alt="Latest Release" /></a>
 </p>
 
-<p align="center"><strong>Watch your Git history unfold.</strong></p>
+<h3 align="center">Watch your Git history unfold.</h3>
 <p align="center">Explore GitHub history directly in your browser.</p>
 <p align="center">Read-only · Web app · PWA</p>
 
