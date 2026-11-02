@@ -8,6 +8,7 @@ import {parseRepo,commitTime, type Branch, type Commit, type HistoryFrontier} fr
 type Meta = {default_branch:string; description:string|null; stargazers_count:number;private?:boolean};
 export type HistorySnapshot = {repo:string; refreshVersion:number; baseHead:string; refreshError:string; refreshNotice:string; meta:Meta|null; base:string; reverse:boolean; discoveryError:string; discoveryRetryAt:number|null; commits:Commit[]; branches:Branch[]; busy:boolean; error:string; retryAt:number|null; more:boolean; moreBranches:boolean; frontiers:HistoryFrontier[]; pendingSources:string[]; ranking:{counts:Record<string,number>; scanned:number; busy:boolean; complete:boolean; error:string; retryAt:number|null}; branchSearch:{busy:boolean; error:string}};
 const empty = ():HistorySnapshot => ({repo:'',refreshVersion:0,baseHead:'',refreshError:'',refreshNotice:'',meta:null,base:'',reverse:false,discoveryError:'',discoveryRetryAt:null,commits:[],branches:[],busy:false,error:'',retryAt:null,more:false,moreBranches:false,frontiers:[],pendingSources:[],ranking:{counts:{},scanned:0,busy:false,complete:false,error:'',retryAt:null},branchSearch:{busy:false,error:''}});
+const accessFailure=(error:unknown)=>error instanceof GitHubError&&(!!error.retryAt||[401,403,429].includes(error.status));
 
 // Ref names never drive history loading. Repository activity supplies independent
 // live heads that cannot be discovered by following the selected head's parents.
@@ -179,20 +180,28 @@ export class History {
    }
    const candidates=[...this.activity].filter(([name,time])=>name!==this.snapshot.base&&!this.deletedRefs.has(name)&&(this.admitted.get(name)===undefined||range.min<this.admitted.get(name)!)&&time>=range.min&&(!this.snapshot.reverse||time<=range.max)).sort((a,b)=>b[1]-a[1]).slice(0,3);
    const results=await Promise.allSettled(candidates.map(async([name])=>{
-    const ref=this.snapshot.branches.find(branch=>branch.name===name)??await branchByName(this.snapshot.repo,name,this.token,signal);this.current(signal);
-    if(ref){
-     this.addRefs([ref]);
-     if(!this.commits.has(ref.commit.sha)){
-      const result=await this.fetchCommits(ref.commit.sha,1,signal,range.min);this.current(signal);
-      // A fresh push of an ancient head must not inject that old history.
-      const recent=result.data.filter(commit=>!Number.isFinite(commitTime(commit))||commitTime(commit)>=range.min);
-      for(const commit of recent)this.sideCommits.add(commit.sha);
-      this.integrate(recent);
+    const refreshVersion=this.snapshot.refreshVersion;let ref:Branch|null|undefined;
+    try{
+     ref=this.snapshot.branches.find(branch=>branch.name===name)??await branchByName(this.snapshot.repo,name,this.token,signal);this.current(signal);
+     if(ref){
+      if(!this.acceptRef(ref,refreshVersion))return;
+      this.addRefs([ref]);
+      if(!this.commits.has(ref.commit.sha)){
+       const result=await this.fetchCommits(ref.commit.sha,1,signal,range.min);this.current(signal);
+       if(!this.acceptRef(ref,refreshVersion))return;
+       // A fresh push of an ancient head must not inject that old history.
+       const recent=result.data.filter(commit=>!Number.isFinite(commitTime(commit))||commitTime(commit)>=range.min);
+       for(const commit of recent)this.sideCommits.add(commit.sha);
+       this.integrate(recent);
+      }
      }
+     // An empty since-filtered page is deferred, not permanently forgotten.
+     // Reconsider it when exploration reaches an older date window.
+     this.current(signal);this.admitted.set(name,!ref||this.commits.has(ref.commit.sha)?-Infinity:range.min);
+    }catch(error){
+     if(!signal.aborted&&!accessFailure(error)&&refreshVersion!==this.snapshot.refreshVersion&&(!ref||!this.acceptRef(ref,refreshVersion)))return;
+     throw error;
     }
-    // An empty since-filtered page is deferred, not permanently forgotten.
-    // Reconsider it when exploration reaches an older date window.
-    this.current(signal);this.admitted.set(name,!ref||this.commits.has(ref.commit.sha)?-Infinity:range.min);
    }));
    const failed=results.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;
   }catch(error){
@@ -211,9 +220,27 @@ export class History {
   let changed=false;for(const ref of refs)if(branches.get(ref.name)?.commit.sha!==ref.commit.sha){branches.set(ref.name,ref);changed=true;}
   if(changed)this.publish({branches:[...branches.values()]});
  }
+ private acceptRef(ref:Branch,refreshVersion:number){
+  // A completed refresh supersedes lookups that started against older refs.
+  if(refreshVersion===this.snapshot.refreshVersion)return true;
+  const current=this.snapshot.branches.find(branch=>branch.name===ref.name);
+  if(current?.commit.sha===ref.commit.sha)return true;
+  if(!current){this.deletedRefs.add(ref.name);this.activity.delete(ref.name);this.admitted.set(ref.name,-Infinity);}
+  return false;
+ }
+ private ancestry(heads:Iterable<string>,stopAt?:ReadonlySet<string>){
+  const reachable=new Set<string>(),todo=[...heads];let partial=false;
+  while(todo.length){
+   const sha=todo.pop()!;if(reachable.has(sha)||stopAt?.has(sha))continue;reachable.add(sha);
+   const commit=this.commits.get(sha);if(!commit){partial=true;continue;}for(const parent of commit.parents)todo.push(parent.sha);
+  }
+  return {reachable,partial};
+ }
  private async fetchRefs(signal:AbortSignal) {
+  const refreshVersion=this.snapshot.refreshVersion;
   const result=await branchesPage(this.snapshot.repo,this.refsPage+1,this.token,signal);
-  this.current(signal);this.refsPage++;this.refsNext=result.next;if(!result.next)this.catalogComplete=true;
+  this.current(signal);if(refreshVersion!==this.snapshot.refreshVersion)return;
+  this.refsPage++;this.refsNext=result.next;if(!result.next)this.catalogComplete=true;
   // Ref pagination enriches labels/picker choices without fetching any commits.
   this.addRefs(result.data.filter(ref=>ref.name!==this.snapshot.base||!this.started));
  }
@@ -256,14 +283,22 @@ export class History {
    if(base&&!pinned)this.historyHead=base.commit.sha;
    const refsChanged=refs.length!==previous.size||refs.some(ref=>previous.get(ref.name)?.commit.sha!==ref.commit.sha);
    const patch:Partial<HistorySnapshot>={refreshVersion:this.snapshot.refreshVersion+1,meta:meta.default_branch!==this.snapshot.meta?.default_branch?meta:this.snapshot.meta,baseHead:this.historyHead,...(refsChanged?{branches:refs}:{}),refreshError:'',refreshNotice:base?'':'Selected branch was deleted; showing cached history.'};
-   for(const name of previous.keys())if(!scan.refs.has(name)){this.deletedRefs.add(name);this.activity.delete(name);this.admitted.set(name,-Infinity);}
+   const removed=[...previous.values()].filter(ref=>!scan.refs.has(ref.name));
+   for(const {name} of removed){this.deletedRefs.add(name);this.activity.delete(name);this.admitted.set(name,-Infinity);}
    for(const name of scan.refs.keys())if(this.deletedRefs.delete(name))this.admitted.delete(name);
-   this.catalogComplete=true;this.branchScan=null;
-   // Only remove unreachable cached nodes when every branch and parent is known.
-   const reachable=new Set<string>(),todo=refs.map(ref=>ref.commit.sha);let partial=false;
-   while(todo.length){const sha=todo.pop()!;if(reachable.has(sha))continue;reachable.add(sha);const commit=this.commits.get(sha);if(!commit){partial=true;continue;}for(const parent of commit.parents)todo.push(parent.sha);}
-   if(!partial&&base&&!pinned){for(const sha of this.commits.keys())if(!reachable.has(sha))this.commits.delete(sha);}
+   this.catalogComplete=true;this.refsPage=scan.page-1;this.refsNext=false;this.branchScan=null;
+   // Full cache cleanup requires every branch and parent to be known.
+   const {reachable,partial}=this.ancestry(refs.map(ref=>ref.commit.sha));
+   if(!partial&&base&&!pinned){for(const sha of this.commits.keys())if(!reachable.has(sha)){this.commits.delete(sha);this.sideCommits.delete(sha);}}
    else if(base)patch.refreshNotice='Some branch ancestry is not loaded; cached commits are retained.';
+   if(partial&&base&&!pinned&&removed.length){
+    // Retire deleted paths even when another catalog head or parent is unknown.
+    // Prior heads of surviving refs protect their cached history across gaps.
+    const surviving=[...previous.values()].filter(ref=>scan.refs.has(ref.name));
+    const protectedCommits=this.ancestry([...refs,...surviving].map(ref=>ref.commit.sha)).reachable;
+    const retired=this.ancestry(removed.map(ref=>ref.commit.sha),protectedCommits);
+    for(const sha of retired.reachable){this.commits.delete(sha);this.sideCommits.delete(sha);}
+   }
    this.integrate([],patch,cycle);return {};
   }catch(error){
    if(signal.aborted){if(cycle)cycle.cancelled=true;return {};}
@@ -308,7 +343,9 @@ export class History {
    if(this.checkedRefs.has(name)){if(this.checkedRefs.get(name))valid++;continue;}
    if(!this.refsNext){this.checkedRefs.set(name,null);continue;}
    if(checked>=5)break;
-   const ref=await branchByName(this.snapshot.repo,name,this.token,signal);this.current(signal);checked++;this.checkedRefs.set(name,ref);
+   const refreshVersion=this.snapshot.refreshVersion;
+   const ref=await branchByName(this.snapshot.repo,name,this.token,signal);this.current(signal);checked++;
+   if(ref&&!this.acceptRef(ref,refreshVersion))continue;this.checkedRefs.set(name,ref);
    if(ref){valid++;this.addRefs([ref]);}
    if(valid>=RECOMMENDATION_LIMIT)break;
   }
@@ -341,8 +378,9 @@ export class History {
   this.searchController?.abort();const controller=new AbortController();this.searchController=controller;
   this.publish({branchSearch:{busy:true,error:''}});
   try{
+   const refreshVersion=this.snapshot.refreshVersion;
    const ref=await branchByName(this.snapshot.repo,name,this.token,controller.signal);this.current(controller.signal);
-   if(!ref){this.publish({branchSearch:{busy:false,error:'No branch with that exact name.'}});return false;}
+   if(!ref||!this.acceptRef(ref,refreshVersion)){this.publish({branchSearch:{busy:false,error:'No branch with that exact name.'}});return false;}
    this.addRefs([ref]);
    await this.chooseBase(ref.name);this.current(controller.signal);return true;
   }catch(e){if(!controller.signal.aborted)this.publish({branchSearch:{busy:false,error:(e as Error).message}});return false;}
@@ -363,11 +401,16 @@ export class History {
    }else{
     if(this.commits.has(source))return;
     const result=await this.fetchCommits(source,1,signal);this.current(signal);
-    if(!result.data.some(commit=>commit.sha===source)&&!this.commits.has(source))throw new Error('GitHub did not return the requested commit. Retry to continue this branch.');
-    if(this.snapshot.reverse)for(const commit of result.data)this.sideCommits.add(commit.sha);this.integrate(result.data);
+    if(this.snapshot.frontiers.some(frontier=>frontier.sources.includes(source))){
+     if(!result.data.some(commit=>commit.sha===source)&&!this.commits.has(source))throw new Error('GitHub did not return the requested commit. Retry to continue this branch.');
+     if(this.snapshot.reverse)for(const commit of result.data)this.sideCommits.add(commit.sha);this.integrate(result.data);
+    }
    }
    this.failedSources.delete(source);
-  }catch(error){if(!signal.aborted)this.failedSources.add(source);throw error;}
+  }catch(error){
+   if(!signal.aborted&&!accessFailure(error)&&source!=='activity'&&!source.startsWith('page:')&&!this.snapshot.frontiers.some(frontier=>frontier.sources.includes(source))){this.failedSources.delete(source);return;}
+   if(!signal.aborted)this.failedSources.add(source);throw error;
+  }
  }
  private scheduleSource(source:string){
   const existing=this.sourceTasks.get(source);if(existing)return existing;
