@@ -59,6 +59,8 @@ Portrait Split view emphasizes the DAG. Landscape can show one-line commit messa
 2. Enter `owner/repo` or a GitHub repository URL and press Enter.
 3. Choose a branch, scroll through history and select a commit for details.
 
+GitStream remembers the last branch you choose for each repository in this browser. An explicit `branch` in a shared URL takes priority for that visit without changing your saved choice; otherwise it restores your choice, then falls back to `main`, `master`, or the repository default.
+
 Use **Options** to choose a theme and refresh interval. Install GitStream from your browser's app menu or add it to your home screen. The PWA caches the app shell; GitHub data still needs a connection.
 
 Shared links restore the view when opened or reloaded, with repositories arranged left to right in URL order:
@@ -66,10 +68,12 @@ Shared links restore the view when opened or reloaded, with repositories arrange
 | Query | View |
 | --- | --- |
 | `?repo=owner/repo` | Single repository |
+| `?repo=owner/repo&branch=Feature%2FFix` | Single repository on `Feature/Fix` |
 | `?repo=owner/repo&repo=other/repo` | Two-repository Split view |
+| `?repo=owner/repo&repo=other/repo&branch=main&branch=dev` | Split view on `main` and `dev`, respectively |
 | `?repo=owner/repo&mode=monitor` | One-repository Split view |
 
-Links contain no PAT, but **private repository names are visible in the URL**. Access still uses the recipient's own token. See the [Split view guide](docs/monitor-mode.md) for details.
+**Copy link** includes confirmed current branches in repository order. Repeated `branch` values match repeated `repo` values by position; use an empty `branch=` for an unspecified middle repository. Links contain no PAT, but **private repository and branch names are visible in the URL**. Access still uses the recipient's own token. See the [Split view guide](docs/monitor-mode.md) for details.
 
 ### Private repositories and API limits
 

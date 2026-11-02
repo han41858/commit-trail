@@ -3,8 +3,9 @@ import {CommitInfoStore} from './CommitInfoStore';
 import {measureRefresh} from './measuredOperations';
 import type {RefreshResult} from './RefreshLoop';
 import {normalizeMonitorRepositories} from './MonitorRepositories';
+import type {BranchSelections} from './BranchSelections';
 
-export type MonitorEntry={repository:string;history:History;info:CommitInfoStore;primary:boolean};
+export type MonitorEntry={repository:string;history:History;info:CommitInfoStore;primary:boolean;branch?:string};
 type Snapshot={active:boolean;entries:readonly MonitorEntry[];running:ReadonlySet<MonitorEntry>;retryAt:number};
 export class MonitorSession {
  private state:Snapshot={active:false,entries:[],running:new Set(),retryAt:0};
@@ -14,7 +15,7 @@ export class MonitorSession {
  private primaryPending:Promise<RefreshResult>|null=null;
  private authentication=0;
  private token='';
- constructor(private readonly history:History,private readonly info:CommitInfoStore,private readonly metadata:(repository:string,isPrivate:boolean,visit:boolean)=>void){}
+ constructor(private readonly history:History,private readonly info:CommitInfoStore,private readonly metadata:(repository:string,isPrivate:boolean,visit:boolean)=>void,private readonly branchSelections?:BranchSelections){}
  subscribe=(listener:()=>void)=>{this.listeners.add(listener);return()=>{this.listeners.delete(listener);};};
  getSnapshot=()=>this.state;
  private publish(patch:Partial<Snapshot>={}){this.state={...this.state,...patch};for(const listener of this.listeners)listener();}
@@ -52,23 +53,25 @@ export class MonitorSession {
    };
    const unsubscribe=entry.history.subscribe(openMetadata);
    try{
-    await entry.history.open(entry.repository,this.token,cycle);
+    await entry.history.open(entry.repository,this.token,cycle,entry.branch);
     if(!this.state.active||!this.state.entries.includes(entry)){if(cycle)cycle.cancelled=true;return {};}
     await metadata;return this.combined(entry);
    }finally{unsubscribe();}
   });
  }
- start=(repositories:readonly string[],token:string)=>{
+ start=(repositories:readonly string[],token:string,branches:readonly (string|undefined)[]=[],restorePrimary=false)=>{
   this.stop();this.token=token;
   const entries=normalizeMonitorRepositories(repositories).map(repository=>{
    const current=this.history.getSnapshot(),primary=current.repo===repository&&(!!current.meta||current.busy);
-   return {repository,primary,history:primary?this.history:new History(this.metadata),info:primary?this.info:new CommitInfoStore()};
+   const index=repositories.findIndex(value=>normalizeMonitorRepositories([value])[0]===repository);
+   return {repository,primary,branch:branches[index],history:primary?this.history:new History(this.metadata,this.branchSelections),info:primary?this.info:new CommitInfoStore()};
   });
   if(!entries.length)return;
   this.publish({active:true,entries,running:new Set()});
   for(const entry of entries){
    this.subscriptions.push(entry.history.subscribe(this.observe),entry.info.subscribe(this.observe));
    if(!entry.primary)this.run(entry,()=>this.openEntry(entry));
+   else if(restorePrimary)this.run(entry,async()=>{await entry.history.restoreBase(entry.branch);return this.combined(entry);});
    else if(this.primaryPending){const pending=this.primaryPending;this.run(entry,()=>pending);}
   }
   this.observe();
