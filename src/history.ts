@@ -254,8 +254,13 @@ export class History {
  refresh=(cycle?:DebugCycle):Promise<{error?:string;retryAt?:number}>=>{
   if(this.refreshing){debug.cache('other',cycle,'shared');return this.refreshing;}
   if(this.restoreController&&!this.restoreController.signal.aborted)return Promise.resolve({});
-  if(!this.started||!this.snapshot.meta||this.snapshot.busy)return Promise.resolve({});
+  if(!this.snapshot.meta||this.snapshot.busy)return Promise.resolve({});
   if(this.snapshot.retryAt&&this.snapshot.retryAt>Date.now())return Promise.resolve({error:this.snapshot.error,retryAt:this.snapshot.retryAt});
+  if(!this.started){
+   if(!this.snapshot.error)return Promise.resolve({});
+   const generation=this.generation,task=this.retry().then(()=>generation===this.generation?{error:this.snapshot.error||undefined,retryAt:this.snapshot.retryAt||undefined}:{}).finally(()=>{if(this.refreshing===task)this.refreshing=null;});
+   this.refreshing=task;return task;
+  }
   if(this.pendingRestore){
    const task=this.restoreBase(this.pendingRestore.branch).then(generation=>generation===this.generation?{error:this.snapshot.error||undefined,retryAt:this.snapshot.retryAt||undefined}:{}).finally(()=>{if(this.refreshing===task)this.refreshing=null;});
    this.refreshing=task;return task;

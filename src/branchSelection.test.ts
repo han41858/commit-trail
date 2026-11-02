@@ -41,9 +41,9 @@ for(const status of [401,403,429,500])test(`temporary lookup failure ${status} p
   await history.restoreBase('Feature/Fix');assert.equal(history.getSnapshot().base,'main');assert.equal(history.getSnapshot().commits,before.commits);assert.ok(history.getSnapshot().error);assert.equal(store.get('a/repo'),'Feature/Fix');
  });
 });
-test('failed initial branch lookup retries the same requested choice instead of silently choosing a default',async()=>{
+for(const method of ['retry','refresh'] as const)test(`failed initial branch lookup uses ${method} to retry its requested choice instead of silently choosing a default`,async()=>{
  const options:Options={names:['main'],partial:true,exact:{'Feature/Fix':500}};
- await using(options,async(history,store)=>{await history.open('a/repo','',undefined,'Feature/Fix');assert.ok(history.getSnapshot().error);options.exact!['Feature/Fix']='feature';await history.retry();assert.equal(history.getSnapshot().base,'Feature/Fix');assert.equal(history.getSnapshot().error,'');assert.equal(store.get('a/repo'),undefined);});
+ await using(options,async(history,store)=>{await history.open('a/repo','',undefined,'Feature/Fix');assert.ok(history.getSnapshot().error);options.exact!['Feature/Fix']='feature';await history[method]();assert.equal(history.getSnapshot().base,'Feature/Fix');assert.equal(history.getSnapshot().error,'');assert.equal(store.get('a/repo'),undefined);});
 });
 test('retry resolves a failed URL navigation without first clearing the existing graph',async()=>{
  const options:Options={names:['main'],partial:true,exact:{Feature:500}};
