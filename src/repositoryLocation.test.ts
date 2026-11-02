@@ -43,3 +43,30 @@ test('normalized configurations round-trip without confusing single mode, monito
  for(const value of cases)assert.deepEqual(readRepositoryLocation(repositoryLocationURL(base,value).href),value);
  assert.equal(new Set(cases.map(repositoryLocationKey)).size,cases.length);
 });
+test('branch parameters preserve case and indexed empty positions across filtering and deduplication',()=>{
+ const value=readRepositoryLocation(`${base}?repo=bad&repo=A/One&repo=a/one&repo=B/Two&branch=ignored&branch=Feature%2FFix&branch=duplicate&branch=Dev`);
+ assert.deepEqual(value,{mode:'monitor',repositories:['a/one','b/two'],branches:['Feature/Fix','Dev']});
+ assert.deepEqual(readRepositoryLocation(`${base}?repo=a/one&repo=b/two&branch=&branch=Dev`),{mode:'monitor',repositories:['a/one','b/two'],branches:[undefined,'Dev']});
+});
+test('share links round-trip Unicode, slash and special ref characters with no sensitive context',()=>{
+ const branches=['Feature/日本語+Fix',undefined,'release|test'];
+ const url=monitorShareURL(`${base}?branch=old&token=secret#context`,['a/one','b/two','c/three'],branches);
+ assert.deepEqual(readRepositoryLocation(url),{mode:'monitor',repositories:['a/one','b/two','c/three'],branches});assert.ok(!url.includes('secret'));
+ assert.deepEqual(new URL(url).searchParams.getAll('branch'),['Feature/日本語+Fix','','release|test']);
+});
+test('invalid branch values do not shift other repository selections or block valid repositories',()=>{
+ const value=readRepositoryLocation(`${base}?repo=a/one&repo=b/two&repo=c/three&branch=bad..ref&branch=Dev&branch=`);
+ assert.deepEqual(value,{mode:'monitor',repositories:['a/one','b/two','c/three'],branches:[undefined,'Dev']});
+ assert.deepEqual(readRepositoryLocation(`${base}?repo=a/one&branch=bad%20name`),{mode:'single',repositories:['a/one']});
+});
+test('routing removes stale branches, keeps mode intent and uses branch-sensitive unambiguous keys',()=>{
+ const next={mode:'single' as const,repositories:['a/one'],branches:['Dev']};
+ const url=repositoryLocationURL(`${base}?repo=old/repo&branch=old&branch=stale&debug=1`,next);
+ assert.deepEqual(url.searchParams.getAll('branch'),['Dev']);assert.equal(url.searchParams.get('debug'),'1');assert.deepEqual(readRepositoryLocation(url.href),next);
+ assert.notEqual(repositoryLocationKey(next),repositoryLocationKey({...next,branches:['dev']}));
+ assert.deepEqual(readRepositoryLocation(monitorShareURL(base,['a/one'],['Dev'])),{...next,mode:'monitor'});
+});
+test('writers keep branch associations while normalizing invalid and repeated repository inputs',()=>{
+ const url=monitorShareURL(base,['bad','A/One','a/one','b/two','c/three','d/four','e/five'],['bad','One','duplicate','Two',undefined,'Four','Five']);
+ assert.deepEqual(readRepositoryLocation(url),{mode:'monitor',repositories:['a/one','b/two','c/three','d/four'],branches:['One','Two',undefined,'Four']});
+});

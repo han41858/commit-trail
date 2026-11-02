@@ -7,6 +7,7 @@
 ## 데이터와 성공 기록
 
 - 키: `gitstream.recent-repositories`. PAT 키 `gitstream.github-token`과 분리한다.
+- 직접 선택한 기준 브랜치는 별도 `gitstream.branch-selections`에 저장소·브랜치·공개 여부만 기록한다. 최근 방문 목록의 10개 제한과 독립적이며 같은 메타데이터·PAT 변경 처리를 재사용한다. URL 진입이나 자동 선택은 이 기록을 덮어쓰지 않는다.
 - JSON 배열의 각 항목은 `repository`(소문자 `owner/repo`), `visibility`(`public`/`private`), `visitedAt`(성공 시각의 Unix 밀리초)만 포함한다.
 - 중복 저장소는 가장 최근 항목으로 합치며 최근순으로 최대 10개를 유지한다. 유효하지 않은 항목·시각·공개 여부와 알 수 없는 필드는 제거한다.
 - `History.open()`이 기존 `/repos/{owner}/{repo}` 응답을 받고 취소되지 않은 것을 확인한 시점에 기록한다. 주소 입력·추천 검색 자체는 기록하지 않는다.
