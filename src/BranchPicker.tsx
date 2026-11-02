@@ -3,7 +3,7 @@ import {History,type HistorySnapshot} from './history';
 import {useRetryCountdown,retryLabel} from './useRetryCountdown';
 import {mergedCount,preferredBranch,recommendBranches} from './recommendations';
 
-export function BranchPicker({history,state,onPicked}:{history:History;state:HistorySnapshot;onPicked:()=>void}){
+export function BranchPicker({history,state,onPicked}:{history:History;state:HistorySnapshot;onPicked:(name:string)=>void}){
  const [open,setOpen]=useState(false),[query,setQuery]=useState('');
  const container=useRef<HTMLDivElement>(null);
  const retrySeconds=useRetryCountdown(state.ranking.retryAt);
@@ -21,8 +21,8 @@ export function BranchPicker({history,state,onPicked}:{history:History;state:His
  const search=query.trim();
  const matches=state.branches.filter(b=>b.name.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name));
  const shown=search?matches.slice(0,50):recommended;
- function choose(name:string){onPicked();setOpen(false);void history.chooseBase(name);}
- async function find(){if(!search)return;if(await history.findBranch(search)){onPicked();setOpen(false);}}
+ function choose(name:string){setOpen(false);if(name===state.base)return;void history.chooseBase(name);onPicked(name);}
+ async function find(){if(!search)return;if(await history.findBranch(search)){if(history.getSnapshot().repo===state.repo&&history.getSnapshot().base!==state.base)onPicked(history.getSnapshot().base);setOpen(false);}}
  return <div className="base-picker branch-picker" ref={container}>
   <button id="base-branch" className="branch-trigger" aria-label="Branch" aria-expanded={open} aria-controls="branch-menu" disabled={!state.branches.length} onClick={()=>setOpen(!open)}><span><span className="base-prefix">Branch: </span>{state.base||'Choose a branch'}</span><span aria-hidden="true">⌄</span></button>
   {open&&<section className="branch-menu floating-panel" id="branch-menu" aria-label="Choose branch">

@@ -4,6 +4,8 @@ import {preferredBranch,PullCounts,RECOMMENDATION_LIMIT} from './recommendations
 import {RequestPool} from './RequestPool';
 import {GitHubReader} from './GitHubReader';
 import {parseRepo,commitTime, type Branch, type Commit, type HistoryFrontier} from './model';
+import type {BranchSelections} from './BranchSelections';
+import {branchName} from './branchName';
 
 type Meta = {default_branch:string; description:string|null; stargazers_count:number;private?:boolean};
 export type HistorySnapshot = {repo:string; refreshVersion:number; baseHead:string; refreshError:string; refreshNotice:string; meta:Meta|null; base:string; reverse:boolean; discoveryError:string; discoveryRetryAt:number|null; commits:Commit[]; branches:Branch[]; busy:boolean; error:string; retryAt:number|null; more:boolean; moreBranches:boolean; frontiers:HistoryFrontier[]; pendingSources:string[]; ranking:{counts:Record<string,number>; scanned:number; busy:boolean; complete:boolean; error:string; retryAt:number|null}; branchSearch:{busy:boolean; error:string}};
@@ -13,7 +15,11 @@ const accessFailure=(error:unknown)=>error instanceof GitHubError&&(!!error.retr
 // Ref names never drive history loading. Repository activity supplies independent
 // live heads that cannot be discovered by following the selected head's parents.
 export class History {
- constructor(private readonly onRepositoryMetadata?:(repository:string,isPrivate:boolean,visit:boolean)=>void){}
+ constructor(private readonly onRepositoryMetadata?:(repository:string,isPrivate:boolean,visit:boolean)=>void,private readonly branchSelections?:BranchSelections){}
+ private requestedBranch?:string;
+ private initialResolved=false;
+ private restoreController:AbortController|null=null;
+ private pendingRestore:{branch?:string}|null=null;
  private snapshot=empty();
  private debugInitial?:DebugCycle;
  private refreshReader:GitHubReader|null=null;
@@ -74,7 +80,7 @@ export class History {
   }
   finally {if(this.controllers.delete(controller)&&!controller.signal.aborted)this.publish({busy:this.controllers.size>0});}
  }
- cancel=()=>{this.refreshReader?.cancel();this.generation++;for(const controller of this.controllers){debug.cancelSignal(controller.signal);controller.abort();}this.rankingController?.abort();this.searchController?.abort();};
+ cancel=()=>{this.restoreController?.abort();this.refreshReader?.cancel();this.generation++;for(const controller of this.controllers){debug.cancelSignal(controller.signal);controller.abort();}this.rankingController?.abort();this.searchController?.abort();};
  private resetTraversal(){
   for(const controller of this.controllers){debug.cancelSignal(controller.signal);controller.abort();}this.controllers.clear();this.generation++;
   this.refreshReader?.cancel();this.refreshReader=null;this.branchScan=null;this.catalogComplete=!this.refsNext;this.refreshing=null;
@@ -99,6 +105,7 @@ export class History {
   this.commitRequests.set(key,request);return request;
  }
  clear=()=>{
+  this.requestedBranch=undefined;this.initialResolved=false;this.pendingRestore=null;
   this.cancel();this.resetTraversal();this.rankingController=null;this.searchController=null;this.token='';
   this.pulls=new PullCounts();this.pullPage=0;this.pullsNext=true;this.checkedRefs.clear();
   this.deletedRefs.clear();this.activity.clear();this.activityCursor=undefined;this.activityRequested.clear();this.activityNext=true;this.oldestActivity=Infinity;
@@ -246,8 +253,13 @@ export class History {
  }
  refresh=(cycle?:DebugCycle):Promise<{error?:string;retryAt?:number}>=>{
   if(this.refreshing){debug.cache('other',cycle,'shared');return this.refreshing;}
+  if(this.restoreController&&!this.restoreController.signal.aborted)return Promise.resolve({});
   if(!this.started||!this.snapshot.meta||this.snapshot.busy)return Promise.resolve({});
   if(this.snapshot.retryAt&&this.snapshot.retryAt>Date.now())return Promise.resolve({error:this.snapshot.error,retryAt:this.snapshot.retryAt});
+  if(this.pendingRestore){
+   const task=this.restoreBase(this.pendingRestore.branch).then(generation=>generation===this.generation?{error:this.snapshot.error||undefined,retryAt:this.snapshot.retryAt||undefined}:{}).finally(()=>{if(this.refreshing===task)this.refreshing=null;});
+   this.refreshing=task;return task;
+  }
   const generation=this.generation;
   const task=this.refreshCurrent(cycle).finally(()=>{if(this.refreshing===task)this.refreshing=null;});this.refreshing=task;return task.then(result=>generation===this.generation?result:{});
  };
@@ -306,28 +318,49 @@ export class History {
    this.publish({refreshError:message});return {error:message,retryAt};
   }
  }
- open=async(value:string,token=this.token,cycle?:DebugCycle)=>{
+ private async initialBase(requested:string|undefined,signal:AbortSignal){
+  const saved=this.branchSelections?.get(this.snapshot.repo);
+  for(const name of new Set([branchName(requested),saved])){
+   if(!name)continue;
+   let ref=this.snapshot.branches.find(branch=>branch.name===name);
+   if(!ref&&this.refsNext){ref=await branchByName(this.snapshot.repo,name,this.token,signal)??undefined;this.current(signal);if(ref)this.addRefs([ref]);}
+   if(ref)return ref.name;
+   if(name===saved)this.branchSelections?.forget(this.snapshot.repo,name);
+  }
+  for(const name of new Set(['main','master',this.snapshot.meta?.default_branch||''])){
+   if(!name||this.snapshot.branches.some(branch=>branch.name===name))continue;
+   if(this.refsNext){const ref=await branchByName(this.snapshot.repo,name,this.token,signal);this.current(signal);this.checkedRefs.set(name,ref);if(ref)this.addRefs([ref]);}
+  }
+  return preferredBranch(this.snapshot.branches,this.snapshot.meta?.default_branch||'');
+ }
+ open=async(value:string,token=this.token,cycle?:DebugCycle,requested?:string)=>{
   let repo:string;
   try{repo=parseRepo(value);}catch(e){this.publish({error:(e as Error).message});return;}
-  this.clear();this.debugInitial=cycle;this.token=token;this.refsNext=true;this.publish({repo});
+  this.clear();this.requestedBranch=branchName(requested);this.debugInitial=cycle;this.token=token;this.refsNext=true;this.publish({repo});
   await this.run(async signal=>{
    const {data:meta}=await github<Meta>(`/repos/${repo}`,this.token,signal);
    this.current(signal);
    if(typeof meta.private==='boolean')this.onRepositoryMetadata?.(repo,meta.private,true);
    this.publish({meta,base:meta.default_branch});
    await this.fetchRefs(signal);
-   for(const name of new Set(['main','master',meta.default_branch])){
-    if(this.snapshot.branches.some(b=>b.name===name))continue;
-    if(this.refsNext){const ref=await branchByName(repo,name,this.token,signal);this.current(signal);this.checkedRefs.set(name,ref);if(ref)this.addRefs([ref]);}
-   }
-   this.publish({base:preferredBranch(this.snapshot.branches,meta.default_branch)});
+   const base=await this.initialBase(this.requestedBranch,signal);this.current(signal);this.initialResolved=true;this.publish({base});
    await this.start(signal);
   });
  };
  chooseBase=async(name:string)=>{
+  this.restoreController?.abort();this.pendingRestore=null;this.initialResolved=true;
   if(name===this.snapshot.base)return;
   this.resetTraversal();this.publish({base:name,baseHead:'',refreshError:'',refreshNotice:'',commits:[],frontiers:[],pendingSources:[],busy:false,error:'',retryAt:null,discoveryError:'',discoveryRetryAt:null});
   await this.run(signal=>this.start(signal));
+ };
+ restoreBase=async(requested?:string)=>{
+  this.restoreController?.abort();
+  if(!this.started)return this.open(this.snapshot.repo,this.token,undefined,requested);
+  this.pendingRestore={branch:requested};
+  const controller=new AbortController();this.restoreController=controller;
+  try{const name=await this.initialBase(requested,controller.signal);this.current(controller.signal);this.restoreController=null;this.publish({error:'',retryAt:null});const task=this.chooseBase(name),generation=this.generation;await task;return generation;}
+  catch(error){if(!controller.signal.aborted){this.publish({error:(error as Error).message,retryAt:error instanceof GitHubError?error.retryAt||null:null});return this.generation;}}
+  finally{if(this.restoreController===controller)this.restoreController=null;}
  };
  setDirection=async(reverse:boolean)=>{
   if(reverse===this.snapshot.reverse)return;
@@ -439,11 +472,13 @@ export class History {
   const range=this.historyRange();if(range&&this.activityNeeded(range))await this.scheduleSource('activity');
  };
  retry=async()=>{
+  if(this.restoreController&&!this.restoreController.signal.aborted)return;
   if(this.snapshot.busy||(this.snapshot.retryAt||0)>Date.now())return;
-  if(!this.snapshot.meta){await this.open(this.snapshot.repo);return;}
+  if(this.pendingRestore){await this.restoreBase(this.pendingRestore.branch);return;}
+  if(!this.snapshot.meta){await this.open(this.snapshot.repo,this.token,undefined,this.requestedBranch);return;}
   this.publish({error:'',retryAt:null});
   if(this.retryRefs){await this.run(signal=>this.fetchRefs(signal),false);if(!this.snapshot.error)this.retryRefs=false;return;}
-  if(!this.started){await this.run(signal=>this.start(signal),false);return;}
+  if(!this.started){await this.run(async signal=>{if(!this.initialResolved){const base=await this.initialBase(this.requestedBranch,signal);this.current(signal);this.initialResolved=true;this.publish({base});}await this.start(signal);},false);return;}
   await this.loadMore(this.failedSources.size?[...this.failedSources]:undefined);
  };
 }

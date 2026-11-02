@@ -4,7 +4,7 @@ import type {RecentRepositories} from './RecentRepositories';
 import {lowercaseField} from './repoInput';
 import {monitorShareURL} from './repositoryLocation';
 
-export function MonitorSetup({current,recent,saved,initial,onStart,onClose}:{current:string;recent:RecentRepositories;saved:MonitorRepositories;initial?:readonly string[];onStart:(repositories:string[])=>void;onClose:()=>void}){
+export function MonitorSetup({current,recent,saved,initial,branches,onStart,onClose}:{current:string;recent:RecentRepositories;saved:MonitorRepositories;initial?:readonly string[];branches?:ReadonlyMap<string,string>;onStart:(repositories:string[])=>void;onClose:()=>void}){
  const visits=useSyncExternalStore(recent.subscribe,recent.getSnapshot);
  const [selected,setSelected]=useState(()=>{const names=initial??saved.getSnapshot();return normalizeMonitorRepositories(names.includes(current)?names:[current,...names]);});
  const [input,setInput]=useState(''),[error,setError]=useState('');
@@ -29,7 +29,7 @@ export function MonitorSetup({current,recent,saved,initial,onStart,onClose}:{cur
  }
  async function copyLink(){
   const sequence=++copySequence.current;setCopyStatus('copying');
-  try{await navigator.clipboard.writeText(monitorShareURL(location.href,selected));if(sequence===copySequence.current)setCopyStatus('copied');}
+  try{await navigator.clipboard.writeText(monitorShareURL(location.href,selected,selected.map(repository=>branches?.get(repository))));if(sequence===copySequence.current)setCopyStatus('copied');}
   catch{if(sequence===copySequence.current)setCopyStatus('failed');}
  }
  function move(repository:string,index:number){
@@ -77,7 +77,7 @@ export function MonitorSetup({current,recent,saved,initial,onStart,onClose}:{cur
    </form>
    {error&&<p className="monitor-setup-error" role="alert">{error}</p>}
    {available.length>0&&<><h3>Recent repositories</h3><div className="monitor-recent">{available.map(entry=><button type="button" key={entry.repository} title={entry.repository} aria-label={`Add ${entry.repository} to monitor`} onClick={()=>add(entry.repository)}><span>{entry.repository}</span></button>)}</div></>}
-   <p className="monitor-share-note">Shared links include repository names, including private ones. Share with care.</p>
+   <p className="monitor-share-note">Shared links include repository and branch names, including private ones. Share with care.</p>
    <div className="monitor-copy-status" role="status" aria-live="polite">{{idle:'',copying:'',copied:'Link copied.',failed:'Could not copy link.'}[copyStatus]}</div>
    <div className="monitor-setup-actions"><small>{selected.length} / {MONITOR_LIMIT}</small><button type="button" className="monitor-copy" data-state={copyStatus} aria-label="Copy link" aria-busy={copyStatus==='copying'} disabled={!selected.length||copyStatus==='copying'} onClick={()=>void copyLink()}>{{idle:'Copy link',copying:'Copy link',copied:'Copied!',failed:'Copy failed'}[copyStatus]}</button><button type="button" className="primary" disabled={!selected.length} onClick={()=>onStart(selected)}>Start split view</button></div>
   </section>
