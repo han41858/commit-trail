@@ -9,7 +9,7 @@
   <a href="https://github.com/han41858/git-stream/releases"><img src="https://img.shields.io/github/v/release/han41858/git-stream?sort=date&amp;display_name=tag&amp;label=Latest%20Release" alt="Latest Release" /></a>
 </p>
 
-<p align="center"><strong>Watch your Git history unfold.</strong></p>
+<h3 align="center">Watch your Git history unfold.</h3>
 <p align="center">Explore GitHub history directly in your browser.</p>
 <p align="center">Read-only · Web app · PWA</p>
 
@@ -21,24 +21,37 @@
 
 ![GitStream on desktop, showing the public GitStream repository and its commit graph](docs/images/desktop.png)
 
-<table>
-  <tr><th>Automatic refresh</th><th>Mobile</th></tr>
-  <tr>
-    <td width="68%" align="center" valign="top"><img src="docs/images/auto-refresh.gif" alt="A newly pushed commit appearing automatically in GitStream after a scheduled refresh" width="680" /></td>
-    <td width="32%" align="center" valign="top"><img src="docs/images/mobile.png" alt="GitStream's responsive mobile view of the same public repository" width="200" /></td>
-  </tr>
-</table>
-
-*Actual app captures using the public GitStream repository. [Capture details](docs/images/README.md).*
-
 ## Features
 
 - **Follow branches and merges** in an interactive, vertical Git graph.
 - **Stay current** with automatic updates that preserve your place while reading.
-- **Monitor up to four repositories** side by side, reorder your selection and share the view with a link.
+- **Split view** puts 1–4 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
 - **See the context** with tags, releases and GitHub Actions status beside commits.
 - **Explore public and private repositories**, with optional GitHub token access.
 - **Use it anywhere** on desktop or mobile, or install it as a PWA.
+
+<details>
+<summary>See automatic refresh in action</summary>
+
+![A newly pushed commit appearing automatically in GitStream after a scheduled refresh](docs/images/auto-refresh.gif)
+
+</details>
+
+![GitStream Split view showing GitStream, AI Template, Angular and VS Code in four desktop columns](docs/images/split-desktop.png)
+
+Choose **Split view** to select and reorder repositories. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
+
+<table>
+  <tr><th>Portrait</th><th>Landscape</th></tr>
+  <tr>
+    <td width="28%" align="center" valign="top"><img src="docs/images/split-mobile-portrait.png" alt="The same four public repositories in portrait Split view, with narrow graph columns" width="195" /></td>
+    <td width="72%" align="center" valign="top"><img src="docs/images/split-mobile-landscape.png" alt="The same four repositories in landscape Split view, with messages in the AI Template and Angular columns and graph-only views for GitStream and VS Code" width="562" /></td>
+  </tr>
+</table>
+
+Portrait Split view emphasizes the DAG. Landscape can show one-line commit messages when column width and lane spacing allow; tap a node for full details in either orientation. The same layout works in the browser and installed PWA.
+
+*Actual browser captures with public GitHub data. Mobile uses viewport emulation. [Capture details](docs/images/README.md).*
 
 ## Getting started
 
@@ -47,6 +60,16 @@
 3. Choose a branch, scroll through history and select a commit for details.
 
 Use **Options** to choose a theme and refresh interval. Install GitStream from your browser's app menu or add it to your home screen. The PWA caches the app shell; GitHub data still needs a connection.
+
+Shared links restore the view when opened or reloaded, with repositories arranged left to right in URL order:
+
+| Query | View |
+| --- | --- |
+| `?repo=owner/repo` | Single repository |
+| `?repo=owner/repo&repo=other/repo` | Two-repository Split view |
+| `?repo=owner/repo&mode=monitor` | One-repository Split view |
+
+Links contain no PAT, but **private repository names are visible in the URL**. Access still uses the recipient's own token. See the [Split view guide](docs/monitor-mode.md) for details.
 
 ### Private repositories and API limits
 
@@ -73,7 +96,7 @@ npm run dev
 - [Product specification](docs/specification.md) · [Refresh and metadata](docs/auto-refresh-and-metadata.md) — implementation specifications.
 - [PWA](docs/pwa.md) · [Developer diagnostics](docs/developer-debug-mode.md) — installation, updates, recovery and local measurements.
 - [Recent repositories](docs/recent-repositories.md) — local suggestions, deletion and PAT changes.
-- [Monitor mode](docs/monitor-mode.md) — selection and ordering, shared URLs, split view, refresh and mobile limits.
+- [Split view](docs/monitor-mode.md) — selection and ordering, shared URLs, refresh and mobile limits.
 
 Ideas and bug reports are welcome in [Issues](https://github.com/han41858/git-stream/issues).
 
