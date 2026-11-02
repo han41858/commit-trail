@@ -135,7 +135,7 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
    const extra=info?.get(c.sha);
    if(extra?.actions){
     const summary=extra.actions,radius=c.sha===selected?10.5:7.5;ctx.strokeStyle=style.getPropertyValue(`--action-${summary.state}`).trim();ctx.lineWidth=2;
-    ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.globalAlpha=summary.state==='running'?0.25:1;
+    ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.globalAlpha=summary.state==='running'?0.25:summary.state==='queued'||summary.state==='cancelled'||summary.state==='skipped'?0.4:1;
     ctx.stroke();ctx.globalAlpha=1;
     if(summary.state==='running'&&summary.ratio!==null){ctx.beginPath();ctx.arc(p.x,p.y,radius,-Math.PI/2,-Math.PI/2+Math.PI*2*summary.ratio);ctx.stroke();}
    }
