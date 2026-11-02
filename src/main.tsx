@@ -115,7 +115,7 @@ function App(){
  useEffect(()=>{const changed=()=>loop.visibilityChanged();document.addEventListener('visibilitychange',changed);window.addEventListener('online',changed);window.addEventListener('offline',changed);return()=>{monitor.stop();loop.stop();document.removeEventListener('visibilitychange',changed);window.removeEventListener('online',changed);window.removeEventListener('offline',changed);};},[loop]);
  useEffect(()=>{
   const primarySettled=!state.busy&&(!state.meta||extras.repo===state.repo&&!extras.busy);
-  const monitorSettled=monitorState.entries.length>0&&!monitorState.running.size&&monitorState.entries.every(entry=>{const history=entry.history.getSnapshot(),metadata=entry.info.getSnapshot();return history.repo===entry.repository&&!history.busy&&(!history.meta||!metadata.busy&&(!entry.primary||metadata.repo===entry.repository));});
+  const monitorSettled=monitorState.entries.length>0&&!monitorState.running.size&&monitorState.entries.every(entry=>{const history=entry.history.getSnapshot(),metadata=entry.info.getSnapshot();return history.repo===entry.repository&&!history.busy&&!history.pendingSources.length&&(!history.meta||!metadata.busy&&(!entry.primary||metadata.repo===entry.repository));});
   if(monitorState.active?monitorSettled:state.meta&&primarySettled)loop.loaded();
  },[loop,state.meta,state.busy,extras,monitorState.active,monitorState.running,monitorState.entries]);
  useEffect(()=>{if(extras.repo===state.repo){if(selected&&monitor.canRequest())void info.inspect(selected.sha);else if(!selected)info.clearSelection();}},[info,selected?.sha,extras.repo,state.repo,monitorLimited]);
