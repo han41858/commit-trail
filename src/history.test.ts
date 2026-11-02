@@ -25,6 +25,116 @@ async function using(handler:Handler,check:(history:History,requests:URL[])=>Pro
 const histories=(requests:URL[])=>requests.filter(url=>url.pathname.endsWith('/commits')).map(url=>[url.searchParams.get('sha'),url.searchParams.get('page')]);
 const gitSha=(n:number)=>n.toString(16).padStart(40,'0');
 
+for(const mode of ['squash','merge','gap'])test(`deleted feature ancestry is reconciled after a ${mode} update even with unloaded catalog heads`,async()=>{
+ const main=gitSha(1),root=gitSha(2),dev=gitSha(3),feature=gitSha(4),head=gitSha(5),dormant=gitSha(6),gap=gitSha(7);let updated=false;
+ const baseline=[dated(main,'2026-11-02',root),dated(root,'2026-10-01')],oldDev=dated(dev,'2026-11-01',root),side=dated(feature,'2026-11-02',dev);
+ await using(url=>{
+  if(url.pathname.endsWith('/branches'))return response([ref('main',main),ref('dev',updated?head:dev),ref('dormant',dormant),...(!updated?[ref('feature',feature)]:[])]);
+  if(url.pathname.endsWith('/activity'))return response([push('feature','2026-11-02'),push('dev','2026-11-01')]);
+  if(url.pathname.endsWith('/commits')){
+   const sha=url.searchParams.get('sha');
+   if(sha==='main')return response(baseline);
+   if(sha===feature)return response([side,oldDev,baseline[1]]);
+   if(sha===dev)return response([oldDev,baseline[1]]);
+   if(sha===head)return response(mode==='gap'?[dated(head,'2026-11-02',gap)]:[dated(head,'2026-11-02',dev,...(mode==='merge'?[feature]:[])),oldDev,baseline[1]]);
+   if(sha===gap)return response([dated(gap,'2026-11-01',dev),oldDev,baseline[1]]);
+  }
+ },async(h,requests)=>{
+  await h.open('a/b');const old=h.getSnapshot().commits.find(c=>c.sha===dev);assert.ok(h.getSnapshot().commits.some(c=>c.sha===feature));
+  updated=true;await h.refresh();const state=h.getSnapshot();
+  assert.ok(!state.branches.some(b=>b.name==='feature'));assert.equal(state.commits.some(c=>c.sha===feature),mode==='merge');
+  assert.equal(state.commits.find(c=>c.sha===dev),old,'keep the cached history of a surviving branch across its unresolved gap');
+  assert.ok(!histories(requests).some(([sha])=>sha===dormant),'a picker-only head must not force another history request');
+  if(mode==='gap'){await h.loadMore([gap]);assert.ok(!h.getSnapshot().commits.some(c=>c.sha===feature));assert.equal(h.getSnapshot().commits.find(c=>c.sha===dev),old);}
+ });
+});
+
+for(const outcome of ['success','missing','limited'])test(`a retired parent response cannot restore orphan history after deletion (${outcome})`,async()=>{
+ const main=gitSha(11),root=gitSha(12),feature=gitSha(13),parent=gitSha(14);let updating=false;
+ let enterMeta!:()=>void,enterParent!:()=>void,releaseMeta!:(value:Response)=>void,releaseParent!:(value:Response)=>void;
+ const metaEntered=new Promise<void>(r=>enterMeta=r),parentEntered=new Promise<void>(r=>enterParent=r),metaGate=new Promise<Response>(r=>releaseMeta=r),parentGate=new Promise<Response>(r=>releaseParent=r);
+ await using(url=>{
+  if(url.pathname==='/repos/a/b'&&updating){enterMeta();return metaGate;}
+  if(url.pathname.endsWith('/branches'))return response([ref('main',main),...(!updating?[ref('feature',feature)]:[])]);
+  if(url.pathname.endsWith('/activity'))return response([push('feature','2026-11-02')]);
+  if(url.pathname.endsWith('/commits')){
+   const sha=url.searchParams.get('sha');
+   if(sha==='main')return response([dated(main,'2026-11-02',root),dated(root,'2026-10-01')]);
+   if(sha===feature)return response([dated(feature,'2026-11-02',parent)]);
+   if(sha===parent){enterParent();return parentGate;}
+  }
+ },async h=>{
+  await h.open('a/b');updating=true;const refresh=h.refresh();await metaEntered;
+  const loading=h.loadMore([parent]);await parentEntered;releaseMeta(response({default_branch:'main'}));await refresh;
+  assert.ok(!h.getSnapshot().commits.some(c=>c.sha===feature));
+  releaseParent(outcome==='limited'?new Response('',{status:429,headers:{'Retry-After':'30'}}):outcome==='missing'?new Response('',{status:404}):response([dated(parent,'2026-11-01',root)]));await loading;
+  assert.ok(!h.getSnapshot().commits.some(c=>c.sha===parent));assert.equal(h.getSnapshot().more,false);
+  if(outcome==='limited'){assert.match(h.getSnapshot().error,/rate limit/);assert.ok(h.getSnapshot().retryAt!>Date.now());}else assert.equal(h.getSnapshot().error,'');
+ });
+});
+
+for(const pending of ['lookup','history'])test(`late activity ${pending} cannot resurrect a branch removed by a completed refresh`,async()=>{
+ const main=gitSha(21),root=gitSha(22),feature=gitSha(23);let updating=false,activityPage=0;
+ let enterMeta!:()=>void,enterStale!:()=>void,releaseMeta!:(value:Response)=>void,releaseStale!:(value:Response)=>void;
+ const metaEntered=new Promise<void>(r=>enterMeta=r),staleEntered=new Promise<void>(r=>enterStale=r),metaGate=new Promise<Response>(r=>releaseMeta=r),staleGate=new Promise<Response>(r=>releaseStale=r);
+ await using(url=>{
+  if(url.pathname==='/repos/a/b'&&updating){enterMeta();return metaGate;}
+  if(url.pathname.endsWith('/branches'))return response([ref('main',main),...(!updating&&pending==='history'?[ref('feature',feature)]:[])]);
+  if(url.pathname.endsWith('/activity'))return activityPage++===0?new Response('[]',{headers:{Link:'<https://api.github.com/next?after=older>; rel="next"'}}):response([push('feature','2026-11-02')]);
+  if(url.pathname.endsWith('/branches/feature')){enterStale();return staleGate;}
+  if(url.pathname.endsWith('/commits')){
+   const sha=url.searchParams.get('sha');
+   if(sha==='main')return response([dated(main,'2026-11-02',root),dated(root,'2026-10-01')]);
+   if(sha===feature){if(pending==='history'){enterStale();return staleGate;}return response([dated(feature,'2026-11-02',root)]);}
+  }
+ },async h=>{
+  await h.open('a/b');updating=true;const refresh=h.refresh();await metaEntered;
+  const discovery=h.loadMore(['activity']);await staleEntered;releaseMeta(response({default_branch:'main'}));await refresh;
+  releaseStale(pending==='lookup'?response(ref('feature',feature)):response([dated(feature,'2026-11-02',root)]));await discovery;
+  assert.ok(!h.getSnapshot().branches.some(b=>b.name==='feature'));assert.ok(!h.getSnapshot().commits.some(c=>c.sha===feature));assert.equal(h.getSnapshot().discoveryError,'');
+ });
+});
+
+test('a late branch-picker page cannot restore a deleted ref after an authoritative refresh',async()=>{
+ const main=gitSha(31),root=gitSha(32),feature=gitSha(33);let updating=false,page2Requests=0;
+ let enterMeta!:()=>void,enterPage!:()=>void,releaseMeta!:(value:Response)=>void,releasePage!:(value:Response)=>void;
+ const metaEntered=new Promise<void>(r=>enterMeta=r),pageEntered=new Promise<void>(r=>enterPage=r),metaGate=new Promise<Response>(r=>releaseMeta=r),pageGate=new Promise<Response>(r=>releasePage=r);
+ await using(url=>{
+  if(url.pathname==='/repos/a/b'&&updating){enterMeta();return metaGate;}
+  if(url.pathname.endsWith('/branches')){
+   if(url.searchParams.get('page')==='2'&&++page2Requests===1){enterPage();return pageGate;}
+   return response([ref('main',main)],!updating);
+  }
+  if(url.pathname.endsWith('/activity'))return response([]);
+  if(url.pathname.endsWith('/commits'))return response([commit(main,root),commit(root)]);
+ },async h=>{
+  await h.open('a/b');updating=true;const refresh=h.refresh();await metaEntered;
+  const page=h.loadBranches();await pageEntered;releaseMeta(response({default_branch:'main'}));await refresh;
+  releasePage(response([ref('feature',feature)]));await page;
+  assert.ok(!h.getSnapshot().branches.some(b=>b.name==='feature'));assert.equal(h.getSnapshot().moreBranches,false);
+ });
+});
+
+for(const source of ['ranking','search'])test(`a late ${source} lookup cannot restore a removed ref or select it`,async()=>{
+ const main=gitSha(41),root=gitSha(42),feature=gitSha(43);let updating=false;
+ let enterMeta!:()=>void,enterLookup!:()=>void,releaseMeta!:(value:Response)=>void,releaseLookup!:(value:Response)=>void;
+ const metaEntered=new Promise<void>(r=>enterMeta=r),lookupEntered=new Promise<void>(r=>enterLookup=r),metaGate=new Promise<Response>(r=>releaseMeta=r),lookupGate=new Promise<Response>(r=>releaseLookup=r);
+ await using(url=>{
+  if(url.pathname==='/repos/a/b'&&updating){enterMeta();return metaGate;}
+  if(url.pathname.endsWith('/branches'))return response([ref('main',main)],!updating&&source==='ranking');
+  if(url.pathname.endsWith('/branches/feature')){enterLookup();return lookupGate;}
+  if(url.pathname.endsWith('/activity'))return response([]);
+  if(url.pathname.endsWith('/pulls'))return response([{id:1,merged_at:new Date().toISOString(),updated_at:new Date().toISOString(),base:{ref:'feature'}}]);
+  if(url.pathname.endsWith('/commits'))return response([commit(main,root),commit(root)]);
+ },async h=>{
+  await h.open('a/b');updating=true;const refresh=h.refresh();await metaEntered;
+  const lookup=source==='ranking'?h.loadRecommendations():h.findBranch('feature');await lookupEntered;
+  releaseMeta(response({default_branch:'main'}));await refresh;releaseLookup(response(ref('feature',feature)));const result=await lookup;
+  assert.ok(!h.getSnapshot().branches.some(b=>b.name==='feature'));assert.equal(h.getSnapshot().base,'main');
+  if(source==='search')assert.equal(result,false);
+ });
+});
+
 test('a parent pruned after branch deletion can be restored when a later merge needs it',async()=>{
  let phase: 'initial'|'deleted'|'merged'='initial';
  const main=gitSha(1),root=gitSha(2),parent=gitSha(1100),feature=gitSha(1000),merge=gitSha(5000),head=gitSha(5001);
