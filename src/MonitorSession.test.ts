@@ -8,6 +8,7 @@ import {RefreshLoop,type RefreshClock} from './RefreshLoop';
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));
 async function until(check:()=>boolean){for(let n=0;n<100;n++){if(check())return;await tick();}assert.ok(check(),'operation did not settle');}
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return {promise,resolve};}
+function completionClock(start=1000){let now=start,id=0;const timers=new Map<number,()=>void>();const clock:RefreshClock={now:()=>now,set:fn=>{timers.set(++id,fn);return id;},clear:key=>{timers.delete(key as number);}};return {clock,timers,set:(value:number)=>{now=value;}};}
 const response=(data:unknown,status=200,headers:Record<string,string>={})=>new Response(status===304?null:JSON.stringify(data),{status,headers});
 async function using(check:(context:{group:MonitorSession;history:History;info:CommitInfoStore;paths:string[];visits:string[];holds:Map<string,ReturnType<typeof deferred<Response>>>;failures:Map<string,number>;aborted:string[];conditional:string[]})=>Promise<void>){
  const original=globalThis.fetch,paths:string[]=[],visits:string[]=[],aborted:string[]=[],conditional:string[]=[],holds=new Map<string,ReturnType<typeof deferred<Response>>>(),failures=new Map<string,number>();
@@ -133,5 +134,81 @@ test('a late rate error from a cancelled metadata refresh cannot throttle a new 
   const slow=deferred<Response>();holds.set('/repos/b/two/tags',slow);await group.refreshAll('auto');await until(()=>paths.filter(path=>path==='/repos/b/two/tags').length===2);
   group.authenticationChanged('old','new');slow.resolve(response({},429,{'Retry-After':'60'}));await tick();await tick();
   assert.equal(group.canRequest(),true);assert.equal(group.getSnapshot().retryAt,0);
+ });
+});
+for(const statuses of [[200,200],[200,500],[500,500]])test(`split completion waits for the last started repository with results ${statuses.join('/')}`,async()=>{
+ await using(async({group,holds})=>{
+  group.start(['a/one','b/two'],'');await until(()=>!group.getSnapshot().running.size);
+  const first=deferred<Response>(),last=deferred<Response>();holds.set('/repos/a/one',first);holds.set('/repos/b/two',last);
+  const time=completionClock(),loop=new RefreshLoop(group.refreshAll,()=>true,time.clock);loop.configure('monitor',true,60000);loop.loaded();
+  await loop.refresh();await tick();assert.equal(loop.getSnapshot().lastCompletedAt,1000);
+  time.set(2000);first.resolve(response({default_branch:'main',private:false},statuses[0]));await until(()=>group.getSnapshot().running.size===1);
+  loop.loaded();assert.equal(loop.getSnapshot().lastCompletedAt,1000);
+  time.set(5000);last.resolve(response({default_branch:'main',private:false},statuses[1]));await until(()=>loop.getSnapshot().lastCompletedAt===5000);
+  assert.equal(group.getSnapshot().running.size,0);assert.equal(loop.getSnapshot().nextAt,61000);assert.equal(time.timers.size,1);loop.stop();
+ });
+});
+test('a later cycle waits only for its new work while a previous slow cycle can finish later',async()=>{
+ await using(async({group,holds,paths})=>{
+  group.start(['a/one','b/two'],'');await until(()=>!group.getSnapshot().running.size);
+  const slow=deferred<Response>();holds.set('/repos/b/two',slow);
+  const time=completionClock(),loop=new RefreshLoop(group.refreshAll,()=>true,time.clock);loop.configure('monitor',true,60000);loop.loaded();
+  await loop.refresh();await until(()=>group.getSnapshot().running.size===1);assert.equal(loop.getSnapshot().lastCompletedAt,1000);
+  time.set(3000);await loop.refresh();await until(()=>loop.getSnapshot().lastCompletedAt===3000);
+  assert.equal(group.getSnapshot().running.size,1);assert.equal(paths.filter(path=>path==='/repos/b/two').length,2);
+  time.set(9000);slow.resolve(response({default_branch:'main',private:false}));await until(()=>loop.getSnapshot().lastCompletedAt===9000);
+  assert.equal(loop.getSnapshot().nextAt,63000);assert.equal(time.timers.size,1);loop.stop();
+ });
+});
+test('a dispatch skipping every busy repository does not invent a completion',async()=>{
+ await using(async({group,holds,paths})=>{
+  group.start(['a/one'],'');await until(()=>!group.getSnapshot().running.size);
+  const slow=deferred<Response>();holds.set('/repos/a/one',slow);
+  const time=completionClock(),loop=new RefreshLoop(group.refreshAll,()=>true,time.clock);loop.configure('monitor',false,60000);loop.loaded();
+  await loop.refresh();await tick();const before=paths.length;time.set(4000);await loop.refresh();
+  assert.equal(paths.length,before);assert.equal(loop.getSnapshot().lastCompletedAt,1000);
+  time.set(8000);slow.resolve(response({default_branch:'main',private:false}));await until(()=>loop.getSnapshot().lastCompletedAt===8000);loop.stop();
+ });
+});
+test('a primary failure still waits for slow metadata before the loop records completion',async()=>{
+ await using(async({group,history,info,holds,failures})=>{
+  await history.open('a/one');await info.open('a/one','');
+  const slow=deferred<Response>();holds.set('/repos/a/one/tags',slow);failures.set('/repos/a/one',500);
+  const time=completionClock(),loop=new RefreshLoop(group.refreshPrimary,()=>true,time.clock);loop.configure('single',false,60000);loop.loaded();
+  const task=loop.refresh();await until(()=>!!history.getSnapshot().refreshError);time.set(3000);
+  assert.equal(loop.getSnapshot().running,true);assert.equal(loop.getSnapshot().lastCompletedAt,1000);
+  slow.resolve(response([],500));await task;assert.equal(loop.getSnapshot().lastCompletedAt,3000);assert.ok(loop.getSnapshot().error);loop.stop();
+ });
+});
+test('an unexpected rejection waits for its sibling request to settle',async()=>{
+ await using(async({group,history,info})=>{
+  const slow=deferred<{}>();history.refresh=async()=>{throw new Error('Network failed');};info.refresh=()=>slow.promise;
+  const time=completionClock(),loop=new RefreshLoop(group.refreshPrimary,()=>true,time.clock);loop.configure('single',false,60000);
+  const task=loop.refresh();await tick();assert.equal(loop.getSnapshot().lastCompletedAt,null);assert.equal(loop.getSnapshot().running,true);
+  time.set(7000);slow.resolve({});await task;assert.equal(loop.getSnapshot().lastCompletedAt,7000);assert.equal(loop.getSnapshot().error,'Network failed');loop.stop();
+ });
+});
+test('rate-limit backoff is immediate but completion waits for the other started work',async()=>{
+ await using(async({group,history,info,holds,failures,paths})=>{
+  await history.open('a/one');await info.open('a/one','');group.start(['a/one'],'');
+  const slow=deferred<Response>();holds.set('/repos/a/one/tags',slow);failures.set('/repos/a/one',429);
+  const start=Date.now(),time=completionClock(start),loop=new RefreshLoop(group.refreshAll,()=>true,time.clock);loop.configure('monitor',true,60000);loop.loaded();
+  await loop.refresh();await until(()=>!group.canRequest());assert.equal(loop.getSnapshot().lastCompletedAt,start);
+  time.set(start+100);await loop.refresh();const deadline=loop.getSnapshot().retryAt;assert.ok(deadline>start);
+  assert.equal(loop.getSnapshot().lastCompletedAt,start);
+  time.set(start+500);slow.resolve(response([]));await until(()=>loop.getSnapshot().lastCompletedAt===start+500);
+  const before=paths.length;await loop.refresh();assert.equal(paths.length,before);assert.equal(loop.getSnapshot().nextAt,deadline);assert.equal(time.timers.size,1);loop.stop();
+ });
+});
+test('discarded monitor sessions cannot complete a current cycle with a late response',async()=>{
+ await using(async({group,holds})=>{
+  group.start(['a/one'],'');await until(()=>!group.getSnapshot().running.size);
+  const slow=deferred<Response>();holds.set('/repos/a/one',slow);
+  let completion:Promise<boolean>|null|undefined;
+  const time=completionClock(),loop=new RefreshLoop(async kind=>{const result=await group.refreshAll(kind);completion=result.completion;return result;},()=>true,time.clock);loop.configure('monitor',false,60000);loop.loaded();
+  await loop.refresh();await tick();group.stop();holds.clear();group.start(['b/two'],'');await until(()=>!group.getSnapshot().running.size);
+  time.set(5000);loop.configure('new-monitor',false,60000);loop.loaded();
+  time.set(9000);slow.resolve(response({default_branch:'main',private:false}));assert.equal(await completion,false);await tick();
+  assert.equal(loop.getSnapshot().lastCompletedAt,5000);assert.equal(loop.getSnapshot().error,'');loop.stop();
  });
 });
