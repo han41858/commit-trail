@@ -37,7 +37,7 @@
 
 </details>
 
-![GitStream Split view showing GitStream, AI Template, Vite and Zustand in four desktop columns](docs/images/split-desktop.png)
+![GitStream Split view showing GitStream, AI Template, Angular and VS Code in four desktop columns](docs/images/split-desktop.png)
 
 Choose **Split view** to select and reorder repositories. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
 
@@ -45,7 +45,7 @@ Choose **Split view** to select and reorder repositories. Inspect commits and Gi
   <tr><th>Portrait</th><th>Landscape</th></tr>
   <tr>
     <td width="28%" align="center" valign="top"><img src="docs/images/split-mobile-portrait.png" alt="The same four public repositories in portrait Split view, with narrow graph columns" width="195" /></td>
-    <td width="72%" align="center" valign="top"><img src="docs/images/split-mobile-landscape.png" alt="The same four repositories in landscape Split view, with one-line commit messages visible in three columns" width="562" /></td>
+    <td width="72%" align="center" valign="top"><img src="docs/images/split-mobile-landscape.png" alt="The same four repositories in landscape Split view, with messages in the AI Template and Angular columns and graph-only views for GitStream and VS Code" width="562" /></td>
   </tr>
 </table>
 
