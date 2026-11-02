@@ -23,7 +23,7 @@
 
 ## Features
 
-- **Follow branches and merges** in an interactive, vertical Git graph.
+- **Follow branches and merges** in an interactive, vertical Git graph. Branches sharing a commit appear as separate, vertically stacked name badges.
 - **Stay current** with automatic updates that preserve your place while reading.
 - **Split view** puts 1–4 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
 - **See the context** with tags, releases and GitHub Actions status beside commits.
@@ -45,7 +45,7 @@ Choose **Split view** to select and reorder repositories. Inspect commits and Gi
   <tr><th>Portrait</th><th>Landscape</th></tr>
   <tr>
     <td width="28%" align="center" valign="top"><img src="docs/images/split-mobile-portrait.png" alt="The same four public repositories in portrait Split view, with narrow graph columns" width="195" /></td>
-    <td width="72%" align="center" valign="top"><img src="docs/images/split-mobile-landscape.png" alt="The same four repositories in landscape Split view, with messages in the AI Template and Angular columns and graph-only views for GitStream and VS Code" width="562" /></td>
+    <td width="72%" align="center" valign="top"><img src="docs/images/split-mobile-landscape.png" alt="The same four repositories in landscape Split view, with messages in the AI Template, Angular and VS Code columns and a graph-only GitStream column" width="562" /></td>
   </tr>
 </table>
 
