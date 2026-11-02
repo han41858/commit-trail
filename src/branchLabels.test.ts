@@ -1,8 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {branchTracks,branchLabelContentBottom,visibleBranchLabels,type BranchTrack} from './branchLabels';
+import {branchTracks,branchLabelContentBottom,visibleBranchLabels,type BranchTrack,type BranchLabel,type BranchLabelObstacle} from './branchLabels';
 import type {Commit} from './model';
 const commit=(sha:string,parent?:string):Commit=>({sha,parents:parent?[{sha:parent}]:[],commit:{message:sha,author:null,committer:null},html_url:''});
+function clearOfNodes(label:BranchLabel,width:number,nodes:BranchLabelObstacle[]){
+ for(const node of nodes)assert.ok(label.boxX!+width<=node.x-node.radius-3||label.boxX!>=node.x+node.radius+3||label.boxY!+label.boxHeight!<=node.y-node.radius-3||label.boxY!>=node.y+node.radius+3,`${label.names} obscures the node at ${node.x},${node.y}`);
+}
 test('branch labels follow visible paths after heads leave the viewport and disappear after the path ends',()=>{
  const tracks:BranchTrack[]=[{name:'main',lane:0,points:[{x:48,y:100},{x:48,y:500},{x:48,y:1000}]}];
  assert.equal(visibleBranchLabels(tracks,250,600)[0].names[0],'main');assert.equal(visibleBranchLabels(tracks,250,600)[0].y,250);
@@ -45,6 +48,60 @@ test('badges use available space beside the anchor instead of covering the commi
   const [label]=visibleBranchLabels(tracks,100,400,0,right,(_names,point)=>{assert.equal(point.x,x);return 48;},18);
   assert.equal(label.boxX,expectedX);assert.ok(label.boxX!>x+10.5||label.boxX!+48<x-10.5);
  }
+});
+test('a badge moves right at the same height to reveal a neighboring node and Actions ring',()=>{
+ const track:BranchTrack={name:'main',lane:0,points:[{x:48,y:200}]};
+ const nodes=[{x:48,y:200,radius:12},{x:82,y:200,radius:12}];
+ const [label]=visibleBranchLabels([track],100,400,0,390,()=>80,20,2,nodes);
+ assert.equal(label.x,48);assert.equal(label.y,200);assert.equal(label.boxY,190);assert.equal(label.boxX,97);
+ clearOfNodes(label,80,nodes);
+});
+test('near the right edge a badge uses clear space on the left without covering adjacent rings',()=>{
+ const nodes=[{x:180,y:200,radius:12},{x:140,y:200,radius:12}];
+ const [label]=visibleBranchLabels([{name:'main',lane:0,points:[{x:180,y:200}]}],100,400,0,220,()=>48,20,2,nodes);
+ assert.equal(label.boxX,77);assert.equal(label.boxY,190);clearOfNodes(label,48,nodes);
+});
+test('a right-side badge stays on the right when a clear gap is available there',()=>{
+ const nodes=[{x:300,y:200,radius:12},{x:426,y:200,radius:12}];
+ const [label]=visibleBranchLabels([{name:'main',lane:0,points:[{x:300,y:200}]}],100,400,0,600,()=>100,20,2,nodes);
+ assert.equal(label.boxX,441);assert.equal(label.boxY,190);clearOfNodes(label,100,nodes);
+});
+test('every row in a shared-head stack avoids nodes beside its lower branch names',()=>{
+ const tracks=['main','dev','release'].map(name=>({name,lane:0,points:[{x:48,y:200}]}));
+ const nodes=[{x:48,y:200,radius:12},{x:82,y:222,radius:12},{x:116,y:244,radius:12}];
+ const [label]=visibleBranchLabels(tracks,100,400,0,400,()=>100,20,2,nodes);
+ assert.deepEqual(label.names,['main','dev','release']);assert.equal(label.boxX,131);assert.equal(label.boxY,190);
+ clearOfNodes(label,100,nodes);
+});
+test('a short path moves vertically if neither side has space beside its nodes',()=>{
+ const nodes=[{x:48,y:200,radius:12},{x:82,y:200,radius:12}];
+ const [label]=visibleBranchLabels([{name:'main',lane:0,points:[{x:48,y:200}]}],100,400,0,110,()=>60,20,2,nodes);
+ assert.ok(label.boxX!>=8&&label.boxX!+60<=102);assert.notEqual(label.boxY,190);
+ clearOfNodes(label,60,nodes);
+});
+test('nodes outside a badge height do not push it away from its branch',()=>{
+ const track:BranchTrack={name:'main',lane:0,points:[{x:48,y:200}]};
+ const nodes=[{x:48,y:200,radius:12}];
+ const baseline=visibleBranchLabels([track],100,500,0,390,()=>80,20,2,nodes);
+ assert.deepEqual(visibleBranchLabels([track],100,500,0,390,()=>80,20,2,[...nodes,{x:82,y:400,radius:12}]),baseline);
+});
+test('scrolled reversed paths keep their badges clear of visible commit rings',()=>{
+ const track:BranchTrack={name:'feature',lane:1,points:[{x:116,y:800},{x:48,y:100}]};
+ const nodes=[{x:48,y:300,radius:12},{x:82,y:331,radius:12},{x:116,y:362,radius:12}];
+ const [label]=visibleBranchLabels([track],300,500,0,390,()=>90,18,2,nodes);
+ assert.equal(label.names[0],'feature');assert.ok(label.boxY!>=306&&label.boxY!+18<=500);
+ clearOfNodes(label,90,nodes);
+});
+test('oversized stacks retain every name while moving aside for nodes along the stack',()=>{
+ const tracks=Array.from({length:30},(_,index)=>({name:`branch-${index}`,lane:0,points:[{x:48,y:100}]}));
+ const nodes=[{x:48,y:100,radius:12},{x:82,y:131,radius:12},{x:116,y:162,radius:12}];
+ const [label]=visibleBranchLabels(tracks,80,280,0,390,()=>90,18,2,nodes);
+ assert.equal(label.names.length,30);assert.equal(label.boxY,91);assert.equal(label.boxX,131);clearOfNodes(label,90,nodes);
+});
+test('crowded viewports retain branch names even when every available position overlaps a node',()=>{
+ const tracks:BranchTrack[]=[{name:'main',lane:0,points:[{x:48,y:200}]}];
+ const [label]=visibleBranchLabels(tracks,180,222,0,100,()=>80,18,2,[{x:48,y:200,radius:40}]);
+ assert.deepEqual(label.names,['main']);assert.ok(label.boxX!>=8&&label.boxX!+80<=92);
 });
 test('a stack near the bottom moves above the edge without omitting or reversing names',()=>{
  const tracks=['main','dev','release'].map(name=>({name,lane:0,points:[{x:48,y:295}]}));

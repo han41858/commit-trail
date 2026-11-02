@@ -2,7 +2,7 @@ import {debug} from './debug';
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {ROW,type Commit,type Branch,type HistoryFrontier} from './model';
 import {measuredLayout} from './measuredLayout';
-import {branchTracks,branchLabelContentBottom,visibleBranchLabels} from './branchLabels';
+import {branchTracks,branchLabelContentBottom,visibleBranchLabels,type BranchLabelObstacle} from './branchLabels';
 import {emptyGraphColors,graphColors} from './graphColors';
 import {monthMarkers} from './monthMarkers';
 import {emojify} from './emoji';
@@ -130,7 +130,10 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
    }
   }
   ctx.setLineDash([]);
+  const labelObstacles:BranchLabelObstacle[]=[];
   for(const c of ordered){const p=positions.get(c.sha)!;if(p.y<view.top-ROW||p.y>view.top+view.height+ROW)continue;
+   // Reserve the largest selected Actions ring, including its stroke, in advance.
+   labelObstacles.push({...p,radius:12});
    if(started!==undefined){drawn++;if(p.x>=left&&p.x<=left+view.width&&p.y>=view.top+Math.max(0,padding-20)&&p.y<=view.top+view.height-48)visible++;}
    ctx.globalAlpha=1;ctx.fillStyle=colors[(tones.nodes.get(c.sha)||0)%colors.length];ctx.beginPath();ctx.arc(p.x,p.y,c.sha===selected?7:4.5,0,Math.PI*2);ctx.fill();
    if(c.parents.length>1){ctx.strokeStyle=text;ctx.lineWidth=1;ctx.stroke();}
@@ -151,14 +154,14 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
   const badge=(name:string,x:number)=>{const available=Math.max(x-left-20,labelRight-x-12)-12,limitWidth=Math.min(maxTextWidth,available),key=`${name}\0${limitWidth}`,old=cache.get(key);if(old)return old;let text='…';for(let limit=mobile?18:28;limit>=1;limit--){text=branchLabelText(name,displayNames,limit);if(ctx.measureText(text).width<=limitWidth)break;}const value={text,width:ctx.measureText(text).width+12};cache.set(key,value);return value;};
   const hits:typeof badgeHits.current=[];
   ctx.save();ctx.beginPath();ctx.rect(left,view.top+padding-20,view.width,Math.max(0,view.height-padding-28));ctx.clip();
-  for(const label of visibleBranchLabels(tracks,view.top+padding-20,view.top+view.height-48,left,labelRight+8,(names,point)=>Math.max(...names.map(name=>badge(name,point.x).width)),badgeHeight,badgeGap)){
+  for(const label of visibleBranchLabels(tracks,view.top+padding-20,view.top+view.height-48,left,labelRight+8,(names,point)=>Math.max(...names.map(name=>badge(name,point.x).width)),badgeHeight,badgeGap,labelObstacles)){
    const x=label.boxX!,y=label.boxY!;
    const color=colors[(label.color??label.lane)%colors.length];
    if(label.names.length>1){ctx.strokeStyle=color;ctx.globalAlpha=.4;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x-3,y+badgeHeight/2);ctx.lineTo(x-3,y+label.boxHeight!-badgeHeight/2);ctx.stroke();ctx.globalAlpha=1;}
    label.names.forEach((ref,index)=>{
     const {text:name,width:boxWidth}=badge(ref,label.x),rowY=y+index*(badgeHeight+badgeGap);
-    ctx.fillStyle=surface;ctx.beginPath();ctx.roundRect(x,rowY,boxWidth,badgeHeight,4);ctx.fill();
-    ctx.globalAlpha=theme==='light'?0.1:0.16;ctx.fillStyle=color;ctx.fill();ctx.globalAlpha=1;ctx.fillStyle=color;ctx.fillText(name,x+6,rowY+(mobile?12:14));
+    ctx.globalAlpha=.35;ctx.fillStyle=surface;ctx.beginPath();ctx.roundRect(x,rowY,boxWidth,badgeHeight,4);ctx.fill();
+    ctx.globalAlpha=theme==='light'?0.06:0.08;ctx.fillStyle=color;ctx.fill();ctx.globalAlpha=1;ctx.fillStyle=color;ctx.fillText(name,x+6,rowY+(mobile?12:14));
     const hitTop=Math.max(rowY,view.top+padding-20),hitBottom=Math.min(rowY+badgeHeight,view.top+view.height-48);
     if(hitBottom>hitTop)hits.push({x,y:hitTop,width:boxWidth,height:hitBottom-hitTop,names:[ref]});
    });
@@ -167,7 +170,11 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
   badgeHits.current=hits;
   if(started!==undefined)debug.render(started,commits,{loaded:commits.length,visible,drawn,branches:branches.length,lanes:maxLane+1});
  },[theme,months,tones,tracks,padding,data,ordered,positions,branches,width,view,selected,mobile,badgeHeight,branchWidth,showMessages,messageX,messageWidth,reverse,info,displayNames,pageVisible]);
- function badgeAt(clientX:number,clientY:number){const el=container.current!,rect=el.getBoundingClientRect(),x=clientX-rect.left+el.scrollLeft,y=clientY-rect.top+el.scrollTop;return badgeHits.current.find(label=>x>=label.x&&x<=label.x+label.width&&y>=label.y&&y<=label.y+label.height);}
+ function badgeAt(clientX:number,clientY:number){const el=container.current!,rect=el.getBoundingClientRect(),x=clientX-rect.left+el.scrollLeft,y=clientY-rect.top+el.scrollTop;
+  const commit=ordered[Math.round((y-padding)/ROW)],point=commit&&positions.get(commit.sha);
+  if(point&&Math.hypot(x-point.x,y-point.y)<=12)return;
+  return badgeHits.current.find(label=>x>=label.x&&x<=label.x+label.width&&y>=label.y&&y<=label.y+label.height);
+ }
  function pick(clientX:number,clientY:number){
   const el=container.current!,rect=el.getBoundingClientRect();const x=clientX-rect.left+el.scrollLeft,y=clientY-rect.top+el.scrollTop;
   const c=ordered[Math.round((y-padding)/ROW)];if(!c)return;
