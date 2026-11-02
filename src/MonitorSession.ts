@@ -35,6 +35,11 @@ export class MonitorSession {
    if(this.tasks.get(entry)===task&&result.retryAt&&result.retryAt>this.state.retryAt)this.publish({retryAt:result.retryAt});return result;
   }).finally(()=>{if(this.tasks.get(entry)===task){this.tasks.delete(entry);this.publish({running:new Set(this.tasks.keys())});}});
   this.tasks.set(entry,task);this.publish({running:new Set(this.tasks.keys())});
+  return task;
+ }
+ private async settle(tasks:Promise<RefreshResult>[]){
+  const results=await Promise.allSettled(tasks);
+  return results.map(result=>{if(result.status==='rejected')throw result.reason;return result.value;});
  }
  private openEntry(entry:MonitorEntry){
   return measureRefresh('initial',entry.history,entry.info,async cycle=>{
@@ -75,28 +80,30 @@ export class MonitorSession {
  };
  refreshPrimary=(kind:'manual'|'auto'):Promise<RefreshResult>=>{
   if(this.primaryPending)return this.primaryPending;
-  if(!this.canRequest())return Promise.resolve({error:'GitHub API rate limit reached. Waiting to retry.',retryAt:this.state.retryAt});
+  if(!this.canRequest())return Promise.resolve({error:'GitHub API rate limit reached. Waiting to retry.',retryAt:this.state.retryAt,completion:null});
   const authentication=this.authentication,observe=(result:RefreshResult)=>authentication===this.authentication?this.captureResult(result):result;
   const task=measureRefresh(kind,this.history,this.info,async cycle=>{
-   const results=await Promise.all([this.history.refresh(cycle).then(observe),this.info.refresh(false,undefined,cycle).then(observe)]);
+   const results=await this.settle([this.history.refresh(cycle).then(observe),this.info.refresh(false,undefined,cycle).then(observe)]);
    return {error:results.map(result=>result.error).filter(Boolean).join(' · ')||undefined,retryAt:Math.max(0,...results.map(result=>result.retryAt||0))};
   }).finally(()=>{if(this.primaryPending===task)this.primaryPending=null;});this.primaryPending=task;return task;
  };
  // The existing RefreshLoop owns the only deadline. Dispatch without awaiting the
  // slowest repository, so other columns can finish and refresh on the next tick.
+ // Only this dispatch's newly started tasks determine its completion timestamp.
  refreshAll=(kind:'manual'|'auto'):Promise<RefreshResult>=>{
-  this.observe();if(!this.canRequest())return Promise.resolve({error:'GitHub API rate limit reached. Waiting to retry.',retryAt:this.state.retryAt});
+  this.observe();if(!this.canRequest())return Promise.resolve({error:'GitHub API rate limit reached. Waiting to retry.',retryAt:this.state.retryAt,completion:null});
   if(this.state.retryAt)this.publish({retryAt:0});
-  for(const entry of this.state.entries){
+  const entries=this.state.entries,started:Promise<RefreshResult>[]=[];
+  for(const entry of entries){
    const state=entry.history.getSnapshot();if(this.tasks.has(entry)||state.busy||entry.info.getSnapshot().busy)continue;
-   if(!state.meta){this.run(entry,()=>entry.primary?entry.history.retry().then(()=>this.combined(entry)):this.openEntry(entry));continue;}
-   this.run(entry,()=>entry.primary?this.refreshPrimary(kind):measureRefresh(kind,entry.history,entry.info,async cycle=>{
+   const task=this.run(entry,()=>!state.meta?(entry.primary?entry.history.retry().then(()=>this.combined(entry)):this.openEntry(entry)):entry.primary?this.refreshPrimary(kind):measureRefresh(kind,entry.history,entry.info,async cycle=>{
     const history=state.error?entry.history.retry().then(()=>this.combined(entry)):entry.history.refresh(cycle);
     const metadata=entry.info.getSnapshot().repo===entry.repository?entry.info.refresh(false,undefined,cycle):entry.info.open(entry.repository,this.token,cycle).then(()=>this.combined(entry));
     const observe=(result:RefreshResult)=>this.state.active&&this.state.entries.includes(entry)?this.captureResult(result):result;
-    const results=await Promise.all([history.then(observe),metadata.then(observe)]);return {error:results.map(result=>result.error).filter(Boolean).join(' · ')||undefined,retryAt:Math.max(0,...results.map(result=>result.retryAt||0))};
+    const results=await this.settle([history.then(observe),metadata.then(observe)]);return {error:results.map(result=>result.error).filter(Boolean).join(' · ')||undefined,retryAt:Math.max(0,...results.map(result=>result.retryAt||0))};
    }));
+   if(task)started.push(task);
   }
-  return Promise.resolve({});
+  return Promise.resolve({completion:started.length?Promise.allSettled(started).then(()=>this.state.active&&this.state.entries===entries):null});
  };
 }
