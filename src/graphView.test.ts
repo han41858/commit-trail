@@ -1,7 +1,29 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {graphFrame,branchDisplayNames,branchLabelText,visibleHistorySources,GRAPH_ORIGIN} from './graphView';
+import {graphFrame,branchDisplayNames,branchLabelText,commitVersionIcons,visibleHistorySources,GRAPH_ORIGIN} from './graphView';
+import type {CommitInfo,TagInfo,ReleaseInfo} from './CommitInfo';
 import {layout,type Commit} from './model';
+
+test('commits show at most one version icon, preferring releases and preserving tooltip names and position',()=>{
+ const tag=(name:string):TagInfo=>({name,sha:'a',url:`https://github.com/a/b/tree/${name}`});
+ const release=(id:number,name:string|null,tag_name:string):ReleaseInfo=>({id,name,tag_name,draft:false,prerelease:false,published_at:null,created_at:'2026-11-02T00:00:00Z',html_url:`https://github.com/a/b/releases/tag/${tag_name}`});
+ const tags=[tag('v1'),tag('alias')],releases=[release(1,'Version 1','v1'),release(2,null,'alias')];
+ const cases:{name:string;tags:TagInfo[];releases:ReleaseInfo[];text?:string;title?:string}[]=[
+  {name:'no versions',tags:[],releases:[]},
+  {name:'one tag',tags:tags.slice(0,1),releases:[],text:'🏷️',title:'v1'},
+  {name:'release only',tags:[],releases:releases.slice(0,1),text:'🚀',title:'Version 1'},
+  {name:'tag and release',tags:tags.slice(0,1),releases:releases.slice(0,1),text:'🚀',title:'Version 1'},
+  {name:'multiple tags only',tags,releases:[],text:'🏷️',title:'v1 · alias'},
+  {name:'release with an additional tag',tags,releases:releases.slice(0,1),text:'🚀',title:'Version 1'},
+  {name:'multiple tags and releases',tags,releases,text:'🚀',title:'Version 1 · alias'},
+ ];
+ assert.deepEqual(commitVersionIcons(undefined,48),[]);
+ for(const {name,tags,releases,text,title} of cases){
+  const info:CommitInfo={tags,releases,runs:[],actions:null},before=JSON.stringify(info);
+  for(const x of [48,82,150])assert.deepEqual(commitVersionIcons(info,x),text?[{text,x:x-20,title}]:[],name);
+  assert.equal(JSON.stringify(info),before,`${name}: keep all detail metadata`);
+ }
+});
 
 test('history requests include earlier gaps but exclude below-viewport, outside lanes and pending work',()=>{
  const positions=new Map([['visible',{x:48,y:1200}],['above',{x:48,y:99}],['below',{x:48,y:1601}],['left',{x:-1,y:1200}],['right',{x:391,y:1200}]]);

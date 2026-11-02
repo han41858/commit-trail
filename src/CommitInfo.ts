@@ -14,7 +14,8 @@ export function actionSummary(input:readonly ActionRun[],details:ReadonlyMap<num
  const byId=new Map<number,ActionRun>();for(const run of input)if(newerRun(byId.get(run.id),run))byId.set(run.id,run);
  const runs=[...byId.values()];if(!runs.length)return null;
  const failed=runs.some(run=>run.status==='completed'&&['failure','timed_out','startup_failure'].includes(run.conclusion||''));
- const state:ActionState=runs.some(activeRun)?runs.some(run=>run.status==='in_progress')?'running':'queued':failed?'failure':runs.every(run=>run.status==='completed'&&run.conclusion==='success')?'success':runs.every(run=>run.status==='completed'&&run.conclusion==='cancelled')?'cancelled':'skipped';
+ const successful=runs.some(run=>run.conclusion==='success')&&runs.every(run=>run.status==='completed'&&(run.conclusion==='success'||run.conclusion==='skipped'));
+ const state:ActionState=runs.some(activeRun)?runs.some(run=>run.status==='in_progress')?'running':'queued':failed?'failure':successful?'success':runs.every(run=>run.status==='completed'&&run.conclusion==='cancelled')?'cancelled':'skipped';
  let done=0,total=0;
  for(const run of runs){
   const info=details.get(run.id);

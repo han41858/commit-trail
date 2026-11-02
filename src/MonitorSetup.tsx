@@ -60,7 +60,7 @@ export function MonitorSetup({current,recent,saved,initial,onStart,onClose}:{cur
     const panel=dialog.current;if(panel){const rect=panel.getBoundingClientRect();if(event.clientY>rect.bottom-28)panel.scrollTop+=12;else if(event.clientY<rect.top+28)panel.scrollTop-=12;}
    }} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>
     {selected.map((repository,index)=><li key={repository} data-dragging={dragging===repository}>
-     <button type="button" className="monitor-drag" aria-label={`Reorder ${repository}`} aria-describedby="monitor-order-hint" aria-pressed={dragging===repository} disabled={selected.length<2} title="Drag or use Up/Down to reorder" onPointerDown={event=>{
+     <button type="button" className="monitor-drag" aria-label={`Reorder ${repository}`} aria-description="Drag or use Up/Down to reorder" aria-pressed={dragging===repository} disabled={selected.length<2} title="Drag or use Up/Down to reorder" onPointerDown={event=>{
       if(!event.isPrimary||event.button!==0||drag.current||selected.length<2)return;event.preventDefault();event.currentTarget.focus({preventScroll:true});
       drag.current={repository,pointerId:event.pointerId,index};setDragging(repository);setOrderStatus('');list.current?.setPointerCapture(event.pointerId);
      }} onKeyDown={event=>{
@@ -70,7 +70,7 @@ export function MonitorSetup({current,recent,saved,initial,onStart,onClose}:{cur
      <span title={repository}>{repository}</span><button type="button" aria-label={`Remove ${repository} from monitor`} onClick={()=>{setSelected(names=>names.filter(name=>name!==repository));setError('');resetCopy();setOrderStatus('');}}>×</button>
     </li>)}
    </ol>
-   <small id="monitor-order-hint" className="monitor-order-hint">Drag handles or use ↑/↓ to reorder.</small><div className="monitor-order-status" role="status" aria-live="polite">{orderStatus}</div>
+   <div className="monitor-order-status" role="status" aria-live="polite">{orderStatus}</div>
    <form className="monitor-add" onSubmit={event=>{event.preventDefault();add(input);field.current?.focus();}}>
     <input ref={field} aria-label="Repository to monitor" placeholder="owner/repository" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={input} onChange={event=>{setInput(lowercaseField(event.currentTarget));setError('');}}/>
     <button type="submit" disabled={selected.length>=MONITOR_LIMIT}>Add</button>
