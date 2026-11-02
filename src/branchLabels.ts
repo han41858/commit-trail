@@ -2,13 +2,13 @@ import {ROW,type Branch,type Commit} from './model';
 import type {GraphColors} from './graphColors';
 export type Point={x:number;y:number};
 export type BranchTrack={name:string;lane:number;color?:number;points:Point[];connections?:Point[][]};
-export type BranchLabel=Point&{names:string[];lane:number;color?:number;boxX?:number;boxY?:number};
+export type BranchLabel=Point&{names:string[];lane:number;color?:number;boxX?:number;boxY?:number;boxHeight?:number};
 
 export function branchTracks(commits:Commit[],branches:Branch[],base:string,spine:Set<string>,positions:Map<string,Point>,reverse:boolean,colors?:GraphColors,lanes?:ReadonlyMap<string,number>):BranchTrack[]{
  const map=new Map(commits.map(c=>[c.sha,c]));const tracks:BranchTrack[]=[];
  const incoming=new Map<string,Commit[]>();
  for(const c of commits)for(const parent of c.parents.slice(1)){const list=incoming.get(parent.sha)||[];list.push(c);incoming.set(parent.sha,list);}
- for(const ref of [...branches].sort((a,b)=>Number(b.name===base)-Number(a.name===base))){
+ for(const ref of [...branches].sort((a,b)=>Number(b.name===base)-Number(a.name===base)||a.name.localeCompare(b.name))){
   const head=positions.get(ref.commit.sha);if(!head)continue;
   const color=colors?.branches.get(ref.name)??colors?.nodes.get(ref.commit.sha);
   const sharesBase=spine.has(ref.commit.sha);
@@ -61,12 +61,29 @@ function anchor(points:Point[],target:number,top:number,bottom:number,left:numbe
  }
  return best;
 }
-export function visibleBranchLabels(tracks:BranchTrack[],top:number,bottom:number,left=-Infinity,right=Infinity,measure=(names:string[])=>Math.min(34,names.join(' · ').length)*6.5+16,height=22,gap=2):BranchLabel[]{
+function sharedHeadTracks(tracks:BranchTrack[]){
+ const groups=new Map<string,{track:BranchTrack;names:string[]}>();
+ for(const track of tracks){const head=track.points[0];if(!head)continue;const key=`${head.x}:${head.y}`,group=groups.get(key);if(group){if(!group.names.includes(track.name))group.names.push(track.name);}else groups.set(key,{track,names:[track.name]});}
+ return [...groups.values()];
+}
+export function branchLabelContentBottom(tracks:BranchTrack[],height:number,gap=2){
+ return sharedHeadTracks(tracks).reduce((bottom,{track,names})=>Math.max(bottom,track.points[0].y-height/2+names.length*(height+gap)-gap),0);
+}
+export function visibleBranchLabels(tracks:BranchTrack[],top:number,bottom:number,left=-Infinity,right=Infinity,measure=(names:string[],_point:Point)=>Math.min(34,Math.max(...names.map(name=>name.length)))*6.5+16,height=22,gap=2):BranchLabel[]{
  if(top>bottom||left>right)return [];
- const labels=new Map<string,BranchLabel>();
- const rects=new Map<BranchLabel,{x:number;y:number;width:number}>();
- const box=(point:Point,names:string[])=>({x:Math.max(left+8,Math.min(point.x+12,right-measure(names)-8)),y:Math.max(top+6,Math.min(point.y-height/2,bottom-height)),width:measure(names)});
- for(const track of tracks){
+ const labels:BranchLabel[]=[],rects:{x:number;y:number;width:number;height:number}[]=[];
+ const overlaps=(rect:typeof rects[number])=>rects.some(other=>rect.x<other.x+other.width+4&&rect.x+rect.width+4>other.x&&rect.y<other.y+other.height+gap&&rect.y+rect.height+gap>other.y);
+ for(const {track,names} of sharedHeadTracks(tracks)){
+  const stackHeight=names.length*(height+gap)-gap;
+  const box=(point:Point)=>{const width=measure(names,point),x=point.x+12+width<=right-8?point.x+12:point.x-width-12>=left+8?point.x-width-12:Math.max(left+8,Math.min(point.x+12,right-width-8));return {x,y:Math.max(top+6,Math.min(point.y-height/2,bottom-stackHeight)),width,height:stackHeight};};
+  const place=(label:BranchLabel)=>{labels.push(label);rects.push({x:label.boxX!,y:label.boxY!,width:measure(names,label),height:stackHeight});};
+  // Oversized stacks stay tied to their head so scrolling reveals every name.
+  // Graph reserves their natural extent without moving any commit or lane.
+  if(stackHeight>bottom-top-6){
+   const head=track.points[0],y=head.y-height/2;
+   if(head.x<left||head.x>right||y>bottom||y+stackHeight<top)continue;
+   place({...head,names,lane:track.lane,color:track.color,boxX:box(head).x,boxY:y,boxHeight:stackHeight});continue;
+  }
   let fallback:BranchLabel|undefined,placed=false;
   for(let row=0;row<=Math.ceil((bottom-top)/(height+gap+2));row++){
    const target=top+(track.lane%4)*(height+gap)+row*(height+gap+2);
@@ -76,18 +93,18 @@ export function visibleBranchLabels(tracks:BranchTrack[],top:number,bottom:numbe
     const delta=Math.abs(candidate.y-target);if(delta<distance){point=candidate;distance=delta;}
    }
    if(!point)break;
-   const key=`${Math.round(point.x)}:${Math.round(point.y)}`,group=labels.get(key);
-   if(group){
-    group.names.push(track.name);const rect=box(group,group.names);group.boxX=rect.x;group.boxY=rect.y;rects.set(group,rect);placed=true;break;
-   }
-   const label:BranchLabel={...point,names:[track.name],lane:track.lane,color:track.color},rect=box(point,label.names);
+   const label:BranchLabel={...point,names,lane:track.lane,color:track.color,boxHeight:stackHeight},rect=box(point);
    label.boxX=rect.x;label.boxY=rect.y;fallback??=label;
-   const overlaps=[...rects.values()].some(other=>rect.x<other.x+other.width+4&&rect.x+rect.width+4>other.x&&rect.y<other.y+height+gap&&rect.y+height+gap>other.y);
-   if(overlaps)continue;
-   labels.set(key,label);rects.set(label,rect);placed=true;break;
+   if(overlaps(rect))continue;
+   place(label);placed=true;break;
   }
-  // Dense, very short paths still keep a label rather than silently dropping it.
-  if(!placed&&fallback){labels.set(`${track.name}:${fallback.x}:${fallback.y}`,fallback);rects.set(fallback,box(fallback,fallback.names));}
+  // A short path cannot offer another anchor; move its badges, not the DAG.
+  if(!placed&&fallback){
+   const width=measure(names,fallback);
+   const ys=[top+6,...rects.flatMap(rect=>[rect.y+rect.height+gap,rect.y-stackHeight-gap])].filter(y=>y>=top+6&&y+stackHeight<=bottom).sort((a,b)=>Math.abs(a-fallback!.boxY!)-Math.abs(b-fallback!.boxY!));
+   const y=ys.find(y=>!overlaps({x:fallback!.boxX!,y,width,height:stackHeight}));if(y!==undefined)fallback.boxY=y;
+   place(fallback);
+  }
  }
- return [...labels.values()];
+ return labels;
 }

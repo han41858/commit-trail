@@ -2,7 +2,7 @@ import {debug} from './debug';
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {ROW,type Commit,type Branch,type HistoryFrontier} from './model';
 import {measuredLayout} from './measuredLayout';
-import {branchTracks,visibleBranchLabels} from './branchLabels';
+import {branchTracks,branchLabelContentBottom,visibleBranchLabels} from './branchLabels';
 import {emptyGraphColors,graphColors} from './graphColors';
 import {monthMarkers} from './monthMarkers';
 import {emojify} from './emoji';
@@ -32,7 +32,7 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
  const months=useMemo(()=>monthMarkers(ordered,data.spine),[ordered,data,reverse]);
  const padding=topInset;
  const maxLane=Array.from(data.lanes.values()).reduce((a,b)=>Math.max(a,b),0);
- const {spacing,width,branchWidth,showMessages,messageX,messageWidth}=graphFrame(view.width,maxLane,mobile),height=Math.max(view.height,ordered.length*ROW+padding+80);
+ const {spacing,width,branchWidth,showMessages,messageX,messageWidth}=graphFrame(view.width,maxLane,mobile);
  const positions=useMemo(()=>new Map(ordered.map((c,i)=>[c.sha,{x:GRAPH_ORIGIN+(data.lanes.get(c.sha)||0)*spacing,y:i*ROW+padding}])) ,[ordered,data,padding,spacing]);
  const pendingActions=useMemo(()=>{
   if(!pageVisible||!info)return [];
@@ -40,6 +40,8 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
   return ordered.slice(first,last).filter(commit=>{const summary=info.get(commit.sha)?.actions,point=positions.get(commit.sha)!;return summary?.state==='running'&&summary.ratio===null&&point.x>=left-12&&point.x<=left+view.width+12;});
  },[ordered,positions,padding,view,info,pageVisible]);
  const tracks=useMemo(()=>branchTracks(commits,branches,branch,data.spine,positions,reverse,tones,data.lanes),[commits,branches,branch,data,positions,reverse,tones]);
+ const badgeHeight=mobile?18:20,badgeGap=2;
+ const height=Math.max(view.height,ordered.length*ROW+padding+80,branchLabelContentBottom(tracks,badgeHeight,badgeGap)+80);
  const displayNames=useMemo(()=>branchDisplayNames(branches.map(ref=>ref.name)),[branches]);
  const lastOrder=useRef<string[]>([]),scrollTop=useRef(0),lastRefresh=useRef(refreshVersion),followingLatest=useRef<number|null>(null),followingFrame=useRef<number|null>(null);
  const cancelFollowFrame=()=>{if(followingFrame.current!==null){cancelAnimationFrame(followingFrame.current);followingFrame.current=null;}};
@@ -145,20 +147,26 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
    if(!mobile){ctx.globalAlpha=0.5;ctx.font='11px monospace';ctx.fillText(fitMessage(`${c.sha.slice(0,7)}  ${c.commit.author?.name||'Unknown author'}`),messageX,p.y+9);}
   }
   ctx.globalAlpha=1;ctx.font=`${mobile?10:11}px system-ui`;
-  const badgeHeight=mobile?18:20,maxTextWidth=Math.min(mobile?Math.min(116,view.width*.36):190,branchWidth-16)-12,cache=new Map<string,{text:string;width:number}>();
-  const badge=(names:string[])=>{const key=names.join('\0'),old=cache.get(key);if(old)return old;let text='…';for(let limit=mobile?18:28;limit>=3;limit--){text=branchLabelText(names,displayNames,limit);if(ctx.measureText(text).width<=maxTextWidth)break;}const value={text,width:ctx.measureText(text).width+12};cache.set(key,value);return value;};
+  const labelRight=left+(showMessages?messageX:branchWidth),maxTextWidth=Math.min(mobile?Math.min(116,view.width*.36):190,branchWidth-16)-12,cache=new Map<string,{text:string;width:number}>();
+  const badge=(name:string,x:number)=>{const available=Math.max(x-left-20,labelRight-x-12)-12,limitWidth=Math.min(maxTextWidth,available),key=`${name}\0${limitWidth}`,old=cache.get(key);if(old)return old;let text='…';for(let limit=mobile?18:28;limit>=1;limit--){text=branchLabelText(name,displayNames,limit);if(ctx.measureText(text).width<=limitWidth)break;}const value={text,width:ctx.measureText(text).width+12};cache.set(key,value);return value;};
   const hits:typeof badgeHits.current=[];
-  for(const label of visibleBranchLabels(tracks,view.top+padding-20,view.top+view.height-48,left,left+branchWidth,names=>badge(names).width,badgeHeight)){
-   const {text:name,width:boxWidth}=badge(label.names);
+  ctx.save();ctx.beginPath();ctx.rect(left,view.top+padding-20,view.width,Math.max(0,view.height-padding-28));ctx.clip();
+  for(const label of visibleBranchLabels(tracks,view.top+padding-20,view.top+view.height-48,left,labelRight+8,(names,point)=>Math.max(...names.map(name=>badge(name,point.x).width)),badgeHeight,badgeGap)){
    const x=label.boxX!,y=label.boxY!;
    const color=colors[(label.color??label.lane)%colors.length];
-   ctx.fillStyle=surface;ctx.beginPath();ctx.roundRect(x,y,boxWidth,badgeHeight,4);ctx.fill();
-   ctx.globalAlpha=theme==='light'?0.1:0.16;ctx.fillStyle=color;ctx.fill();ctx.globalAlpha=1;ctx.fillStyle=color;ctx.fillText(name,x+6,y+(mobile?12:14));
-   hits.push({x,y,width:boxWidth,height:badgeHeight,names:label.names});
+   if(label.names.length>1){ctx.strokeStyle=color;ctx.globalAlpha=.4;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x-3,y+badgeHeight/2);ctx.lineTo(x-3,y+label.boxHeight!-badgeHeight/2);ctx.stroke();ctx.globalAlpha=1;}
+   label.names.forEach((ref,index)=>{
+    const {text:name,width:boxWidth}=badge(ref,label.x),rowY=y+index*(badgeHeight+badgeGap);
+    ctx.fillStyle=surface;ctx.beginPath();ctx.roundRect(x,rowY,boxWidth,badgeHeight,4);ctx.fill();
+    ctx.globalAlpha=theme==='light'?0.1:0.16;ctx.fillStyle=color;ctx.fill();ctx.globalAlpha=1;ctx.fillStyle=color;ctx.fillText(name,x+6,rowY+(mobile?12:14));
+    const hitTop=Math.max(rowY,view.top+padding-20),hitBottom=Math.min(rowY+badgeHeight,view.top+view.height-48);
+    if(hitBottom>hitTop)hits.push({x,y:hitTop,width:boxWidth,height:hitBottom-hitTop,names:[ref]});
+   });
   }
+  ctx.restore();
   badgeHits.current=hits;
   if(started!==undefined)debug.render(started,commits,{loaded:commits.length,visible,drawn,branches:branches.length,lanes:maxLane+1});
- },[theme,months,tones,tracks,padding,data,ordered,positions,branches,width,view,selected,mobile,branchWidth,showMessages,messageX,messageWidth,reverse,info,displayNames,pageVisible]);
+ },[theme,months,tones,tracks,padding,data,ordered,positions,branches,width,view,selected,mobile,badgeHeight,branchWidth,showMessages,messageX,messageWidth,reverse,info,displayNames,pageVisible]);
  function badgeAt(clientX:number,clientY:number){const el=container.current!,rect=el.getBoundingClientRect(),x=clientX-rect.left+el.scrollLeft,y=clientY-rect.top+el.scrollTop;return badgeHits.current.find(label=>x>=label.x&&x<=label.x+label.width&&y>=label.y&&y<=label.y+label.height);}
  function pick(clientX:number,clientY:number){
   const el=container.current!,rect=el.getBoundingClientRect();const x=clientX-rect.left+el.scrollLeft,y=clientY-rect.top+el.scrollTop;
@@ -166,5 +174,5 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
   const p=positions.get(c.sha)!;
   return Math.abs(y-p.y)<=22&&(Math.abs(x-p.x)<=22||icons(c.sha,p.x).some(icon=>Math.abs(x-icon.x)<=9)||(showMessages&&x>=messageX&&x<=messageX+messageWidth))?c:undefined;
  }
- return <div className="graph-scroll fit-width" ref={container} tabIndex={0} aria-label={label||"Commit graph. Scroll to load more history."} onWheelCapture={stopFollowing} onTouchStartCapture={stopFollowing} onPointerDownCapture={stopFollowing} onKeyDownCapture={event=>{if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))stopFollowing();}} onScroll={e=>{const top=e.currentTarget.scrollTop;scrollTop.current=top;if(followingLatest.current!==null&&top===followingLatest.current)followingLatest.current=null;captureFrontiers.current();setView(v=>v.top===top?v:{...v,top});}}><div style={{height,width:'100%',position:'relative'}}><canvas aria-label={`Commit history graph. Tap a node${showMessages?' or message':''} to inspect it.`} ref={canvas} style={{position:'sticky',top:0,width:'100%',height:view.height,display:'block'}} onClick={e=>{const c=pick(e.clientX,e.clientY);if(c)onSelect(c);}} onMouseMove={e=>{const badge=badgeAt(e.clientX,e.clientY);if(badge){e.currentTarget.title=badge.names.join(' · ');return;}const c=pick(e.clientX,e.clientY);if(!c){e.currentTarget.title='';return;}const extra=info?.get(c.sha),p=positions.get(c.sha)!,el=container.current!,x=e.clientX-el.getBoundingClientRect().left+el.scrollLeft;const icon=icons(c.sha,p.x).find(icon=>Math.abs(x-icon.x)<=9);e.currentTarget.title=[`${c.sha.slice(0,7)} · ${emojify(c.commit.message.split('\n')[0])}`,icon?.title,extra?.actions&&['running','queued'].includes(extra.actions.state)?`${actionText(extra.actions.state)}${extra.actions.ratio!==null?` · ${extra.actions.done}/${extra.actions.total} jobs`:''}`:'',...(extra?.runs||[]).map(run=>`${run.name||'Workflow'} · ${runStatus(run).label} · Elapsed ${runElapsed(run)||'—'} · Attempt ${attempt(run)}`)].filter(Boolean).join('\n');}}/>{pendingActions.map(commit=>{const point=positions.get(commit.sha)!,radius=commit.sha===selected?10.5:7.5;return <span key={commit.sha} className="actions-pending-ring" role="img" aria-label="GitHub Actions in progress; job counts not confirmed" style={{left:point.x-radius-1,top:point.y-radius-1,width:radius*2+2,height:radius*2+2}}/>;})}</div></div>;
+ return <div className="graph-scroll fit-width" ref={container} tabIndex={0} aria-label={label||"Commit graph. Scroll to load more history."} onWheelCapture={stopFollowing} onTouchStartCapture={stopFollowing} onPointerDownCapture={stopFollowing} onKeyDownCapture={event=>{if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))stopFollowing();}} onScroll={e=>{const top=e.currentTarget.scrollTop;scrollTop.current=top;if(followingLatest.current!==null&&top===followingLatest.current)followingLatest.current=null;captureFrontiers.current();setView(v=>v.top===top?v:{...v,top});}}><div style={{height,width:'100%',position:'relative'}}><canvas aria-label={`Commit history graph. Tap a node${showMessages?' or message':''} to inspect it.`} ref={canvas} style={{position:'sticky',top:0,width:'100%',height:view.height,display:'block'}} onClick={e=>{if(badgeAt(e.clientX,e.clientY))return;const c=pick(e.clientX,e.clientY);if(c)onSelect(c);}} onMouseMove={e=>{const badge=badgeAt(e.clientX,e.clientY);if(badge){e.currentTarget.title=badge.names.join(' · ');return;}const c=pick(e.clientX,e.clientY);if(!c){e.currentTarget.title='';return;}const extra=info?.get(c.sha),p=positions.get(c.sha)!,el=container.current!,x=e.clientX-el.getBoundingClientRect().left+el.scrollLeft;const icon=icons(c.sha,p.x).find(icon=>Math.abs(x-icon.x)<=9);e.currentTarget.title=[`${c.sha.slice(0,7)} · ${emojify(c.commit.message.split('\n')[0])}`,icon?.title,extra?.actions&&['running','queued'].includes(extra.actions.state)?`${actionText(extra.actions.state)}${extra.actions.ratio!==null?` · ${extra.actions.done}/${extra.actions.total} jobs`:''}`:'',...(extra?.runs||[]).map(run=>`${run.name||'Workflow'} · ${runStatus(run).label} · Elapsed ${runElapsed(run)||'—'} · Attempt ${attempt(run)}`)].filter(Boolean).join('\n');}}/>{pendingActions.map(commit=>{const point=positions.get(commit.sha)!,radius=commit.sha===selected?10.5:7.5;return <span key={commit.sha} className="actions-pending-ring" role="img" aria-label="GitHub Actions in progress; job counts not confirmed" style={{left:point.x-radius-1,top:point.y-radius-1,width:radius*2+2,height:radius*2+2}}/>;})}</div></div>;
 }
