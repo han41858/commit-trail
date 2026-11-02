@@ -2,7 +2,40 @@ import {test} from 'node:test';import assert from 'node:assert/strict';
 import {actionSummary,runElapsed,actionsElapsed,runStatus,completedJobCount,type ActionRun,type ActionJob,type JobInfo} from './CommitInfo';
 const run=(id:number,status='completed',conclusion:string|null='success',extra:Partial<ActionRun>={}):ActionRun=>({id,workflow_id:id,head_sha:'sha',name:'Build',status,conclusion,run_attempt:1,updated_at:'2026-10-30T00:00:00Z',html_url:'https://github.com/a/b/actions/runs/'+id,...extra});
 const detail=(id:number,statuses:string[],extra:Partial<JobInfo>={}):JobInfo=>({attempt:1,jobs:statuses.map((status,index)=>({id:id*100+index,run_id:id,status,conclusion:status==='completed'?'success':null})),total:statuses.length,complete:true,next:0,...extra});
-for(const [conclusions,expected] of [[['success'],'success'],[['failure'],'failure'],[['timed_out'],'failure'],[['startup_failure'],'failure'],[['cancelled'],'cancelled'],[['success','cancelled'],'skipped'],[['success','skipped'],'skipped'],[['skipped'],'skipped'],[['neutral'],'skipped'],[['action_required'],'skipped'],[['stale'],'skipped'],[['future_result'],'skipped']] as const)test(`Actions final result ${conclusions.join('/')} is ${expected}`,()=>{assert.equal(actionSummary(conclusions.map((c,i)=>run(i,'completed',c)),new Map())?.state,expected);});
+for(const [conclusions,expected] of [
+ [['success'],'success'],[['success','success'],'success'],[['success','skipped'],'success'],[['success','skipped','skipped'],'success'],[['success','success','skipped','skipped'],'success'],
+ [['failure'],'failure'],[['timed_out'],'failure'],[['startup_failure'],'failure'],[['success','failure'],'failure'],[['success','skipped','failure'],'failure'],[['success','timed_out'],'failure'],[['success','startup_failure'],'failure'],
+ [['cancelled'],'cancelled'],[['cancelled','cancelled'],'cancelled'],[['success','cancelled'],'skipped'],[['skipped'],'skipped'],[['skipped','skipped'],'skipped'],
+ [['neutral'],'skipped'],[['action_required'],'skipped'],[['stale'],'skipped'],[['future_result'],'skipped'],[['success','neutral'],'skipped'],[['success','action_required'],'skipped'],[['success','stale'],'skipped'],[['success','future_result'],'skipped'],[['success',null],'skipped'],
+] as const)test(`Actions final result ${conclusions.map(c=>c??'missing').join('/')} is ${expected}`,()=>{assert.equal(actionSummary(conclusions.map((c,i)=>run(i,'completed',c)),new Map())?.state,expected);});
+test('success with skipped workflows preserves individual results and completed job totals',()=>{
+ const runs=[run(1),run(2,'completed','skipped')],before=JSON.stringify(runs);
+ for(const statuses of [[],['completed','completed']]){
+  const skipped=detail(2,statuses);skipped.jobs.forEach(job=>job.conclusion='skipped');
+  const jobs=new Map([[1,detail(1,['completed','completed','completed'])],[2,skipped]]),snapshot=JSON.stringify([...jobs]);
+  assert.deepEqual(actionSummary(runs,jobs),{state:'success',done:3+statuses.length,total:3+statuses.length,ratio:1});
+  assert.deepEqual(completedJobCount(runs[1],jobs),{completed:statuses.length,total:statuses.length});
+  assert.deepEqual(runStatus(runs[1]),{icon:'skipped',label:'Skipped'});
+  assert.equal(JSON.stringify(runs),before);assert.equal(JSON.stringify([...jobs]),snapshot);
+ }
+ assert.deepEqual(actionSummary(runs,new Map()),{state:'success',done:null,total:null,ratio:null});
+});
+test('success and skipped never override unfinished workflows or the existing active-work priority',()=>{
+ const completed=[run(1),run(2,'completed','skipped')];
+ for(const status of ['in_progress','queued','waiting','pending','requested']){
+  const active=run(3,status,'success'),state=status==='in_progress'?'running':'queued';
+  for(const extra of [[],[run(4,'completed','failure')]])assert.equal(actionSummary([...completed,active,...extra],new Map())?.state,state);
+ }
+ for(const status of ['future_status',null])assert.equal(actionSummary([...completed,run(3,'completed','skipped',{status})],new Map())?.state,'skipped');
+ assert.equal(actionSummary([...completed,run(3,'queued',null),run(4,'in_progress',null)],new Map())?.state,'running');
+});
+test('success with skipped uses only the latest workflow attempt and keeps rerun progress unconfirmed',()=>{
+ const old=run(1,'completed','failure'),latest=run(1,'completed','success',{run_attempt:2}),skipped=run(2,'completed','skipped');
+ const jobs=new Map([[1,detail(1,['completed','completed'],{attempt:2})],[2,detail(2,[])]]);
+ assert.deepEqual(actionSummary([old,latest,skipped],jobs),{state:'success',done:2,total:2,ratio:1});
+ assert.deepEqual(actionSummary([latest,skipped,old],jobs),{state:'success',done:2,total:2,ratio:1});
+ assert.deepEqual(actionSummary([old,latest,skipped,run(1,'in_progress',null,{run_attempt:3})],jobs),{state:'running',done:null,total:null,ratio:null});
+});
 test('known failures remain red beside skipped or unknown results while active work retains precedence',()=>{
  for(const failure of ['failure','timed_out','startup_failure']){
   for(const other of [run(2,'completed','skipped'),run(2,'completed','neutral'),run(2,'future_status',null)])assert.equal(actionSummary([run(1,'completed',failure),other],new Map())?.state,'failure');
