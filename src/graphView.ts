@@ -1,5 +1,11 @@
 import type {HistoryFrontier} from './model';
+import type {CommitInfo} from './CommitInfo';
 export const GRAPH_ORIGIN=48,LANE_SPACING=34;
+export function commitVersionIcons(info:Pick<CommitInfo,'tags'|'releases'>|undefined,x:number){
+ if(info?.releases.length)return [{text:'🚀',x:x-20,title:info.releases.map(release=>release.name||release.tag_name).join(' · ')}];
+ if(info?.tags.length)return [{text:'🏷️',x:x-20,title:info.tags.map(tag=>tag.name).join(' · ')}];
+ return [];
+}
 export function visibleHistorySources(frontiers:readonly HistoryFrontier[],positions:ReadonlyMap<string,{x:number;y:number}>,view:{left:number;top:number;width:number;height:number;inset:number},pending:readonly string[]=[]){
  if(view.width<=0||view.height<=view.inset)return [];
  const sources=new Set<string>(),excluded=new Set(pending);

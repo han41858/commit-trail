@@ -8,7 +8,7 @@ import {monthMarkers} from './monthMarkers';
 import {emojify} from './emoji';
 import {scrollPosition,scrollAnchor} from './scrollPosition';
 import {actionText,attempt,runStatus,runElapsed,type CommitInfo} from './CommitInfo';
-import {graphFrame,branchDisplayNames,branchLabelText,visibleHistorySources,GRAPH_ORIGIN} from './graphView';
+import {graphFrame,branchDisplayNames,branchLabelText,commitVersionIcons,visibleHistorySources,GRAPH_ORIGIN} from './graphView';
 type Props={active?:boolean;containerResponsive?:boolean;label?:string;theme:string;commits:Commit[];branches:Branch[];branch:string;reverse:boolean;onSelect:(c:Commit)=>void;selected:string;hasMore:boolean;loading:boolean;onLoadMore:(sources?:string[])=>void;frontiers:HistoryFrontier[];pendingSources:string[];topInset:number;baseHead?:string;refreshVersion?:number;info?:ReadonlyMap<string,CommitInfo>;onVisible?:(shas:string[])=>void};
 export function Graph({active=true,containerResponsive=false,label,theme,commits,branches,branch,reverse,onSelect,selected,hasMore,loading,onLoadMore,frontiers,pendingSources,topInset,baseHead,refreshVersion=0,info,onVisible}:Props){
  const container=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),prior=useRef(new Map<string,number>());
@@ -81,7 +81,7 @@ export function Graph({active=true,containerResponsive=false,label,theme,commits
   if(!onVisible||!pageVisible)return;const first=Math.max(0,Math.ceil((view.top-20)/ROW)),last=Math.min(ordered.length,Math.floor((view.top+view.height-48-padding)/ROW)+1);
   const el=container.current!;onVisible(ordered.slice(first,last).filter(c=>{const x=positions.get(c.sha)!.x;return x>=el.scrollLeft-20&&x<=el.scrollLeft+view.width+20;}).map(c=>c.sha));
  },[ordered,positions,padding,view,onVisible,pageVisible]);
- const icons=(sha:string,x:number)=>{const data=info?.get(sha),items:{text:string;x:number;title:string}[]=[];if(data?.tags.length)items.push({text:'🏷️',x:0,title:data.tags.map(tag=>tag.name).join(' · ')});if(data?.releases.length)items.push({text:'🚀',x:0,title:data.releases.map(release=>release.name||release.tag_name).join(' · ')});items.forEach((icon,index)=>{icon.x=x-20-(items.length-1-index)*19;});return items;};
+ const icons=(sha:string,x:number)=>commitVersionIcons(info?.get(sha),x);
  useLayoutEffect(()=>{
   captureFrontiers.current=()=>{
    if(!hasMore||!pageVisible||followingLatest.current!==null)return;
