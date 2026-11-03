@@ -39,7 +39,7 @@
 
 ![GitStream Split view showing GitStream, AI Template, Angular and VS Code in four desktop columns](docs/images/split-desktop.png)
 
-Choose **Split view** to select and reorder repositories. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
+Choose **Split view** to select repositories. Drag a header handle to reorder columns; on touch screens, press and hold the handle first. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
 
 <table>
   <tr><th>Portrait</th><th>Landscape</th></tr>

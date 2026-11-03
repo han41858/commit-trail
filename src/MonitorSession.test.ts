@@ -428,6 +428,12 @@ test('one repository rate limit pauses all 32 repositories until the shared dead
       result = await group.refreshAll('auto');
     assert.ok(result.retryAt! > Date.now());
     assert.equal(paths.length, before);
+    const limited = group.getSnapshot();
+    assert.equal(group.reorder(limited.entries.map((entry) => entry.repository).reverse()), true);
+    assert.equal(group.getSnapshot().retryAt, limited.retryAt);
+    assert.equal(group.getSnapshot().running, limited.running);
+    assert.equal(group.canRequest(), false);
+    assert.equal(paths.length, before);
     const now = Date.now;
     try {
       const next = result.retryAt! + 1;
@@ -519,6 +525,75 @@ test('32 initial loads complete independently, including a failed repository and
     await until(() => !group.getSnapshot().running.size);
     assert.ok(entries.every((entry) => entry.history.getSnapshot().commits.length === 1));
     assert.equal(paths.filter((path) => path === `/repos/${names[12]}`).length, 2);
+  });
+});
+test('reordering all 32 repositories preserves model, commit and branch identity without API work', async () => {
+  await using(async ({ group, paths }) => {
+    const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
+    group.start(names, '');
+    await until(() => !group.getSnapshot().running.size);
+    const before = group.getSnapshot();
+    const snapshots = new Map(
+      before.entries.map((entry) => [
+        entry.repository,
+        {
+          entry,
+          history: entry.history.getSnapshot(),
+          info: entry.info.getSnapshot(),
+        },
+      ]),
+    );
+    const count = paths.length;
+    assert.equal(group.reorder(names), true);
+    assert.equal(group.getSnapshot(), before);
+    for (const invalid of [[], ['unknown/repo', ...names.slice(1)]]) {
+      assert.equal(group.reorder(invalid), false);
+      assert.equal(group.getSnapshot(), before);
+    }
+    const reordered = [...names].reverse();
+    assert.equal(group.reorder(reordered), true);
+    assert.deepEqual(
+      group.getSnapshot().entries.map((entry) => entry.repository),
+      reordered,
+    );
+    for (const entry of group.getSnapshot().entries) {
+      const old = snapshots.get(entry.repository)!;
+      assert.equal(entry, old.entry);
+      assert.equal(entry.history.getSnapshot(), old.history);
+      assert.equal(entry.info.getSnapshot(), old.info);
+    }
+    assert.equal(paths.length, count);
+    assert.equal(group.getSnapshot().settled, before.settled);
+    assert.equal(group.getSnapshot().running, before.running);
+    group.stop();
+    assert.equal(group.reorder(reordered), false);
+  });
+});
+test('a pending refresh survives reordering and is still skipped on the next dispatch', async () => {
+  await using(async ({ group, holds, paths, aborted }) => {
+    group.start(['a/one', 'b/two'], '');
+    await until(() => !group.getSnapshot().running.size);
+    const slow = deferred<Response>();
+    holds.set('/repos/b/two', slow);
+    await group.refreshAll('auto');
+    await until(() => group.getSnapshot().running.size === 1);
+    const running = group.getSnapshot().running;
+    const count = paths.length;
+    const cancellations = aborted.length;
+    assert.equal(group.reorder(['b/two', 'a/one']), true);
+    assert.equal(group.getSnapshot().running, running);
+    assert.equal(paths.length, count);
+    assert.equal(aborted.length, cancellations);
+    await group.refreshAll('auto');
+    await until(() => paths.filter((path) => path === '/repos/a/one').length === 3);
+    assert.equal(paths.filter((path) => path === '/repos/b/two').length, 2);
+    holds.delete('/repos/b/two');
+    slow.resolve(response({ default_branch: 'main', private: false }));
+    await until(() => !group.getSnapshot().running.size);
+    assert.deepEqual(
+      group.getSnapshot().entries.map((entry) => entry.repository),
+      ['b/two', 'a/one'],
+    );
   });
 });
 test('exiting preserves the primary model and changing PAT releases the old shared backoff', async () => {
