@@ -2,18 +2,18 @@ import type {Commit} from './model';
 import {emojify} from './emoji';
 import {CommitExtras} from './CommitExtras';
 import type {InfoSnapshot} from './CommitInfoStore';
-import {useCallback,useEffect,useId,useRef,type CSSProperties,type RefObject} from 'react';
+import {useCallback,useEffect,useId,useLayoutEffect,useRef,type CSSProperties,type RefObject} from 'react';
 
 export function CommitDetails({commit,onClose,info,onMore,panelRef,style,repository}:{commit:Commit|null;onClose:()=>void;info?:InfoSnapshot;onMore?:(sha:string)=>Promise<unknown>;panelRef?:RefObject<HTMLElement|null>;style?:CSSProperties;repository?:string}){
- const ownRef=useRef<HTMLElement>(null),container=panelRef||ownRef,pending=useRef(false),autoLoaded=useRef(''),touchY=useRef<number|null>(null);
+ const ownRef=useRef<HTMLElement>(null),container=panelRef||ownRef,content=useRef<HTMLDivElement>(null),pending=useRef(false),autoLoaded=useRef(''),touchY=useRef<number|null>(null);
  const repositoryId=useId();
  const sha=commit?.sha||'';
  const loadMore=useCallback(()=>{
-  const el=container.current;
+  const el=content.current;
   if(!sha||!info?.more||info.busy||info.retryAt>Date.now()||!onMore||!el||pending.current||el.scrollHeight-el.scrollTop-el.clientHeight>64)return;
   pending.current=true;void onMore(sha).finally(()=>{pending.current=false;});
- },[sha,info,onMore,container]);
- useEffect(()=>{if(container.current)container.current.scrollTop=0;autoLoaded.current='';},[sha,info?.repo,container]);
+ },[sha,info,onMore]);
+ useLayoutEffect(()=>{if(content.current)content.current.scrollTop=0;autoLoaded.current='';},[sha,info?.repo]);
  useEffect(()=>{
   if(!sha||!info||info.selected!==sha||info.busy)return;
   const key=`${info.repo}:${sha}`;if(autoLoaded.current===key)return;autoLoaded.current=key;
@@ -22,8 +22,8 @@ export function CommitDetails({commit,onClose,info,onMore,panelRef,style,reposit
  },[sha,info,loadMore]);
  const authored=commit?.commit.author?.date;
  const date=authored&&Number.isFinite(Date.parse(authored))?new Date(authored):null;
- const body=commit?.commit.message.split('\n').slice(1).join('\n')||'';
- return <aside className="details floating-panel" ref={container} style={style} tabIndex={0} aria-label="Commit details" aria-describedby={repository?repositoryId:undefined} onScroll={loadMore} onWheel={event=>{if(event.deltaY>0)loadMore();}} onTouchStart={event=>{touchY.current=event.touches[0]?.clientY??null;}} onTouchMove={event=>{const y=event.touches[0]?.clientY;if(y!==undefined){if(touchY.current!==null&&y<touchY.current)loadMore();touchY.current=y;}}} onKeyDown={event=>{if(event.target===container.current&&['ArrowDown','PageDown','End',' '].includes(event.key))loadMore();}}>
+ const body=(commit?.commit.message.split('\n').slice(1).join('\n')||'').replace(/^(?:[ \t]*\r?\n)+|(?:\r?\n[ \t]*)+$/g,'');
+ return <aside className="details floating-panel" ref={container} style={style} tabIndex={-1} aria-label="Commit details" aria-describedby={repository?repositoryId:undefined} onFocus={event=>{if(event.target===event.currentTarget)content.current?.focus({preventScroll:true});}}>
   {repository&&<p className="commit-repository" id={repositoryId} title={repository}>{repository}</p>}
   <div className="detail-actions">
    {commit?.html_url.startsWith('https://github.com/')&&<a className="github-button" href={commit.html_url} target="_blank" rel="noreferrer" aria-label="View commit on GitHub" title="View on GitHub">
@@ -31,6 +31,7 @@ export function CommitDetails({commit,onClose,info,onMore,panelRef,style,reposit
    </a>}
    <button className="close" aria-label="Close commit details" onClick={onClose}>×</button>
   </div>
+  <div className="detail-content" ref={content} tabIndex={0} role="region" aria-label="Commit details content" onScroll={loadMore} onWheel={event=>{if(event.deltaY>0)loadMore();}} onTouchStart={event=>{touchY.current=event.touches[0]?.clientY??null;}} onTouchMove={event=>{const y=event.touches[0]?.clientY;if(y!==undefined){if(touchY.current!==null&&y<touchY.current)loadMore();touchY.current=y;}}} onKeyDown={event=>{if(event.target===content.current&&['ArrowDown','PageDown','End',' '].includes(event.key))loadMore();}}>
   {commit?<>
    <div className="commit-meta">
     <code className="commit-sha">{commit.sha.slice(0,7)}</code>
@@ -39,5 +40,6 @@ export function CommitDetails({commit,onClose,info,onMore,panelRef,style,reposit
    <h2>{emojify(commit.commit.message.split('\n')[0])}{commit.commit.author?.name&&<> <span className="commit-author">by {commit.commit.author.name}</span></>}</h2>
    {body.trim()&&<pre>{emojify(body)}</pre>}{info&&<CommitExtras sha={commit.sha} info={info}/>}
   </>:<p>Tap a node to inspect a commit.</p>}
+  </div>
  </aside>;
 }
