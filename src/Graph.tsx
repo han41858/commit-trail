@@ -480,11 +480,13 @@ export function Graph({
     ctx.globalAlpha = 1;
     ctx.font = `${mobile ? 10 : 11}px system-ui`;
     const labelRight = left + (showMessages ? messageX : branchWidth),
+      nodeClearance = 15,
       maxTextWidth =
         Math.min(mobile ? Math.min(116, view.width * 0.36) : 190, branchWidth - 16) - 12,
       cache = new Map<string, { text: string; width: number }>();
     const badge = (name: string, x: number) => {
-      const available = Math.max(x - left - 20, labelRight - x - 12) - 12,
+      // Match the 12px selected-ring obstacle plus its 3px gap and 8px left inset.
+      const available = Math.max(x - left - 8 - nodeClearance, labelRight - x - nodeClearance) - 12,
         limitWidth = Math.min(maxTextWidth, available),
         key = `${name}\0${limitWidth}`,
         old = cache.get(key);

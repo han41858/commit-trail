@@ -318,14 +318,16 @@ export function visibleBranchLabels(
       placed = true;
       break;
     }
-    // A short path cannot offer another anchor; move its badges, not the DAG.
+    // Keep short-path fallbacks nearby so a badge cannot name an unrelated older row.
     if (!placed && fallback) {
       const width = measure(names, fallback);
       const ys = [
         top + 6,
         ...barriers().flatMap((rect) => [rect.y + rect.height, rect.y - stackHeight]),
       ]
-        .filter((y) => y >= top + 6 && y + stackHeight <= bottom)
+        .filter(
+          (y) => y >= top + 6 && y + stackHeight <= bottom && Math.abs(y - fallback!.boxY!) <= ROW,
+        )
         .sort((a, b) => Math.abs(a - fallback!.boxY!) - Math.abs(b - fallback!.boxY!));
       for (const y of ys) {
         const position = beside({ x: fallback.boxX!, y, width, height: stackHeight });
