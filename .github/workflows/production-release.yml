@@ -1,0 +1,18 @@
+name: Production release
+
+# Keep this entrypoint on main only. Do not copy it into dev or feature branches.
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+  deployments: read
+  statuses: read
+
+jobs:
+  release:
+    permissions:
+      contents: write
+      deployments: read
+      statuses: read
+    uses: ./.github/workflows/release.yml
