@@ -1,7 +1,8 @@
 import { lowercaseRepoInput, parseRepo } from './model';
 
-export const MONITOR_LIMIT = 4;
+export const MONITOR_LIMIT = 32;
 export const MONITOR_REPOSITORIES_KEY = 'gitstream.monitor-repositories';
+export const MONITOR_PUBLIC_REPOSITORIES_KEY = 'gitstream.monitor-public-repositories';
 type StorageAccess = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export function monitorRepository(value: string) {
   return parseRepo(lowercaseRepoInput(value));
@@ -36,11 +37,12 @@ type Options = {
   allowPrivate: () => boolean;
   canWrite: () => boolean;
 };
-// Only normalized names are saved. Known public visits supply the privacy boundary;
-// unclassified names are conservatively removed when the applied PAT changes.
+// Only normalized names are saved. Confirmed public selections outlive the recent
+// visits cap; unclassified names are still removed when the applied PAT changes.
 export class MonitorRepositories {
   private storage?: StorageAccess;
   private names: string[] = [];
+  private publicNames = new Set<string>();
   private snapshot: readonly string[] = [];
   private listeners = new Set<() => void>();
   constructor(private readonly options: Options) {
@@ -58,8 +60,11 @@ export class MonitorRepositories {
     };
   };
   getSnapshot = () => this.snapshot;
+  private confirmedPublic() {
+    return new Set([...this.publicNames, ...this.options.publicRepositories()]);
+  }
   private allowed() {
-    const publicNames = new Set(this.options.publicRepositories());
+    const publicNames = this.confirmedPublic();
     return this.options.allowPrivate()
       ? this.names
       : this.names.filter((name) => publicNames.has(name));
@@ -76,6 +81,11 @@ export class MonitorRepositories {
         const names = this.allowed();
         if (names.length) this.storage?.setItem(MONITOR_REPOSITORIES_KEY, JSON.stringify(names));
         else this.storage?.removeItem(MONITOR_REPOSITORIES_KEY);
+        const publicNames = this.confirmedPublic();
+        const confirmed = names.filter((name) => publicNames.has(name));
+        if (confirmed.length)
+          this.storage?.setItem(MONITOR_PUBLIC_REPOSITORIES_KEY, JSON.stringify(confirmed));
+        else this.storage?.removeItem(MONITOR_PUBLIC_REPOSITORIES_KEY);
       } catch {
         /* Keep the selection in this tab. */
       }
@@ -91,6 +101,15 @@ export class MonitorRepositories {
         decoded = [];
       }
       this.names = normalizeMonitorRepositories(decoded);
+      let confirmed: unknown;
+      try {
+        confirmed = JSON.parse(this.storage?.getItem(MONITOR_PUBLIC_REPOSITORIES_KEY) || '[]');
+      } catch {
+        confirmed = [];
+      }
+      this.publicNames = new Set(
+        normalizeMonitorRepositories(confirmed).filter((name) => this.names.includes(name)),
+      );
       if (raw && raw !== JSON.stringify(this.names) && this.options.canWrite()) this.reconcile();
       else this.publish();
     } catch {
@@ -102,9 +121,24 @@ export class MonitorRepositories {
     this.names = normalizeMonitorRepositories(names);
     this.reconcile();
   };
+  repositoryMetadata = (repository: string, isPrivate: boolean) => {
+    if (typeof isPrivate !== 'boolean') return;
+    try {
+      repository = monitorRepository(repository);
+    } catch {
+      return;
+    }
+    this.publicNames.delete(repository);
+    if (!isPrivate) this.publicNames.add(repository);
+    // Retain selected classifications plus the latest possible incoming selection.
+    const unselected = [...this.publicNames].filter((name) => !this.names.includes(name));
+    for (const name of unselected.slice(0, Math.max(0, unselected.length - MONITOR_LIMIT)))
+      this.publicNames.delete(name);
+    this.reconcile();
+  };
   authenticationChanged = (previous: string, next: string) => {
     if (previous === next && this.options.canWrite()) return;
-    const publicNames = new Set(this.options.publicRepositories());
+    const publicNames = this.confirmedPublic();
     this.names = this.names.filter((name) => publicNames.has(name));
     this.reconcile();
   };

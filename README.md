@@ -25,7 +25,7 @@
 
 - **Follow branches and merges** in an interactive, vertical Git graph. Branches sharing a commit appear as separate, vertically stacked name badges.
 - **Stay current** with automatic updates that preserve your place while reading.
-- **Split view** puts 1–4 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
+- **Split view** puts 1–32 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
 - **See the context** with tags, releases and GitHub Actions status beside commits.
 - **Explore public and private repositories**, with optional GitHub token access.
 - **Use it anywhere** on desktop or mobile, or install it as a PWA.
