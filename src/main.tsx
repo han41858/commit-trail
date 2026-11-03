@@ -939,9 +939,7 @@ function App() {
       <DebugRoot developer={import.meta.env.DEV} />
       <PwaUpdatePrompt />
       <footer className="graph-status" aria-live="polite">
-        <span>
-          <i /> {state.commits.length.toLocaleString()} commits
-        </span>
+        <span>{state.commits.length.toLocaleString()} commits</span>
         {state.busy || activeRequests > 0 || refreshState.running ? (
           <span
             className="history-loading"
