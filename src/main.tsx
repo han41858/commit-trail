@@ -282,30 +282,10 @@ function App() {
   useEffect(() => {
     const primarySettled =
       !state.busy && (!state.meta || (extras.repo === state.repo && !extras.busy));
-    const monitorSettled =
-      monitorState.entries.length > 0 &&
-      !monitorState.running.size &&
-      monitorState.entries.every((entry) => {
-        const history = entry.history.getSnapshot(),
-          metadata = entry.info.getSnapshot();
-        return (
-          history.repo === entry.repository &&
-          !history.busy &&
-          !history.pendingSources.length &&
-          (!history.meta ||
-            (!metadata.busy && (!entry.primary || metadata.repo === entry.repository)))
-        );
-      });
+    // Child layout effects can accept more visible history before this effect runs.
+    const monitorSettled = monitor.getSnapshot().settled;
     if (monitorState.active ? monitorSettled : state.meta && primarySettled) loop.loaded();
-  }, [
-    loop,
-    state.meta,
-    state.busy,
-    extras,
-    monitorState.active,
-    monitorState.running,
-    monitorState.entries,
-  ]);
+  }, [loop, monitor, state.meta, state.busy, extras, monitorState.active, monitorState.settled]);
   useEffect(() => {
     if (extras.repo === state.repo) {
       if (selected && monitor.canRequest()) void info.inspect(selected.sha);
