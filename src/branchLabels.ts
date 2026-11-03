@@ -205,25 +205,24 @@ export function visibleBranchLabels(
     width: (point.radius + 3) * 2,
     height: (point.radius + 3) * 2,
   }));
-  const barriers = () => [
-    ...nodes,
-    ...rects.map((rect) => ({
+  const labelBarriers = () =>
+    rects.map((rect) => ({
       x: rect.x - 4,
       y: rect.y - gap,
       width: rect.width + 8,
       height: rect.height + gap * 2,
-    })),
-  ];
+    }));
+  const barriers = () => [...nodes, ...labelBarriers()];
   const intersects = (a: (typeof rects)[number], b: (typeof rects)[number]) =>
     a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
   // Prefer clear space farther right before the left side or another path anchor.
-  const beside = (rect: (typeof rects)[number]) => {
-    const nearby = barriers().filter(
+  const beside = (rect: (typeof rects)[number], candidates = nodes, blockers = barriers()) => {
+    const nearby = blockers.filter(
       (other) => rect.y < other.y + other.height && rect.y + rect.height > other.y,
     );
     const xs = [
       rect.x,
-      ...nodes
+      ...candidates
         .filter((other) => rect.y < other.y + other.height && rect.y + rect.height > other.y)
         .flatMap((other) => [other.x + other.width, other.x - rect.width]),
     ].sort(
@@ -240,7 +239,17 @@ export function visibleBranchLabels(
     );
     return x === undefined ? undefined : { ...rect, x };
   };
-  for (const { track, names } of sharedHeadTracks(tracks)) {
+  // Keep the caller's leading/base group first, then reserve scarce space for
+  // wider side badges before short names that can still fit on either side.
+  const groups = sharedHeadTracks(tracks),
+    first = groups[0];
+  groups.sort(
+    (a, b) =>
+      Number(b === first) - Number(a === first) ||
+      measure(b.names, b.track.points[0]) - measure(a.names, a.track.points[0]) ||
+      b.names.length - a.names.length,
+  );
+  for (const { track, names } of groups) {
     const stackHeight = names.length * (height + gap) - gap;
     const box = (point: Point) => {
       const width = measure(names, point),
@@ -329,13 +338,20 @@ export function visibleBranchLabels(
           (y) => y >= top + 6 && y + stackHeight <= bottom && Math.abs(y - fallback!.boxY!) <= ROW,
         )
         .sort((a, b) => Math.abs(a - fallback!.boxY!) - Math.abs(b - fallback!.boxY!));
-      for (const y of ys) {
-        const position = beside({ x: fallback.boxX!, y, width, height: stackHeight });
-        if (position) {
-          fallback.boxX = position.x;
-          fallback.boxY = y;
-          break;
+      let position: (typeof rects)[number] | undefined;
+      // Preserve existing node-clear placement first, then consider badge edges.
+      // If no nearby position clears nodes, still keep branch names separate.
+      for (const blockers of [undefined, barriers(), labelBarriers()]) {
+        for (const y of ys) {
+          const rect = { x: fallback.boxX!, y, width, height: stackHeight };
+          position = blockers ? beside(rect, blockers, blockers) : beside(rect);
+          if (position) break;
         }
+        if (position) break;
+      }
+      if (position) {
+        fallback.boxX = position.x;
+        fallback.boxY = position.y;
       }
       place(fallback);
     }
