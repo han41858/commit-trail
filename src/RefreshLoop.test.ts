@@ -66,3 +66,39 @@ test('scope changes and stop discard late deferred completions as well as direct
   assert.equal(loop.getSnapshot().lastCompletedAt,null);assert.equal(loop.getSnapshot().error,'');assert.equal(loop.getSnapshot().running,false);
  }
 });
+test('Split view waits for its initial load before scheduling a full first interval',async()=>{
+ const time=timer();let calls=0;
+ const loop=new RefreshLoop(async()=>{calls++;return {};},()=>true,time.clock);
+ loop.configure('monitor:a|b',true,60000,true);
+ assert.equal(loop.getSnapshot().waitingForInitialLoad,true);assert.equal(loop.getSnapshot().nextAt,0);assert.equal(time.tasks.size,0);
+ await time.advance(180000);await loop.refresh('auto');assert.equal(calls,0);
+ loop.visibilityChanged();assert.equal(time.tasks.size,0);
+ loop.loaded();assert.equal(loop.getSnapshot().waitingForInitialLoad,false);assert.equal(loop.getSnapshot().nextAt,241000);
+ await time.advance(59999);assert.equal(calls,0);await time.advance(1);assert.equal(calls,1);loop.stop();
+});
+test('changing interval or toggling automatic refresh during initial load does not start a timer',async()=>{
+ const time=timer(),loop=new RefreshLoop(async()=>({}),()=>true,time.clock);
+ loop.configure('monitor',true,60000,true);await time.advance(20000);loop.configure('monitor',false,300000,true);loop.configure('monitor',true,30000,true);
+ assert.equal(time.tasks.size,0);assert.equal(loop.getSnapshot().nextAt,0);
+ loop.loaded();assert.equal(loop.getSnapshot().nextAt,51000);assert.equal(time.tasks.size,1);loop.stop();
+});
+test('manual work during initial load cannot arm automatic polling before initial settlement',async()=>{
+ const time=timer();let finish!:(value:boolean)=>void;
+ const completion=new Promise<boolean>(resolve=>{finish=resolve;});
+ const loop=new RefreshLoop(async()=>({completion}),()=>true,time.clock);loop.configure('monitor',true,60000,true);
+ await loop.refresh();loop.loaded();assert.equal(loop.getSnapshot().waitingForInitialLoad,true);assert.equal(loop.getSnapshot().nextAt,0);
+ await time.advance(5000);finish(true);await flush();assert.equal(time.tasks.size,0);
+ loop.loaded();const next=loop.getSnapshot().nextAt;assert.equal(next,66000);await time.advance(5000);loop.loaded();assert.equal(loop.getSnapshot().nextAt,next);loop.stop();
+});
+test('a stale automatic callback rechecks the updated deadline and enabled state',async()=>{
+ const time=timer();let calls=0;const loop=new RefreshLoop(async()=>{calls++;return {};},()=>true,time.clock);
+ loop.configure('monitor',true,60000);loop.loaded();const stale=[...time.tasks.values()][0].fn;
+ await time.advance(10000);loop.configure('monitor',true,300000);stale();await flush();assert.equal(calls,0);assert.equal(time.tasks.size,1);
+ loop.configure('monitor',false,300000);stale();await flush();assert.equal(calls,0);assert.equal(time.tasks.size,0);loop.stop();
+});
+test('a new monitor scope waits again and initial errors do not shorten its next interval',async()=>{
+ const time=timer(),loop=new RefreshLoop(async()=>({error:'API failed'}),()=>true,time.clock);
+ loop.configure('first',true,60000,true);loop.loaded();await loop.refresh();loop.configure('second',true,60000,true);
+ assert.equal(loop.getSnapshot().waitingForInitialLoad,true);assert.equal(time.tasks.size,0);
+ await time.advance(4000);loop.loaded();assert.equal(loop.getSnapshot().nextAt,65000);loop.stop();
+});

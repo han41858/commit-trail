@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {refreshProgress} from './refreshProgress';
+import {refreshProgress,refreshAnimationStart} from './refreshProgress';
 import {RefreshLoop,type RefreshClock} from './RefreshLoop';
 
 test('the sweep follows elapsed time for all supported intervals',()=>{
@@ -29,4 +29,18 @@ test('manual completion and interval changes reset the sweep using actual loop d
  loop.configure('repo',true,300000);assert.deepEqual(refreshProgress(loop.getSnapshot().nextAt,300000,now),{duration:300000,delay:0,offset:100});
  now+=30000;assert.equal(refreshProgress(loop.getSnapshot().nextAt,300000,now).offset,90);
  loop.stop();
+});
+test('animation alignment uses the committed deadline instead of restarting after a slow render',()=>{
+ const nextAt=61000,interval=60000;
+ assert.equal(refreshAnimationStart(nextAt,interval,1000,200),200);
+ assert.equal(refreshAnimationStart(nextAt,interval,31000,30200),200);
+ assert.equal(refreshAnimationStart(nextAt,interval,61000,60200),200);
+ assert.equal(refreshAnimationStart(nextAt,interval,71000,70200),200);
+});
+test('a retry deadline beyond one interval holds the animation start in the future',()=>{
+ assert.equal(refreshAnimationStart(121000,60000,1000,200),60200);
+});
+test('unset or invalid animation deadlines cannot create a sweep',()=>{
+ for(const next of [0,NaN,Infinity])assert.equal(refreshAnimationStart(next,60000,1000,200),null);
+ assert.equal(refreshAnimationStart(61000,0,1000,200),null);assert.equal(refreshAnimationStart(61000,60000,NaN,200),null);assert.equal(refreshAnimationStart(61000,60000,1000,NaN),null);
 });
