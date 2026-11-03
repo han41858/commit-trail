@@ -45,6 +45,7 @@ import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStor
 import { TokenPermissions } from './TokenPermissions';
 import './style.css';
 import './monitor.css';
+import './analytics';
 
 const DEMO_REPO = 'han41858/git-stream';
 const BUILD_DATE = import.meta.env.DEV
