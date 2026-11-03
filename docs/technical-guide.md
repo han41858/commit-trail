@@ -19,6 +19,16 @@ Deploy `dist/` to any static host. Repository selection uses `?repo=owner%2Frepo
 
 The bottom of Options shows the running app's build time right-aligned with a `Built at` prefix, using the browser's local date format and time zone with a consistent 24-hour `HH:mm` time. Vite embeds one UTC timestamp at build time; every device displays that same instant with its local date and zero-padded 24-hour time, without AM/PM, seconds or a time zone label. It stays fixed offline or across reloads of the same build, and the menu expands within the available viewport to keep it on one line. Unusually long values use an ellipsis, with the full localized timestamp available in the time element’s tooltip. A cached PWA keeps its previous build time until an app update is applied. Rebuilding the same commit changes the timestamp and bundle hash, so it can trigger a PWA update. The development server shows `Development`.
 
+## Anonymous web analytics
+
+GitStream uses Vercel Web Analytics via the official `@vercel/analytics/react` component in Production. It collects page views only; the app does not emit custom interaction events or integrate Google Analytics. Analytics is best-effort and must not block GitHub history.
+
+The SDK's `beforeSend` filter removes URL search parameters, fragments and URL credentials from events. This includes repository and branch names in `repo` / `branch` parameters, which can be sensitive for private repositories. Only the initial page view per document is retained. Client-side changes to repository, branch, Split view order, or browser history do not create additional counted page views. No PAT, GitHub API response, commit details or selected repository names are explicitly sent as custom events.
+
+The existing `Referrer-Policy: no-referrer` and restrictive CSP are kept; the Vercel deployment must serve the analytics script and collection route from the same origin. The app does not add cookies or user identifiers. This instrumentation is not an assertion that Vercel receives no request-level metadata; review Vercel's own documentation and applicable privacy requirements before rollout.
+
+**Enable separately:** Open the Vercel project **git-stream → Analytics → Enable**, then deploy to Production. Confirm that the browser Network panel shows the Vercel Analytics script and page-view request, and that no `repo` or `branch` query values are sent. Compare counts when switching repositories and changing Split view order within the same document. Browser extensions and network filters may block analytics. Do not enable new custom events without a separate privacy review.
+
 ## Link previews and search metadata
 
 `index.html` includes the product title, description, canonical URL, Open Graph metadata and an X summary card in the initial HTML. Link-preview crawlers do not need to run JavaScript or call GitHub. Both cards reuse the existing public 512×512 PNG logo at `https://git-stream-view.vercel.app/icons/icon-512.png`; the square image matches the summary-card format.
@@ -90,6 +100,10 @@ The existing Vercel project `git-stream` is linked to `han41858/git-stream`. Kee
 - `.github/workflows/ci.yml` runs `npm ci`, `npm test`, and `npm run build` on PRs targeting `dev` or `main`, and on pushes to those branches. It reads Node.js from `.nvmrc`, caches npm downloads, and needs no additional Secrets.
 - The required GitHub Actions check is **Test and build**. The Ruleset definitions in `.github/rulesets/` retain the existing protections and add this check. `dev` also requires PR branches to be up to date, so concurrent feature PRs are tested against the latest `dev`. `main` does not require an up-to-date head, but every main-targeted PR still validates its proposed merge. Its intentional file difference from `dev` is `.github/workflows/production-release.yml`. Ordinary `dev` → `main` merges preserve this main-only addition; do not copy it back into `dev`. Application fixes made directly on `main` must still return to `dev`, excluding that entrypoint. These JSON files are definitions; changing them in Git does not update GitHub's active Rulesets automatically.
 - GitHub Actions performs validation; Vercel Git Integration performs deployment. Preview builds can run alongside CI. Main's PR checks gate merging; gating production-domain assignment on post-merge checks would require separate Vercel Deployment Checks.
+
+CI also runs on pull-request edits, including a change of target branch, so a successful main-placement check cannot be reused after retargeting to dev. Title/body edits also rerun validation; the existing concurrency rule cancels superseded runs.
+
+If a main-based feature accidentally brings `production-release.yml` into dev, remove it on dev first. For this one-time recovery, promote from the correction commit and restore the entrypoint in a main-only commit. Preserve both commits with a merge commit: the shared ancestor must omit the entrypoint so future ordinary dev → main promotions retain the main-only restoration. Do not promote the deletion directly into main or copy the restored workflow back to dev.
 
 Use the Git deployment as the normal release path. A manual CLI deployment is an explicit exception: it can create another deployment for the same SHA, and uncommitted files can differ from that SHA. Do not add a Vercel CLI deployment step or Vercel credentials to the CI workflow.
 
