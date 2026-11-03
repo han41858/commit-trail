@@ -15,6 +15,53 @@ const commit = (sha: string, parent?: string): Commit => ({
   commit: { message: sha, author: null, committer: null },
   html_url: '',
 });
+test('a blocked short branch badge stays near its path instead of moving onto older commits', () => {
+  for (const reverse of [false, true]) {
+    const point = (x: number, y: number) => ({ x, y: reverse ? 340 - y : y });
+    const tracks: BranchTrack[] = [
+      {
+        name: 'main',
+        lane: 0,
+        points: [point(48, 127), point(48, 220)],
+      },
+      {
+        name: 'dev',
+        lane: 1,
+        points: [65, 96, 158, 189, 251].map((y) => point(65.4, y)),
+      },
+      {
+        name: 'feat/compact-action-rows',
+        lane: 1,
+        points: [point(65.4, 34), point(65.4, 65)],
+      },
+    ];
+    const obstacles = [
+      point(65.4, 34),
+      point(65.4, 65),
+      point(65.4, 96),
+      point(48, 127),
+      point(65.4, 158),
+      point(65.4, 189),
+      point(48, 220),
+      point(65.4, 251),
+    ].map((p) => ({ ...p, radius: 12 }));
+    const labels = visibleBranchLabels(
+      tracks,
+      14,
+      340,
+      0,
+      173,
+      (names) => (names[0] === 'main' ? 36 : names[0] === 'dev' ? 29 : 86),
+      18,
+      2,
+      obstacles,
+    );
+    const label = labels.find((entry) => entry.names.includes('feat/compact-action-rows'))!;
+    assert.ok(label);
+    assert.ok(label.boxY! + 9 >= Math.min(...tracks[2].points.map((p) => p.y)) - 31);
+    assert.ok(label.boxY! + 9 <= Math.max(...tracks[2].points.map((p) => p.y)) + 31);
+  }
+});
 function clearOfNodes(label: BranchLabel, width: number, nodes: BranchLabelObstacle[]) {
   for (const node of nodes)
     assert.ok(
