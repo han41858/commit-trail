@@ -44,6 +44,7 @@ import { requestActivity } from './requestActivity';
 import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
 import { TokenPermissions } from './TokenPermissions';
 import { Analytics } from '@vercel/analytics/react';
+import { analyticsBeforeSend } from './analytics';
 import './style.css';
 import './monitor.css';
 
@@ -1030,7 +1031,7 @@ function App() {
           </span>
         )}
       </footer>
-      <Analytics />
+      <Analytics beforeSend={analyticsBeforeSend} />
     </div>
   );
 }
