@@ -146,18 +146,18 @@ function App(){
   }
  },[configurationKey,history,monitor,monitorRepositories]);
  useEffect(()=>{
-  if(!options&&!auth&&!details)return;
+  if(!options&&!auth&&!selection)return;
   const outside=(event:PointerEvent)=>{
    const target=event.target as Node;
    if(target instanceof Element&&target.closest('[data-debug-ui],[data-pwa-ui]'))return;
    if(options&&!optionsRef.current?.contains(target))setOptions(false);
    if(auth&&!authRef.current?.contains(target)&&!tokenButtonRef.current?.contains(target))setAuth(false);
-   if(details&&!detailsRef.current?.contains(target)&&(!monitorState.active||primaryPaneRef.current?.contains(target)))setSelection(null);
+   if(selection&&!(target instanceof Element&&target.closest('.details,.monitor-exit')))setSelection(null);
   };
   const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setOptions(false);setAuth(false);setSelection(null);}};
   document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);
   return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);};
- },[options,auth,details,monitorState.active]);
+ },[options,auth,selection]);
  function applyToken(){const value=token.trim();if(value!==appliedToken)lastMonitorSelection.current=undefined;leaveMonitor();if(value!==appliedToken)lastMonitorBranches.current.clear();setMonitorSetup(false);monitor.authenticationChanged(appliedToken,value);branchSelections.authenticationChanged(appliedToken,value);monitorRepositories.authenticationChanged(appliedToken,value);recent.authenticationChanged(appliedToken,value);const error=saveStoredToken(value);authToken.current=value;recent.reload();monitorRepositories.reconcile();setToken(value);setAppliedToken(value);setAuthRevision(v=>v+1);setTokenStorageError(error);history.setToken(value);setTokenApplied(value!=='');setAuth(true);if(state.repo){setSelection(null);void measured.open(state.repo,value,configuration.branches?.[configuration.repositories.indexOf(state.repo)]);}}
  function removeToken(){lastMonitorSelection.current=undefined;leaveMonitor();lastMonitorBranches.current.clear();setMonitorSetup(false);monitor.authenticationChanged(appliedToken,'');branchSelections.authenticationChanged(appliedToken,'');monitorRepositories.authenticationChanged(appliedToken,'');recent.authenticationChanged(appliedToken,'');measured.cancel();const error=saveStoredToken('');authToken.current='';recent.reload();monitorRepositories.reconcile();history.clear();void info.open('','');setToken('');setAppliedToken('');setAuthRevision(v=>v+1);setTokenApplied(false);setTokenStorageError(error);setSelection(null);setAuth(!!error);}
  function open(value:string){
