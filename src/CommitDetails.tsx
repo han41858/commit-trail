@@ -22,7 +22,7 @@ export function CommitDetails({commit,onClose,info,onMore,panelRef,style,reposit
  },[sha,info,loadMore]);
  const authored=commit?.commit.author?.date;
  const date=authored&&Number.isFinite(Date.parse(authored))?new Date(authored):null;
- const body=commit?.commit.message.split('\n').slice(1).join('\n')||'';
+ const body=(commit?.commit.message.split('\n').slice(1).join('\n')||'').replace(/^(?:[ \t]*\r?\n)+|(?:\r?\n[ \t]*)+$/g,'');
  return <aside className="details floating-panel" ref={container} style={style} tabIndex={0} aria-label="Commit details" aria-describedby={repository?repositoryId:undefined} onScroll={loadMore} onWheel={event=>{if(event.deltaY>0)loadMore();}} onTouchStart={event=>{touchY.current=event.touches[0]?.clientY??null;}} onTouchMove={event=>{const y=event.touches[0]?.clientY;if(y!==undefined){if(touchY.current!==null&&y<touchY.current)loadMore();touchY.current=y;}}} onKeyDown={event=>{if(event.target===container.current&&['ArrowDown','PageDown','End',' '].includes(event.key))loadMore();}}>
   {repository&&<p className="commit-repository" id={repositoryId} title={repository}>{repository}</p>}
   <div className="detail-actions">
