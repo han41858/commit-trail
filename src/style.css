@@ -1091,10 +1091,16 @@ pre {
 .release-info,
 .run-info {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
   margin: 10px 0;
   font-size: 12px;
+}
+.release-info {
+  flex-direction: column;
+  gap: 4px;
+}
+.run-info {
+  align-items: center;
+  gap: 8px;
 }
 .release-info small,
 .run-info small,
@@ -1178,11 +1184,16 @@ pre {
 
 .run-heading {
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 6px;
 }
 .run-heading a {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .run-info .run-status {
   flex-shrink: 0;
@@ -1190,7 +1201,10 @@ pre {
   line-height: 1;
 }
 .run-elapsed {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .run-job-count {
