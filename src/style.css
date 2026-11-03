@@ -1431,16 +1431,33 @@ pre {
   top: max(100px, calc(var(--toolbar-bottom, 80px) + 16px));
   width: min(430px, calc(100% - var(--safe-left) - var(--safe-right) - 32px));
 }
-.pwa-update {
+.app-notices {
   position: fixed;
   z-index: 45;
   right: max(12px, var(--safe-right));
-  bottom: calc(88px + var(--safe-bottom));
+  bottom: max(12px, var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: calc(100% - var(--safe-left) - var(--safe-right) - 24px);
+  pointer-events: none;
+}
+.app-notices > * {
+  pointer-events: auto;
+}
+.app-notices:has(.pwa-update) > :is(.debug-entry, .debug-load-error) {
+  position: static;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.pwa-update {
+  z-index: 45;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  max-width: calc(100% - var(--safe-left) - var(--safe-right) - 24px);
+  max-width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;

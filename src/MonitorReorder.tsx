@@ -21,9 +21,17 @@ type Drag = {
   startY: number;
   x: number;
   y: number;
+  touch: boolean;
   active: boolean;
 };
-type Visual = { repository: string; x: number; y: number; line: number };
+type Visual = {
+  repository: string;
+  x: number;
+  y: number;
+  line: number;
+  to: number;
+  touch: boolean;
+};
 
 export const MonitorReorder = memo(function MonitorReorder({
   entries,
@@ -35,7 +43,8 @@ export const MonitorReorder = memo(function MonitorReorder({
   const grid = useRef<HTMLDivElement>(null),
     preview = useRef<HTMLDivElement>(null),
     drag = useRef<Drag | null>(null),
-    longPress = useRef<number | null>(null);
+    longPress = useRef<number | null>(null),
+    dropAnimation = useRef<Animation | undefined>(undefined);
   const [visual, setVisual] = useState<Visual | null>(null),
     [announcement, setAnnouncement] = useState('');
   const reset = useCallback((message = '', update = true) => {
@@ -71,6 +80,7 @@ export const MonitorReorder = memo(function MonitorReorder({
       window.removeEventListener('keydown', escape, true);
       window.removeEventListener('blur', cancel);
       window.removeEventListener('resize', cancel);
+      dropAnimation.current?.cancel();
     };
   }, [reset]);
   useLayoutEffect(() => {
@@ -82,9 +92,13 @@ export const MonitorReorder = memo(function MonitorReorder({
       height = viewport?.height || window.innerHeight,
       element = preview.current;
     element.style.maxWidth = `${Math.max(0, Math.min(280, width - 16))}px`;
+    element.style.minWidth = `${Math.max(0, Math.min(200, width - 16))}px`;
     const size = element.getBoundingClientRect();
-    element.style.left = `${Math.max(left + 8, Math.min(visual.x + 12, left + width - size.width - 8))}px`;
-    element.style.top = `${Math.max(top + 8, Math.min(visual.y + 10, top + height - size.height - 8))}px`;
+    const x = visual.touch ? visual.x - size.width / 2 : visual.x + 18,
+      above = visual.y - size.height - 24,
+      y = visual.touch && above >= top + 8 ? above : visual.y + (visual.touch ? 32 : 18);
+    element.style.left = `${Math.max(left + 8, Math.min(x, left + width - size.width - 8))}px`;
+    element.style.top = `${Math.max(top + 8, Math.min(y, top + height - size.height - 8))}px`;
   }, [visual]);
   function move(current: Drag) {
     const bounds = [...(grid.current?.children || [])].map((element) =>
@@ -97,11 +111,19 @@ export const MonitorReorder = memo(function MonitorReorder({
         `Moving ${current.repository}. Position ${target.to + 1} of ${entries.length}.`,
       );
     current.to = target.to;
-    setVisual({ repository: current.repository, x: current.x, y: current.y, line: target.left });
+    setVisual({
+      repository: current.repository,
+      x: current.x,
+      y: current.y,
+      line: target.left,
+      to: target.to,
+      touch: current.touch,
+    });
   }
   function activate(current: Drag) {
     if (drag.current !== current || !current.element.isConnected) return;
     current.active = true;
+    dropAnimation.current?.cancel();
     current.element.setPointerCapture(current.pointerId);
     setAnnouncement(
       `Moving ${current.repository}. Position ${current.from + 1} of ${entries.length}.`,
@@ -115,6 +137,20 @@ export const MonitorReorder = memo(function MonitorReorder({
     reset();
     if (commit && valid && current.from !== current.to) {
       onReorder(current.repository, current.to);
+      const header = current.element.closest('h2');
+      if (header?.isConnected && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const style = getComputedStyle(header);
+        dropAnimation.current = header.animate(
+          [
+            {
+              backgroundColor: style.getPropertyValue('--surface'),
+              boxShadow: `inset 0 0 0 2px ${style.getPropertyValue('--accent')}`,
+            },
+            { backgroundColor: 'transparent', boxShadow: 'inset 0 0 0 2px transparent' },
+          ],
+          { duration: 600, easing: 'ease-out' },
+        );
+      }
       setAnnouncement(
         `${current.repository} moved to position ${current.to + 1} of ${entries.length}.`,
       );
@@ -158,6 +194,7 @@ export const MonitorReorder = memo(function MonitorReorder({
                   startY: event.clientY,
                   x: event.clientX,
                   y: event.clientY,
+                  touch: event.pointerType === 'touch',
                   active: false,
                 };
                 drag.current = current;
@@ -214,11 +251,21 @@ export const MonitorReorder = memo(function MonitorReorder({
       {visual && (
         <>
           <div className="monitor-drag-preview" ref={preview} aria-hidden="true">
-            {visual.repository}
+            <svg width="16" height="20" viewBox="0 0 16 18" fill="currentColor">
+              {[4, 9, 14].flatMap((y) =>
+                [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />),
+              )}
+            </svg>
+            <div>
+              <strong>{visual.repository}</strong>
+              <small>
+                Position {visual.to + 1} of {entries.length}
+              </small>
+            </div>
           </div>
           <div
             className="monitor-insertion"
-            style={{ left: Math.max(1, Math.min(visual.line, window.innerWidth - 1)) }}
+            style={{ left: Math.max(2, Math.min(visual.line, window.innerWidth - 2)) }}
             aria-hidden="true"
           />
         </>
