@@ -972,8 +972,10 @@ function App() {
           }}
         />
       )}
-      <DebugRoot developer={import.meta.env.DEV} />
-      <PwaUpdatePrompt />
+      <div className="app-notices">
+        <DebugRoot developer={import.meta.env.DEV} />
+        <PwaUpdatePrompt />
+      </div>
       <footer className="graph-status" aria-live="polite">
         <span>{state.commits.length.toLocaleString()} commits</span>
         {state.busy || activeRequests > 0 || refreshState.running ? (
