@@ -104,24 +104,27 @@ export function CommitExtras({ sha, info }: { sha: string; info: InfoSnapshot })
         {data?.runs.map((run) => {
           const jobs = completedJobCount(run, info.jobs),
             status = runStatus(run),
+            name = run.name || `Workflow ${run.workflow_id}`,
+            duration = runElapsed(run, now) || '—',
+            runAttempt = attempt(run),
             jobLabel = jobs
               ? `${jobs.completed} of ${jobs.total} jobs completed`
               : 'Job counts not confirmed';
           return (
             <div className="run-info" key={run.id}>
               <div className="run-heading">
-                <a href={link(run.html_url)} target="_blank" rel="noreferrer">
-                  {run.name || `Workflow ${run.workflow_id}`}
+                <ActionStatusIcon status={status} />
+                <a href={link(run.html_url)} title={name} target="_blank" rel="noreferrer">
+                  {name}
                 </a>
                 {activeRun(run) && (
                   <span className="run-job-count" aria-label={jobLabel} title={jobLabel}>
                     {jobs ? `${jobs.completed}/${jobs.total}` : '?/?'}
                   </span>
                 )}
-                <ActionStatusIcon status={status} />
               </div>
-              <small className="run-elapsed">
-                Elapsed {runElapsed(run, now) || '—'} · Attempt {attempt(run)}
+              <small className="run-elapsed" title={`Elapsed ${duration} · Attempt ${runAttempt}`}>
+                {duration} · Attempt {runAttempt}
               </small>
             </div>
           );
