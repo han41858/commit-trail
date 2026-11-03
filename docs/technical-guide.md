@@ -19,6 +19,16 @@ Deploy `dist/` to any static host. Repository selection uses `?repo=owner%2Frepo
 
 The bottom of Options shows the running app's build time right-aligned with a `Built at` prefix, using the browser's local date format and time zone with a consistent 24-hour `HH:mm` time. Vite embeds one UTC timestamp at build time; every device displays that same instant with its local date and zero-padded 24-hour time, without AM/PM, seconds or a time zone label. It stays fixed offline or across reloads of the same build, and the menu expands within the available viewport to keep it on one line. Unusually long values use an ellipsis, with the full localized timestamp available in the time element’s tooltip. A cached PWA keeps its previous build time until an app update is applied. Rebuilding the same commit changes the timestamp and bundle hash, so it can trigger a PWA update. The development server shows `Development`.
 
+## Anonymous traffic analytics
+
+The Vercel deployment can collect anonymous page-view statistics using **Vercel Web Analytics**. No custom events, Google Analytics, cookies, or user identifiers are added by GitStream. The app loads Vercel's first-party `/_vercel/insights/script.js` only in production builds; the script is optional and failures must not block the Git graph.
+
+The `beforeSend` callback removes the query string, URL fragment and URL credentials before any page view is sent. It also suppresses subsequent page views in the same document: changing a repository, branch, Split view order, or browser history does not count as another visit. Analytics therefore sees the site page, not private repository/branch names. Existing `Referrer-Policy: no-referrer` and CSP remain unchanged; analytics uses same-origin script and collection routes. No GitHub API responses, PATs or individual commit details are sent as analytics events.
+
+**Vercel setup:** In the Vercel project `git-stream`, open **Analytics** and select **Enable** before deploying the integration. The activation creates the first-party collection routes on a subsequent deployment. After Production deployment, check the browser Network panel for the analytics script and page-view request, then verify the Vercel Analytics dashboard. Confirm the request has no `repo`, `branch`, `mode`, or other URL query values. Some browsers or ad blockers may prevent tracking, and analytics is best-effort rather than a dependency for app functionality.
+
+Do not add events for commit interactions, auto refresh, or branch changes without a separate privacy review.
+
 ## Link previews and search metadata
 
 `index.html` includes the product title, description, canonical URL, Open Graph metadata and an X summary card in the initial HTML. Link-preview crawlers do not need to run JavaScript or call GitHub. Both cards reuse the existing public 512×512 PNG logo at `https://git-stream-view.vercel.app/icons/icon-512.png`; the square image matches the summary-card format.
