@@ -1,35 +1,360 @@
-.monitor-trigger,.monitor-exit{display:grid;place-items:center;flex-shrink:0;width:32px;height:32px;padding:6px}
-.single-repository{position:relative;width:100%;height:100%;min-width:0}
-.app-monitor .topbar,.app-monitor>.graph-status{display:none}
-.graph-stage.monitor-stage{top:calc(max(6px,env(safe-area-inset-top,0px)) + 32px);display:flex;gap:1px;background:var(--border)}
-.monitor-column{position:relative;min-width:0;flex:1 1 0;height:100%;overflow:hidden;background:var(--bg)}
-.monitor-column[hidden]{display:none}
-.monitor-controls{position:absolute;z-index:4;top:max(6px,env(safe-area-inset-top,0px));left:var(--safe-left);right:var(--safe-right);height:32px}
-.monitor-repositories{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:1px;height:100%}
-.monitor-repository{display:flex;align-items:center;justify-content:center;min-width:0;margin:0;padding:0 8px;font-size:14px;line-height:32px;font-weight:500;text-align:center}
-.monitor-repository:first-child{padding-left:44px}.monitor-repository:last-child{padding-right:44px}
-.monitor-repository a{display:block;max-width:100%;min-width:0;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:underline;text-underline-offset:3px}
-.monitor-controls>.monitor-timer,.monitor-controls>.monitor-exit{position:absolute;z-index:1;top:2px}.monitor-controls>.monitor-timer{left:8px}.monitor-controls>.monitor-exit{right:8px}
-.monitor-timer{display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid var(--border);border-radius:7px;font-size:18px;line-height:1}
-.monitor-exit{width:28px;height:28px;padding:5px}
-.monitor-status{position:absolute;z-index:1;left:4px;right:4px;bottom:4px;display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;width:max-content;max-width:calc(100% - 8px);max-height:35%;overflow:auto;padding:4px 6px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:10px;overflow-wrap:anywhere}
-.monitor-status p{margin:0;flex-basis:100%;color:var(--warning);line-height:1.4}
-.monitor-empty{padding:48px 8px 0;text-align:center;font-size:11px;color:var(--muted)}
-.monitor-column .details{position:fixed;z-index:5;left:8px;right:auto;top:auto;bottom:8px;width:min(480px,calc(100vw - 16px));max-height:65dvh;padding:36px 10px 10px;border-radius:7px}
-.monitor-column .details:focus-within{z-index:6}
-.monitor-column .commit-repository{position:absolute;top:10px;left:12px;right:80px;margin:0;color:var(--muted);font-size:11px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.monitor-column .details h2{font-size:12px}.monitor-column .commit-meta{flex-wrap:wrap;gap:4px}.monitor-column .commit-authored{font-size:9px}
-.monitor-setup-backdrop{position:absolute;inset:0;z-index:10;background:#0005;display:grid;place-items:center;padding:max(12px,env(safe-area-inset-top,0px)) max(12px,var(--safe-right)) max(12px,var(--safe-bottom)) max(12px,var(--safe-left))}
-.monitor-setup{position:relative;inset:auto;width:min(480px,100%);max-height:100%;overflow:auto;padding:24px;font-size:12px}
-.monitor-setup h2{font-size:17px;margin:0 0 8px;font-weight:500}.monitor-setup p{color:var(--muted);line-height:1.5}.monitor-setup h3{font-size:11px;font-weight:500;margin:18px 0 6px;color:var(--muted)}
-.monitor-selected{list-style:none;padding:0;margin:16px 0}.monitor-selected li{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--border);min-width:0}
-.monitor-selected li>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monitor-selected button{flex-shrink:0;width:44px;height:44px;border:0;background:transparent;font-size:18px;padding:0}
-.monitor-selected li>span{flex:1;min-width:0}.monitor-selected .monitor-drag{display:grid;place-items:center;touch-action:none;cursor:grab;color:var(--muted)}.monitor-selected li[data-dragging=true]{background:var(--bg);user-select:none}.monitor-selected li[data-dragging=true] .monitor-drag{cursor:grabbing}
-.monitor-order-status{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
-.monitor-add{display:flex;gap:8px}.monitor-add input{flex:1;min-width:0;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg)}.monitor-add button{min-height:44px}
-.monitor-setup .monitor-setup-error{color:var(--warning)}
-.monitor-recent{max-height:220px;overflow:auto;overscroll-behavior:contain}.monitor-recent button{display:flex;gap:8px;width:100%;min-height:44px;padding:8px 4px;border:0;background:transparent;text-align:left}.monitor-recent button span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.monitor-setup-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px}.monitor-setup-actions small{color:var(--muted)}.monitor-setup-actions button{min-height:44px}
-.monitor-setup .monitor-share-note{font-size:11px;margin:14px 0 0}.monitor-copy-status{min-height:1.5em;font-size:11px;color:var(--muted)}.monitor-setup-actions{flex-wrap:wrap}
-.monitor-copy{min-width:90px}.monitor-copy[data-state=copied]{color:var(--accent);border-color:var(--accent)}.monitor-copy[data-state=failed]{color:var(--warning);border-color:var(--warning)}
-@media(max-width:800px){.view-controls>.monitor-trigger{padding:5px;width:28px;height:30px}.monitor-setup{padding:20px}.monitor-add input{font-size:16px}.monitor-repository{font-size:13px}}
+.monitor-trigger,
+.monitor-exit {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+}
+.single-repository {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+.app-monitor .topbar,
+.app-monitor > .graph-status {
+  display: none;
+}
+.graph-stage.monitor-stage {
+  top: calc(max(6px, env(safe-area-inset-top, 0px)) + 32px);
+  display: flex;
+  gap: 1px;
+  background: var(--border);
+}
+.monitor-column {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+.monitor-column[hidden] {
+  display: none;
+}
+.monitor-controls {
+  position: absolute;
+  z-index: 4;
+  top: max(6px, env(safe-area-inset-top, 0px));
+  left: var(--safe-left);
+  right: var(--safe-right);
+  height: 32px;
+}
+.monitor-repositories {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1px;
+  height: 100%;
+}
+.monitor-repository {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 32px;
+  font-weight: 500;
+  text-align: center;
+}
+.monitor-repository:first-child {
+  padding-left: 44px;
+}
+.monitor-repository:last-child {
+  padding-right: 44px;
+}
+.monitor-repository a {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.monitor-controls > .monitor-timer,
+.monitor-controls > .monitor-exit {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+}
+.monitor-controls > .monitor-timer {
+  left: 8px;
+}
+.monitor-controls > .monitor-exit {
+  right: 8px;
+}
+.monitor-timer {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 18px;
+  line-height: 1;
+}
+.monitor-exit {
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+}
+.monitor-status {
+  position: absolute;
+  z-index: 1;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  width: max-content;
+  max-width: calc(100% - 8px);
+  max-height: 35%;
+  overflow: auto;
+  padding: 4px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.monitor-status p {
+  margin: 0;
+  flex-basis: 100%;
+  color: var(--warning);
+  line-height: 1.4;
+}
+.monitor-empty {
+  padding: 48px 8px 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.monitor-column .details {
+  position: fixed;
+  z-index: 5;
+  left: 8px;
+  right: auto;
+  top: auto;
+  bottom: 8px;
+  width: min(480px, calc(100vw - 16px));
+  max-height: 65dvh;
+  padding: 36px 10px 10px;
+  border-radius: 7px;
+}
+.monitor-column .details:focus-within {
+  z-index: 6;
+}
+.monitor-column .commit-repository {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 80px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.monitor-column .details h2 {
+  font-size: 12px;
+}
+.monitor-column .commit-meta {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.monitor-column .commit-authored {
+  font-size: 9px;
+}
+.monitor-setup-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: #0005;
+  display: grid;
+  place-items: center;
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, var(--safe-right))
+    max(12px, var(--safe-bottom)) max(12px, var(--safe-left));
+}
+.monitor-setup {
+  position: relative;
+  inset: auto;
+  width: min(480px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: 24px;
+  font-size: 12px;
+}
+.monitor-setup h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+  font-weight: 500;
+}
+.monitor-setup p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+.monitor-setup h3 {
+  font-size: 11px;
+  font-weight: 500;
+  margin: 18px 0 6px;
+  color: var(--muted);
+}
+.monitor-selected {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+.monitor-selected li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.monitor-selected li > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.monitor-selected button {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  padding: 0;
+}
+.monitor-selected li > span {
+  flex: 1;
+  min-width: 0;
+}
+.monitor-selected .monitor-drag {
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  cursor: grab;
+  color: var(--muted);
+}
+.monitor-selected li[data-dragging='true'] {
+  background: var(--bg);
+  user-select: none;
+}
+.monitor-selected li[data-dragging='true'] .monitor-drag {
+  cursor: grabbing;
+}
+.monitor-order-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.monitor-add {
+  display: flex;
+  gap: 8px;
+}
+.monitor-add input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+}
+.monitor-add button {
+  min-height: 44px;
+}
+.monitor-setup .monitor-setup-error {
+  color: var(--warning);
+}
+.monitor-recent {
+  max-height: 220px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.monitor-recent button {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.monitor-recent button span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.monitor-setup-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.monitor-setup-actions small {
+  color: var(--muted);
+}
+.monitor-setup-actions button {
+  min-height: 44px;
+}
+.monitor-setup .monitor-share-note {
+  font-size: 11px;
+  margin: 14px 0 0;
+}
+.monitor-copy-status {
+  min-height: 1.5em;
+  font-size: 11px;
+  color: var(--muted);
+}
+.monitor-setup-actions {
+  flex-wrap: wrap;
+}
+.monitor-copy {
+  min-width: 90px;
+}
+.monitor-copy[data-state='copied'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.monitor-copy[data-state='failed'] {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+@media (max-width: 800px) {
+  .view-controls > .monitor-trigger {
+    padding: 5px;
+    width: 28px;
+    height: 30px;
+  }
+  .monitor-setup {
+    padding: 20px;
+  }
+  .monitor-add input {
+    font-size: 16px;
+  }
+  .monitor-repository {
+    font-size: 13px;
+  }
+}

@@ -1,8 +1,139 @@
-.debug-entry,.debug-panel{position:fixed;z-index:40;font:12px/1.5 system-ui;color:var(--text);background:var(--surface);border:1px solid var(--muted);border-radius:8px;box-shadow:0 3px 18px #0003}
-.debug-entry{right:12px;bottom:48px;padding:4px 9px;opacity:.8}
-.debug-panel{width:370px;height:430px;min-width:300px;min-height:220px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 180px);resize:both;overflow:hidden;display:flex;flex-direction:column;text-align:left}
-.debug-bottom-right{right:12px;bottom:48px}.debug-bottom-left{left:12px;bottom:48px}.debug-top-right{right:12px;top:140px}.debug-top-left{left:12px;top:140px}
-.debug-panel header{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-bottom:1px solid var(--muted)}
-.debug-panel button,.debug-panel select{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--muted);border-radius:4px;padding:3px 7px;cursor:pointer}
-.debug-panel header button{font-size:18px;line-height:1}.debug-body{overflow:auto;flex:1;min-height:0;padding:8px 12px}.debug-body h3{font-size:12px;margin:12px 0 4px}.debug-body p{margin:5px 0}.debug-body small{color:var(--muted);font-size:11px}.debug-body table{width:100%;border-collapse:collapse}.debug-body th{text-align:left;font-weight:400}.debug-body td{text-align:right}.debug-body caption{text-align:left;color:var(--muted)}.debug-body details{margin:6px 0}.debug-body summary{cursor:pointer}.debug-body pre{font-size:10px;overflow:auto}.debug-dock{display:flex;gap:8px;align-items:center}.debug-tools{display:flex;gap:5px;flex-wrap:wrap;padding:8px;border-top:1px solid var(--muted)}.debug-tools span{width:100%;font-size:11px}
-@media(max-width:600px){.debug-panel{width:calc(100vw - 20px);min-width:0;height:45dvh;max-height:50dvh;resize:none;left:10px;right:10px}.debug-entry{right:10px}}
+.debug-entry,
+.debug-panel {
+  position: fixed;
+  z-index: 40;
+  font: 12px/1.5 system-ui;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  box-shadow: 0 3px 18px #0003;
+}
+.debug-entry {
+  right: 12px;
+  bottom: 48px;
+  padding: 4px 9px;
+  opacity: 0.8;
+}
+.debug-panel {
+  width: 370px;
+  height: 430px;
+  min-width: 300px;
+  min-height: 220px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 180px);
+  resize: both;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+.debug-bottom-right {
+  right: 12px;
+  bottom: 48px;
+}
+.debug-bottom-left {
+  left: 12px;
+  bottom: 48px;
+}
+.debug-top-right {
+  right: 12px;
+  top: 140px;
+}
+.debug-top-left {
+  left: 12px;
+  top: 140px;
+}
+.debug-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--muted);
+}
+.debug-panel button,
+.debug-panel select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.debug-panel header button {
+  font-size: 18px;
+  line-height: 1;
+}
+.debug-body {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 8px 12px;
+}
+.debug-body h3 {
+  font-size: 12px;
+  margin: 12px 0 4px;
+}
+.debug-body p {
+  margin: 5px 0;
+}
+.debug-body small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.debug-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.debug-body th {
+  text-align: left;
+  font-weight: 400;
+}
+.debug-body td {
+  text-align: right;
+}
+.debug-body caption {
+  text-align: left;
+  color: var(--muted);
+}
+.debug-body details {
+  margin: 6px 0;
+}
+.debug-body summary {
+  cursor: pointer;
+}
+.debug-body pre {
+  font-size: 10px;
+  overflow: auto;
+}
+.debug-dock {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.debug-tools {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border-top: 1px solid var(--muted);
+}
+.debug-tools span {
+  width: 100%;
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .debug-panel {
+    width: calc(100vw - 20px);
+    min-width: 0;
+    height: 45dvh;
+    max-height: 50dvh;
+    resize: none;
+    left: 10px;
+    right: 10px;
+  }
+  .debug-entry {
+    right: 10px;
+  }
+}
