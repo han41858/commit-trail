@@ -14,12 +14,19 @@ export type MonitorEntry = {
 };
 type Snapshot = {
   active: boolean;
+  settled: boolean;
   entries: readonly MonitorEntry[];
   running: ReadonlySet<MonitorEntry>;
   retryAt: number;
 };
 export class MonitorSession {
-  private state: Snapshot = { active: false, entries: [], running: new Set(), retryAt: 0 };
+  private state: Snapshot = {
+    active: false,
+    settled: false,
+    entries: [],
+    running: new Set(),
+    retryAt: 0,
+  };
   private listeners = new Set<() => void>();
   private subscriptions: (() => void)[] = [];
   private tasks = new Map<MonitorEntry, Promise<RefreshResult>>();
@@ -39,8 +46,28 @@ export class MonitorSession {
     };
   };
   getSnapshot = () => this.state;
+  private isSettled(state: Snapshot) {
+    return (
+      state.active &&
+      state.entries.length > 0 &&
+      !state.running.size &&
+      state.entries.every((entry) => {
+        const history = entry.history.getSnapshot(),
+          metadata = entry.info.getSnapshot();
+        return (
+          history.repo === entry.repository &&
+          !history.busy &&
+          !history.pendingSources.length &&
+          (!history.meta ||
+            (!metadata.busy && (!entry.primary || metadata.repo === entry.repository)))
+        );
+      })
+    );
+  }
   private publish(patch: Partial<Snapshot> = {}) {
-    this.state = { ...this.state, ...patch };
+    const state = { ...this.state, ...patch };
+    state.settled = this.isSettled(state);
+    this.state = state;
     for (const listener of this.listeners) listener();
   }
   canRequest = () => this.state.retryAt <= Date.now();
@@ -60,7 +87,8 @@ export class MonitorSession {
         entry.info.getSnapshot().retryAt,
       ]),
     );
-    if (retryAt > this.state.retryAt) this.publish({ retryAt });
+    if (retryAt > this.state.retryAt || this.isSettled(this.state) !== this.state.settled)
+      this.publish({ retryAt });
   };
   private combined(entry: MonitorEntry): RefreshResult {
     const state = entry.history.getSnapshot(),
@@ -199,8 +227,14 @@ export class MonitorSession {
       observe = (result: RefreshResult) =>
         authentication === this.authentication ? this.captureResult(result) : result;
     const task = measureRefresh(kind, this.history, this.info, async (cycle) => {
+      const history = this.history.getSnapshot().error
+        ? this.history.retry().then(() => {
+            const state = this.history.getSnapshot();
+            return { error: state.error || undefined, retryAt: state.retryAt || undefined };
+          })
+        : this.history.refresh(cycle);
       const results = await this.settle([
-        this.history.refresh(cycle).then(observe),
+        history.then(observe),
         this.info.refresh(false, undefined, cycle).then(observe),
       ]);
       return {

@@ -255,6 +255,150 @@ test('failures stay isolated and failed metadata is retried on the common schedu
     assert.equal(paths.filter((path) => path === '/repos/b/two').length, 2);
   });
 });
+test('the initial timer can settle after a late history request fails in either repository', async () => {
+  for (const repository of ['a/one', 'b/two']) {
+    await using(async ({ group, history, info }) => {
+      const fetch = globalThis.fetch;
+      const parent = deferred<Response>();
+      let requested = false;
+      globalThis.fetch = async (input, init) => {
+        const url = new URL(String(input));
+        if (url.pathname === `/repos/${repository}/commits`) {
+          if (url.searchParams.get('sha') === 'missing') {
+            requested = true;
+            return parent.promise;
+          }
+          return response([
+            {
+              sha: 'head',
+              parents: [{ sha: 'missing' }],
+              commit: { message: 'head', author: null, committer: null },
+              html_url: '',
+            },
+          ]);
+        }
+        return fetch(input, init);
+      };
+      await history.open('a/one');
+      await info.open('a/one', '');
+      group.start(['a/one', 'b/two'], '');
+      await until(() => !group.getSnapshot().running.size);
+      const entry = group.getSnapshot().entries.find((item) => item.repository === repository)!;
+      const { clock, timers } = completionClock();
+      const loop = new RefreshLoop(
+        () => group.refreshAll('manual'),
+        () => true,
+        clock,
+      );
+      loop.configure('monitor', true, 300000, true);
+      const unsubscribe = group.subscribe(() => {
+        if (group.getSnapshot().settled) loop.loaded();
+      });
+      const work = entry.history.loadMore(['missing']);
+      await until(() => requested);
+      assert.equal(loop.getSnapshot().waitingForInitialLoad, true);
+      assert.equal(timers.size, 0);
+      parent.resolve(response({}, 404));
+      await work;
+      assert.ok(entry.history.getSnapshot().error);
+      assert.deepEqual(entry.history.getSnapshot().pendingSources, []);
+      assert.equal(entry.history.getSnapshot().busy, false);
+      assert.equal(loop.getSnapshot().waitingForInitialLoad, false);
+      assert.equal(loop.getSnapshot().nextAt, 301000);
+      assert.equal(timers.size, 1);
+      unsubscribe();
+      loop.stop();
+    });
+  }
+});
+test('the initial timer observes late metadata job completion after a 404', async () => {
+  await using(async ({ group, history, info }) => {
+    const fetch = globalThis.fetch;
+    const jobs = deferred<Response>();
+    let requested = false;
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/repos/b/two/actions/runs') {
+        return response({
+          workflow_runs: [
+            {
+              id: 1,
+              workflow_id: 1,
+              name: 'CI',
+              head_sha: 'head',
+              status: 'in_progress',
+              conclusion: null,
+              run_attempt: 1,
+              updated_at: '2026-11-03T00:00:00Z',
+              html_url: 'https://github.com/b/two/actions/runs/1',
+            },
+          ],
+        });
+      }
+      if (url.pathname.endsWith('/attempts/1/jobs')) {
+        requested = true;
+        return jobs.promise;
+      }
+      return fetch(input, init);
+    };
+    await history.open('a/one');
+    await info.open('a/one', '');
+    group.start(['a/one', 'b/two'], '');
+    await until(() => !group.getSnapshot().running.size);
+    const entry = group.getSnapshot().entries[1];
+    const { clock } = completionClock();
+    const loop = new RefreshLoop(
+      () => group.refreshAll('manual'),
+      () => true,
+      clock,
+    );
+    loop.configure('monitor', true, 300000, true);
+    const unsubscribe = group.subscribe(() => {
+      if (group.getSnapshot().settled) loop.loaded();
+    });
+    entry.info.watch(['head']);
+    await until(() => requested);
+    assert.equal(loop.getSnapshot().waitingForInitialLoad, true);
+    jobs.resolve(response({}, 404));
+    await until(() => !entry.info.getSnapshot().busy);
+    assert.ok(Object.keys(entry.info.getSnapshot().errors).length);
+    assert.equal(loop.getSnapshot().waitingForInitialLoad, false);
+    unsubscribe();
+    loop.stop();
+  });
+});
+test('manual refresh retries failed parent history in the primary repository', async () => {
+  await using(async ({ group, history, info }) => {
+    const fetch = globalThis.fetch;
+    let parentRequests = 0;
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/repos/a/one/commits') {
+        const parent = url.searchParams.get('sha') === 'missing';
+        if (parent && ++parentRequests === 1) return response({}, 404);
+        return response([
+          {
+            sha: parent ? 'missing' : 'head',
+            parents: parent ? [] : [{ sha: 'missing' }],
+            commit: { message: 'fixture', author: null, committer: null },
+            html_url: '',
+          },
+        ]);
+      }
+      return fetch(input, init);
+    };
+    await history.open('a/one');
+    await info.open('a/one', '');
+    group.start(['a/one'], '');
+    await history.loadMore(['missing']);
+    assert.ok(history.getSnapshot().error);
+    const result = await group.refreshAll('manual');
+    await result.completion;
+    assert.equal(history.getSnapshot().error, '');
+    assert.equal(history.getSnapshot().commits.length, 2);
+    assert.equal(parentRequests, 2);
+  });
+});
 test('one repository rate limit pauses all repositories until the shared deadline', async () => {
   await using(async ({ group, failures, paths }) => {
     failures.set('/repos/b/two', 429);
