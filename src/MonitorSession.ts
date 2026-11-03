@@ -215,6 +215,17 @@ export class MonitorSession {
     this.tasks.clear();
     if (this.state.active) this.publish({ active: false, entries: [], running: new Set() });
   };
+  reorder = (repositories: readonly string[]) => {
+    if (!this.state.active) return false;
+    const names = normalizeMonitorRepositories(repositories);
+    const byRepository = new Map(this.state.entries.map((entry) => [entry.repository, entry]));
+    if (names.length !== this.state.entries.length || names.some((name) => !byRepository.has(name)))
+      return false;
+    const entries = names.map((name) => byRepository.get(name)!);
+    if (entries.some((entry, index) => entry !== this.state.entries[index]))
+      this.publish({ entries });
+    return true;
+  };
   refreshPrimary = (kind: 'manual' | 'auto'): Promise<RefreshResult> => {
     if (this.primaryPending) return this.primaryPending;
     if (!this.canRequest())
