@@ -1,5 +1,5 @@
 import { debug } from './debug';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ROW, type Commit, type Branch, type HistoryFrontier } from './model';
 import { measuredLayout } from './measuredLayout';
 import {
@@ -21,6 +21,14 @@ import {
   visibleHistorySources,
   GRAPH_ORIGIN,
 } from './graphView';
+type BranchBadge = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  names: string[];
+};
 type Props = {
   active?: boolean;
   containerResponsive?: boolean;
@@ -67,12 +75,13 @@ export function Graph({
 }: Props) {
   const container = useRef<HTMLDivElement>(null),
     canvas = useRef<HTMLCanvasElement>(null),
+    branchTooltip = useRef<HTMLDivElement>(null),
     prior = useRef(new Map<string, number>());
   const priorColors = useRef(emptyGraphColors());
   const captureFrontiers = useRef<() => void>(() => {});
-  const badgeHits = useRef<
-    { x: number; y: number; width: number; height: number; names: string[] }[]
-  >([]);
+  const badgeHits = useRef<BranchBadge[]>([]);
+  const [hoveredBadge, setHoveredBadge] = useState<BranchBadge | null>(null);
+  const branchTooltipId = useId();
   const messageHits = useRef(new Map<string, number>());
   const [view, setView] = useState({
     top: 0,
@@ -122,15 +131,20 @@ export function Graph({
     maxLane,
     mobile,
   );
+  // Keep the existing origin unless a split column is narrower than that margin.
+  const origin = containerResponsive && view.width < GRAPH_ORIGIN ? view.width / 2 : GRAPH_ORIGIN;
   const positions = useMemo(
     () =>
       new Map(
         ordered.map((c, i) => [
           c.sha,
-          { x: GRAPH_ORIGIN + (data.lanes.get(c.sha) || 0) * spacing, y: i * ROW + padding },
+          {
+            x: origin + (data.lanes.get(c.sha) || 0) * spacing,
+            y: i * ROW + padding,
+          },
         ]),
       ),
-    [ordered, data, padding, spacing],
+    [ordered, data, padding, spacing, origin],
   );
   const pendingActions = useMemo(() => {
     if (!pageVisible || !info) return [];
@@ -156,6 +170,50 @@ export function Graph({
       branchTracks(commits, branches, branch, data.spine, positions, reverse, tones, data.lanes),
     [commits, branches, branch, data, positions, reverse, tones],
   );
+  useLayoutEffect(() => {
+    setHoveredBadge(null);
+    if (canvas.current) canvas.current.title = '';
+  }, [tracks, view, pageVisible, theme]);
+  useLayoutEffect(() => {
+    const tooltip = branchTooltip.current,
+      graph = container.current;
+    if (!hoveredBadge || !tooltip || !graph) return;
+    const viewport = window.visualViewport,
+      left = viewport?.offsetLeft || 0,
+      top = viewport?.offsetTop || 0,
+      width = viewport?.width || window.innerWidth,
+      height = viewport?.height || window.innerHeight;
+    tooltip.style.maxWidth = `${Math.max(0, Math.min(360, width - 16))}px`;
+    const size = tooltip.getBoundingClientRect(),
+      bounds = graph.getBoundingClientRect(),
+      badgeX = bounds.left + hoveredBadge.x - graph.scrollLeft,
+      badgeY = bounds.top + hoveredBadge.y - graph.scrollTop,
+      below = badgeY + hoveredBadge.height + 6,
+      y = below + size.height <= top + height - 8 ? below : badgeY - size.height - 6;
+    tooltip.style.left = `${Math.max(left + 8, Math.min(badgeX, left + width - size.width - 8))}px`;
+    tooltip.style.top = `${Math.max(top + 8, Math.min(y, top + height - size.height - 8))}px`;
+  }, [hoveredBadge]);
+  const showingBranchTooltip = hoveredBadge !== null;
+  useEffect(() => {
+    if (!showingBranchTooltip) return;
+    const hide = () => setHoveredBadge(null);
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      hide();
+    };
+    window.addEventListener('keydown', dismiss, true);
+    window.addEventListener('blur', hide);
+    window.visualViewport?.addEventListener('resize', hide);
+    window.visualViewport?.addEventListener('scroll', hide);
+    return () => {
+      window.removeEventListener('keydown', dismiss, true);
+      window.removeEventListener('blur', hide);
+      window.visualViewport?.removeEventListener('resize', hide);
+      window.visualViewport?.removeEventListener('scroll', hide);
+    };
+  }, [showingBranchTooltip]);
   const badgeHeight = mobile ? 18 : 20,
     badgeGap = 2;
   const height = Math.max(
@@ -387,7 +445,7 @@ export function Graph({
       for (const parent of c.parents) {
         const end = positions.get(parent.sha);
         const spineEdge = data.spine.has(c.sha) && c.parents[0]?.sha === parent.sha;
-        const ex = end?.x ?? (spineEdge ? 48 : p.x);
+        const ex = end?.x ?? (spineEdge ? origin : p.x);
         const ey = end?.y ?? p.y + (reverse ? -ROW / 2 : ROW / 2);
         if (Math.max(p.y, ey) < view.top - ROW || Math.min(p.y, ey) > view.top + view.height + ROW)
           continue;
@@ -546,7 +604,14 @@ export function Graph({
         const hitTop = Math.max(rowY, view.top + padding - 20),
           hitBottom = Math.min(rowY + badgeHeight, view.top + view.height - 48);
         if (hitBottom > hitTop)
-          hits.push({ x, y: hitTop, width: boxWidth, height: hitBottom - hitTop, names: [ref] });
+          hits.push({
+            x,
+            y: hitTop,
+            width: boxWidth,
+            height: hitBottom - hitTop,
+            text: name,
+            names: [ref],
+          });
       });
     }
     ctx.restore();
@@ -570,6 +635,7 @@ export function Graph({
     ordered,
     positions,
     branches,
+    origin,
     width,
     view,
     selected,
@@ -620,12 +686,17 @@ export function Graph({
       aria-label={label || 'Commit graph. Scroll to load more history.'}
       onWheelCapture={stopFollowing}
       onTouchStartCapture={stopFollowing}
-      onPointerDownCapture={stopFollowing}
+      onPointerDownCapture={() => {
+        setHoveredBadge(null);
+        stopFollowing();
+      }}
       onKeyDownCapture={(event) => {
         if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key))
           stopFollowing();
       }}
       onScroll={(e) => {
+        setHoveredBadge(null);
+        if (canvas.current) canvas.current.title = '';
         const top = e.currentTarget.scrollTop;
         scrollTop.current = top;
         if (followingLatest.current !== null && top === followingLatest.current)
@@ -637,6 +708,7 @@ export function Graph({
       <div style={{ height, width: '100%', position: 'relative' }}>
         <canvas
           aria-label={`Commit history graph. Tap a node${showMessages ? ' or message' : ''} to inspect it.`}
+          aria-describedby={hoveredBadge ? branchTooltipId : undefined}
           ref={canvas}
           style={{
             position: 'sticky',
@@ -650,12 +722,20 @@ export function Graph({
             const c = pick(e.clientX, e.clientY);
             if (c) onSelect(c);
           }}
-          onMouseMove={(e) => {
+          onPointerLeave={(e) => {
+            setHoveredBadge(null);
+            e.currentTarget.title = '';
+          }}
+          onPointerMove={(e) => {
+            if (e.pointerType === 'touch') return;
             const badge = badgeAt(e.clientX, e.clientY);
             if (badge) {
-              e.currentTarget.title = badge.names.join(' · ');
+              e.currentTarget.title = '';
+              if (badge.text === badge.names.join(' · ')) setHoveredBadge(null);
+              else setHoveredBadge((previous) => (previous === badge ? previous : badge));
               return;
             }
+            setHoveredBadge(null);
             const c = pick(e.clientX, e.clientY);
             if (!c) {
               e.currentTarget.title = '';
@@ -700,6 +780,11 @@ export function Graph({
           );
         })}
       </div>
+      {hoveredBadge && (
+        <div id={branchTooltipId} ref={branchTooltip} className="branch-tooltip" role="tooltip">
+          {hoveredBadge.names.join(' · ')}
+        </div>
+      )}
     </div>
   );
 }

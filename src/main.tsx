@@ -21,8 +21,14 @@ import { CommitInfoStore } from './CommitInfoStore';
 import { RefreshLoop } from './RefreshLoop';
 import { RefreshButton, RefreshTimer } from './RefreshButton';
 import { MonitorSession } from './MonitorSession';
-import { MonitorRepositories, MONITOR_REPOSITORIES_KEY } from './MonitorRepositories';
+import {
+  MonitorRepositories,
+  MONITOR_REPOSITORIES_KEY,
+  MONITOR_PUBLIC_REPOSITORIES_KEY,
+  moveMonitorRepository,
+} from './MonitorRepositories';
 import { MonitorSetup } from './MonitorSetup';
+import { MonitorReorder } from './MonitorReorder';
 import { MonitorPane, MonitorStatus } from './MonitorPane';
 import { useMonitorDetailsPosition } from './useMonitorDetailsPosition';
 import { useRepositoryLocation } from './useRepositoryLocation';
@@ -106,7 +112,7 @@ function App() {
   const repositoryMetadata = (repository: string, isPrivate: boolean, visit: boolean) => {
     recent.repositoryMetadata(repository, isPrivate, visit);
     branchSelections.repositoryMetadata(repository, isPrivate);
-    monitorRepositories.reconcile();
+    monitorRepositories.repositoryMetadata(repository, isPrivate);
   };
   const [history] = useState(() => new History(repositoryMetadata, branchSelections));
   const [info] = useState(() => new CommitInfoStore());
@@ -115,6 +121,29 @@ function App() {
     () => new MonitorSession(history, info, repositoryMetadata, branchSelections),
   );
   const monitorState = useSyncExternalStore(monitor.subscribe, monitor.getSnapshot);
+  const reorderMonitor = useCallback(
+    (repository: string, to: number) => {
+      const current = monitor.getSnapshot();
+      if (!current.active) return;
+      const names = current.entries.map((entry) => entry.repository);
+      const reordered = moveMonitorRepository(names, repository, to);
+      if (reordered === names || !monitor.reorder(reordered)) return;
+      const entries = new Map(current.entries.map((entry) => [entry.repository, entry]));
+      const branches = reordered.map((name) => {
+        const entry = entries.get(name)!,
+          state = entry.history.getSnapshot();
+        if (state.meta && state.baseHead && !state.busy) {
+          lastMonitorBranches.current.set(name, state.base);
+          return state.base;
+        }
+        return entry.branch;
+      });
+      lastMonitorSelection.current = reordered;
+      monitorRepositories.set(reordered);
+      navigate({ mode: 'monitor', repositories: reordered, branches }, { replace: true });
+    },
+    [monitor, monitorRepositories, navigate],
+  );
   const leaveMonitor = useCallback(() => {
     for (const entry of monitor.getSnapshot().entries) {
       const value = entry.history.getSnapshot();
@@ -208,7 +237,10 @@ function App() {
   const primaryEntry = monitorState.entries.find((entry) => entry.primary);
   const primaryOrder = primaryEntry ? monitorState.entries.indexOf(primaryEntry) : 0;
   const primaryActive = !monitorState.active || !!primaryEntry;
-  const monitorScope = monitorState.entries.map((entry) => entry.repository).join('|');
+  const monitorScope = monitorState.entries
+    .map((entry) => entry.repository)
+    .sort()
+    .join('|');
   const monitorLimited = monitorState.retryAt > Date.now();
   const [topInset, setTopInset] = useState(window.innerWidth <= 800 ? 136 : 108);
   useLayoutEffect(() => {
@@ -309,6 +341,7 @@ function App() {
       if (
         event.key === null ||
         event.key === MONITOR_REPOSITORIES_KEY ||
+        event.key === MONITOR_PUBLIC_REPOSITORIES_KEY ||
         event.key === TOKEN_STORAGE_KEY
       )
         monitorRepositories.reload();
@@ -350,7 +383,17 @@ function App() {
         chosen && configuration.repositories.includes(chosen.repository) ? chosen : null,
       );
       lastMonitorSelection.current = [...configuration.repositories];
-      monitorRepositories.set(configuration.repositories);
+      const session = monitor.getSnapshot();
+      const sameBranches = configuration.repositories.every((name, index) => {
+        const entry = session.entries.find((entry) => entry.repository === name);
+        if (!entry) return false;
+        const requested = configuration.branches?.[index];
+        const priorIndex = previous?.repositories.indexOf(name) ?? -1;
+        if (requested === previous?.branches?.[priorIndex]) return true;
+        const state = entry.history.getSnapshot();
+        return !!state.meta && !!state.baseHead && requested === state.base;
+      });
+      if (session.active && sameBranches && monitor.reorder(configuration.repositories)) return;
       if (!current.repo) {
         setInput(repository);
         setSelection(null);
@@ -392,7 +435,13 @@ function App() {
       if (options && !optionsRef.current?.contains(target)) setOptions(false);
       if (auth && !authRef.current?.contains(target) && !tokenButtonRef.current?.contains(target))
         setAuth(false);
-      if (selection && !(target instanceof Element && target.closest('.details,.monitor-exit')))
+      if (
+        selection &&
+        !(
+          target instanceof Element &&
+          target.closest('.details,.monitor-exit,.monitor-reorder-handle')
+        )
+      )
         setSelection(null);
     };
     const escape = (event: KeyboardEvent) => {
@@ -535,20 +584,7 @@ function App() {
             disabled={refreshState.waitingForInitialLoad || monitorLimited || refreshState.running}
             onRefresh={() => void loop.refresh()}
           />
-          <div className="monitor-repositories">
-            {monitorState.entries.map((entry) => (
-              <h2 className="monitor-repository" key={entry.repository}>
-                <a
-                  href={`https://github.com/${entry.repository}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={entry.repository}
-                >
-                  {entry.repository}
-                </a>
-              </h2>
-            ))}
-          </div>
+          <MonitorReorder entries={monitorState.entries} onReorder={reorderMonitor} />
           <button
             type="button"
             className="monitor-exit"

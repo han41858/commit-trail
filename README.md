@@ -25,7 +25,7 @@
 
 - **Follow branches and merges** in an interactive, vertical Git graph. Branches sharing a commit appear as separate, vertically stacked name badges.
 - **Stay current** with automatic updates that preserve your place while reading.
-- **Split view** puts 1–4 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
+- **Split view** puts 1–32 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
 - **See the context** with tags, releases and GitHub Actions status beside commits.
 - **Explore public and private repositories**, with optional GitHub token access.
 - **Use it anywhere** on desktop or mobile, or install it as a PWA.
@@ -39,7 +39,7 @@
 
 ![GitStream Split view showing GitStream, AI Template, Angular and VS Code in four desktop columns](docs/images/split-desktop.png)
 
-Choose **Split view** to select and reorder repositories. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
+Choose **Split view** to select repositories. Drag a header handle to reorder columns; on touch screens, press and hold the handle first. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
 
 <table>
   <tr><th>Portrait</th><th>Landscape</th></tr>

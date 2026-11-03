@@ -36,7 +36,7 @@ test('explicit monitor mode supports one repository, and repeated duplicates sti
     });
   assert.equal(readRepositoryLocation(`${base}?repo=a/one&mode=other`).mode, 'single');
 });
-test('invalid repositories are discarded and the first four distinct valid names are kept', () => {
+test('invalid repositories are discarded and distinct valid names retain their order', () => {
   const url = new URL(base);
   for (const repo of [
     '',
@@ -52,7 +52,7 @@ test('invalid repositories are discarded and the first four distinct valid names
     url.searchParams.append('repo', repo);
   assert.deepEqual(readRepositoryLocation(url.href), {
     mode: 'monitor',
-    repositories: ['a/one', 'b/two', 'c/three', 'd/four'],
+    repositories: ['a/one', 'b/two', 'c/three', 'd/four', 'e/five'],
   });
   for (const query of ['', 'repo=bad&mode=monitor', 'repo=bad&repo=../invalid', 'mode=monitor'])
     assert.deepEqual(readRepositoryLocation(`${base}?${query}`), {
@@ -107,7 +107,7 @@ test('share URLs normalize and cap selections, reject empty configurations and u
     'd/four',
     'e/five',
   ]);
-  assert.equal(readRepositoryLocation(url).repositories.length, 4);
+  assert.equal(readRepositoryLocation(url).repositories.length, 5);
   assert.throws(() => monitorShareURL(base, []));
   assert.throws(() => monitorShareURL(base, ['invalid']));
   assert.throws(() => monitorShareURL('javascript:alert(1)', ['a/one']));
@@ -205,7 +205,46 @@ test('writers keep branch associations while normalizing invalid and repeated re
   );
   assert.deepEqual(readRepositoryLocation(url), {
     mode: 'monitor',
-    repositories: ['a/one', 'b/two', 'c/three', 'd/four'],
-    branches: ['One', 'Two', undefined, 'Four'],
+    repositories: ['a/one', 'b/two', 'c/three', 'd/four', 'e/five'],
+    branches: ['One', 'Two', undefined, 'Four', 'Five'],
   });
+});
+test('32-repository links cap normalized names without shifting indexed branches or exposing private context', () => {
+  const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
+  const branches = names.map((_, index) => (index % 3 ? undefined : `Feature/日本語+${index}`));
+  branches[31] = 'Last/Branch';
+  const repositories = [
+    'bad',
+    ...names.flatMap((name) => [name.toUpperCase(), name]),
+    'overflow/repo',
+  ];
+  const indexedBranches = [
+    'ignored',
+    ...branches.flatMap((branch) => [branch, 'Duplicate']),
+    'Overflow',
+  ];
+  const input = new URL(base);
+  repositories.forEach((repository) => input.searchParams.append('repo', repository));
+  indexedBranches.forEach((branch) => input.searchParams.append('branch', branch || ''));
+  const expected = { mode: 'monitor' as const, repositories: names, branches };
+  assert.deepEqual(readRepositoryLocation(input.href), expected);
+  const share = monitorShareURL(
+    `${base}?token=secret&debug=1#private`,
+    repositories,
+    indexedBranches,
+  );
+  assert.deepEqual(readRepositoryLocation(share), expected);
+  assert.deepEqual(
+    new URL(share).searchParams.getAll('branch'),
+    branches.map((branch) => branch || ''),
+  );
+  assert.ok(!share.includes('secret') && !share.includes('private') && !share.includes('debug'));
+  assert.equal(
+    repositoryLocationKey(readRepositoryLocation(input.href)),
+    repositoryLocationKey(expected),
+  );
+  assert.notEqual(
+    repositoryLocationKey(expected),
+    repositoryLocationKey({ ...expected, branches: [...branches.slice(0, 31), 'Changed'] }),
+  );
 });

@@ -26,13 +26,14 @@ export function useRepositoryLocation() {
     if (url.href !== location.href) window.history.replaceState(window.history.state, '', url);
   }, [configuration]);
   const navigate = useCallback(
-    (next: RepositoryLocation) => {
+    (next: RepositoryLocation, { replace = false }: { replace?: boolean } = {}) => {
       const url = repositoryLocationURL(location.href, next);
       if (
         repositoryLocationKey(readRepositoryLocation(location.href)) !== repositoryLocationKey(next)
-      )
-        window.history.pushState(null, '', url);
-      else if (url.href !== location.href)
+      ) {
+        if (replace) window.history.replaceState(window.history.state, '', url);
+        else window.history.pushState(null, '', url);
+      } else if (url.href !== location.href)
         window.history.replaceState(window.history.state, '', url);
       accept(next);
     },

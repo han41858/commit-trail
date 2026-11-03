@@ -122,6 +122,20 @@ input {
 .graph-scroll canvas {
   cursor: pointer;
 }
+.branch-tooltip {
+  position: fixed;
+  z-index: 6;
+  width: max-content;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
 .topbar {
   position: absolute;
   z-index: 2;
