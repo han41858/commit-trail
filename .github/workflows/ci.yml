@@ -32,6 +32,11 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Enforce dev to main promotion
+        env:
+          PROMOTION_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: node .github/scripts/check-promotion.mjs
+
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
