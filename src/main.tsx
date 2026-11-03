@@ -43,6 +43,7 @@ import { emojify } from './emoji';
 import { requestActivity } from './requestActivity';
 import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
 import { TokenPermissions } from './TokenPermissions';
+import { Analytics } from '@vercel/analytics/react';
 import './style.css';
 import './monitor.css';
 
@@ -1029,6 +1030,7 @@ function App() {
           </span>
         )}
       </footer>
+      <Analytics />
     </div>
   );
 }
