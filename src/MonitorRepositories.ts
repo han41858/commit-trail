@@ -128,8 +128,8 @@ export class MonitorRepositories {
     } catch {
       return;
     }
-    if (isPrivate) this.publicNames.delete(repository);
-    else this.publicNames.add(repository);
+    this.publicNames.delete(repository);
+    if (!isPrivate) this.publicNames.add(repository);
     // Retain selected classifications plus the latest possible incoming selection.
     const unselected = [...this.publicNames].filter((name) => !this.names.includes(name));
     for (const name of unselected.slice(0, Math.max(0, unselected.length - MONITOR_LIMIT)))
