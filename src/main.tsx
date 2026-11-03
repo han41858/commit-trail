@@ -21,7 +21,11 @@ import { CommitInfoStore } from './CommitInfoStore';
 import { RefreshLoop } from './RefreshLoop';
 import { RefreshButton, RefreshTimer } from './RefreshButton';
 import { MonitorSession } from './MonitorSession';
-import { MonitorRepositories, MONITOR_REPOSITORIES_KEY } from './MonitorRepositories';
+import {
+  MonitorRepositories,
+  MONITOR_REPOSITORIES_KEY,
+  MONITOR_PUBLIC_REPOSITORIES_KEY,
+} from './MonitorRepositories';
 import { MonitorSetup } from './MonitorSetup';
 import { MonitorPane, MonitorStatus } from './MonitorPane';
 import { useMonitorDetailsPosition } from './useMonitorDetailsPosition';
@@ -106,7 +110,7 @@ function App() {
   const repositoryMetadata = (repository: string, isPrivate: boolean, visit: boolean) => {
     recent.repositoryMetadata(repository, isPrivate, visit);
     branchSelections.repositoryMetadata(repository, isPrivate);
-    monitorRepositories.reconcile();
+    monitorRepositories.repositoryMetadata(repository, isPrivate);
   };
   const [history] = useState(() => new History(repositoryMetadata, branchSelections));
   const [info] = useState(() => new CommitInfoStore());
@@ -309,6 +313,7 @@ function App() {
       if (
         event.key === null ||
         event.key === MONITOR_REPOSITORIES_KEY ||
+        event.key === MONITOR_PUBLIC_REPOSITORIES_KEY ||
         event.key === TOKEN_STORAGE_KEY
       )
         monitorRepositories.reload();

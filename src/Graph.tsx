@@ -131,15 +131,20 @@ export function Graph({
     maxLane,
     mobile,
   );
+  // Keep the existing origin unless a split column is narrower than that margin.
+  const origin = containerResponsive && view.width < GRAPH_ORIGIN ? view.width / 2 : GRAPH_ORIGIN;
   const positions = useMemo(
     () =>
       new Map(
         ordered.map((c, i) => [
           c.sha,
-          { x: GRAPH_ORIGIN + (data.lanes.get(c.sha) || 0) * spacing, y: i * ROW + padding },
+          {
+            x: origin + (data.lanes.get(c.sha) || 0) * spacing,
+            y: i * ROW + padding,
+          },
         ]),
       ),
-    [ordered, data, padding, spacing],
+    [ordered, data, padding, spacing, origin],
   );
   const pendingActions = useMemo(() => {
     if (!pageVisible || !info) return [];
@@ -440,7 +445,7 @@ export function Graph({
       for (const parent of c.parents) {
         const end = positions.get(parent.sha);
         const spineEdge = data.spine.has(c.sha) && c.parents[0]?.sha === parent.sha;
-        const ex = end?.x ?? (spineEdge ? 48 : p.x);
+        const ex = end?.x ?? (spineEdge ? origin : p.x);
         const ey = end?.y ?? p.y + (reverse ? -ROW / 2 : ROW / 2);
         if (Math.max(p.y, ey) < view.top - ROW || Math.min(p.y, ey) > view.top + view.height + ROW)
           continue;
@@ -630,6 +635,7 @@ export function Graph({
     ordered,
     positions,
     branches,
+    origin,
     width,
     view,
     selected,

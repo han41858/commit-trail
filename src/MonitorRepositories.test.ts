@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   MonitorRepositories,
   MONITOR_REPOSITORIES_KEY,
+  MONITOR_PUBLIC_REPOSITORIES_KEY,
   normalizeMonitorRepositories,
   moveMonitorRepository,
 } from './MonitorRepositories';
@@ -43,7 +44,7 @@ function setup(raw: unknown = ['public/one', 'private/one', 'unknown/one']) {
     },
   };
 }
-test('monitor names normalize URLs and case, preserve order, deduplicate and stop at four', () => {
+test('monitor names normalize URLs and case, preserve order and deduplicate', () => {
   assert.deepEqual(
     normalizeMonitorRepositories([
       'https://github.com/OWNER/Repo.git',
@@ -55,9 +56,56 @@ test('monitor names normalize URLs and case, preserve order, deduplicate and sto
       'other/four',
       'other/five',
     ]),
-    ['owner/repo', 'other/two', 'other/three', 'other/four'],
+    ['owner/repo', 'other/two', 'other/three', 'other/four', 'other/five'],
   );
   for (const value of [null, {}, 'bad']) assert.deepEqual(normalizeMonitorRepositories(value), []);
+});
+test('32 distinct valid repositories survive normalization and storage, with overflow discarded after deduplication', () => {
+  const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
+  const input = [
+    null,
+    'invalid',
+    ...names.flatMap((name) => [name.toUpperCase(), name]),
+    'extra/repo',
+  ];
+  assert.deepEqual(normalizeMonitorRepositories(input), names);
+  const { store, data, options } = setup();
+  store.set(input.filter((value): value is string => typeof value === 'string'));
+  assert.deepEqual(store.getSnapshot(), names);
+  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), names);
+  assert.deepEqual(new MonitorRepositories(options).getSnapshot(), names);
+  assert.deepEqual(moveMonitorRepository(names, names[31], 0), [names[31], ...names.slice(0, 31)]);
+});
+test('existing one-to-four repository selections restore without migration', () => {
+  for (const count of [1, 2, 3, 4]) {
+    const names = Array.from({ length: count }, (_, index) => `owner/repo-${index}`);
+    const { store, data } = setup(names);
+    assert.deepEqual(store.getSnapshot(), names);
+    assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), names);
+  }
+});
+test('32 confirmed public selections survive eviction from ten recent visits without retaining private names', () => {
+  const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
+  const { store, data, options, publicNames, allow } = setup(names);
+  allow(false);
+  for (const name of names) {
+    publicNames.push(name);
+    publicNames.splice(0, Math.max(0, publicNames.length - 10));
+    store.repositoryMetadata(name, false);
+  }
+  assert.deepEqual(store.getSnapshot(), names);
+  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), names);
+  assert.deepEqual(JSON.parse(data.get(MONITOR_PUBLIC_REPOSITORIES_KEY)!), names);
+  assert.deepEqual(new MonitorRepositories(options).getSnapshot(), names);
+  store.authenticationChanged('old-token', '');
+  assert.deepEqual(store.getSnapshot(), names);
+  publicNames.splice(publicNames.indexOf(names[31]), 1);
+  store.repositoryMetadata(names[31], true);
+  const publicOnly = names.slice(0, 31);
+  assert.deepEqual(store.getSnapshot(), publicOnly);
+  assert.deepEqual(new MonitorRepositories(options).getSnapshot(), publicOnly);
+  assert.deepEqual(JSON.parse(data.get(MONITOR_PUBLIC_REPOSITORIES_KEY)!), publicOnly);
+  assert.ok(!data.get(MONITOR_PUBLIC_REPOSITORIES_KEY)!.includes('old-token'));
 });
 test('moving monitor repositories changes order without mutating, duplicating or removing selections', () => {
   const names = ['a/one', 'b/two', 'c/three', 'd/four'];
