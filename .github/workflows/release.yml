@@ -1,7 +1,8 @@
-name: Production release
+name: Production release recovery
 
 on:
-  deployment_status:
+  # Automatic deployment events enter through production-release.yml on main only.
+  workflow_call:
   workflow_dispatch:
     inputs:
       deployment_id:

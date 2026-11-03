@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { inspectDeployment, publishRelease, releaseTag } from './release.mjs';
+
+const targetBranch = process.env.GITHUB_BASE_REF || process.env.GITHUB_REF_NAME;
+
+test('automatic release entrypoint exists only on main', {
+  skip: !['dev', 'main'].includes(targetBranch),
+}, () => {
+  assert.equal(
+    existsSync(new URL('../workflows/production-release.yml', import.meta.url)),
+    targetBranch === 'main',
+    'Keep the automatic entrypoint on main; dev must only expose manual recovery.',
+  );
+});
 
 const SHA = 'a'.repeat(40), OTHER = 'b'.repeat(40);
 const bot = { id: 35613825, login: 'vercel[bot]', type: 'Bot' };
