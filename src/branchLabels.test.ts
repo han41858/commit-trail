@@ -72,6 +72,102 @@ function clearOfNodes(label: BranchLabel, width: number, nodes: BranchLabelObsta
       `${label.names} obscures the node at ${node.x},${node.y}`,
     );
 }
+function clearOfLabels(labels: BranchLabel[], width: (label: BranchLabel) => number) {
+  for (let i = 0; i < labels.length; i++) {
+    for (const other of labels.slice(i + 1)) {
+      const label = labels[i];
+      assert.ok(
+        label.boxX! + width(label) <= other.boxX! ||
+          other.boxX! + width(other) <= label.boxX! ||
+          label.boxY! + label.boxHeight! <= other.boxY! ||
+          other.boxY! + other.boxHeight! <= label.boxY!,
+        `${label.names} overlaps ${other.names}`,
+      );
+    }
+  }
+}
+test('a short merge connector and a long merge-head name both fit without overlapping labels or nodes', () => {
+  const tracks: BranchTrack[] = [
+    {
+      name: 'main',
+      lane: 0,
+      points: [
+        { x: 48, y: 141 },
+        { x: 48, y: 234 },
+      ],
+    },
+    {
+      name: 'ko',
+      lane: 1,
+      points: [
+        { x: 82, y: 172 },
+        { x: 82, y: 234 },
+      ],
+      connections: [
+        [
+          { x: 82, y: 110 },
+          { x: 82, y: 172 },
+        ],
+      ],
+    },
+    {
+      name: 'sync/main-stable-ko-20261103',
+      lane: 1,
+      points: [
+        { x: 82, y: 110 },
+        { x: 48, y: 141 },
+      ],
+    },
+  ];
+  const widths = new Map([
+    ['main', 34],
+    ['ko', 22],
+    ['sync/main-stable-ko-20261103', 106],
+  ]);
+  const nodes = [
+    { x: 82, y: 110, radius: 12 },
+    { x: 48, y: 141, radius: 12 },
+    { x: 82, y: 172, radius: 12 },
+  ];
+  const measure = (names: string[]) => widths.get(names[0])!;
+  const labels = visibleBranchLabels(tracks, 90, 500, 0, 212, measure, 18, 2, nodes);
+  assert.deepEqual(
+    new Set(labels.flatMap((label) => label.names)),
+    new Set(tracks.map((track) => track.name)),
+  );
+  assert.deepEqual(labels[0].names, ['main']);
+  clearOfLabels(labels, (label) => measure(label.names));
+  for (const label of labels) clearOfNodes(label, measure(label.names), nodes);
+  assert.equal(
+    labels.find((label) => label.names.includes('sync/main-stable-ko-20261103'))!.y,
+    110,
+  );
+});
+test('a cramped viewport uses an existing badge edge before accepting label overlap', () => {
+  const tracks = [
+    { name: 'main', lane: 0, points: [{ x: 48, y: 200 }] },
+    { name: 'side', lane: 1, points: [{ x: 52, y: 210 }] },
+  ];
+  const measure = (names: string[]) => (names[0] === 'main' ? 90 : 30);
+  const labels = visibleBranchLabels(tracks, 184, 223, 0, 390, measure, 20);
+  const side = labels.find((label) => label.names.includes('side'))!;
+  assert.ok(Math.abs(side.boxY! - 200) <= 31);
+  assert.ok(side.boxX! >= labels[0].boxX! + 90 + 4);
+  clearOfLabels(labels, (label) => measure(label.names));
+});
+test('unavoidable node overlap does not force three separate branch names on top of each other', () => {
+  const tracks = ['main', 'side', 'other'].map((name, index) => ({
+    name,
+    lane: index,
+    points: [{ x: 48 + index * 34, y: 200 }],
+  }));
+  const labels = visibleBranchLabels(tracks, 100, 400, 0, 180, () => 80, 18, 2, [
+    { x: 48, y: 200, radius: 120 },
+  ]);
+  assert.equal(labels.length, 3);
+  clearOfLabels(labels, () => 80);
+  assert.ok(labels.every((label) => Math.abs(label.boxY! - 191) <= 31));
+});
 test('branch labels follow visible paths after heads leave the viewport and disappear after the path ends', () => {
   const tracks: BranchTrack[] = [
     {
