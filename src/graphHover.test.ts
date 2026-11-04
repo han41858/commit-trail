@@ -86,6 +86,32 @@ test('shared HEAD aliases retain separate badge focus and ambiguous commit focus
   assert.equal(node.edges.size, 0);
 });
 
+test('an older reference on the base spine keeps shared commits ambiguous while badges choose their paths', () => {
+  const commits = [commit('d4', 'd3'), commit('d3', 'd2'), commit('d2', 'd1'), commit('d1')];
+  const branches = refs({ dev: 'd4', main: 'd2' });
+  const spine = new Set(commits.map((c) => c.sha));
+  const positions = new Map(commits.map((c, i) => [c.sha, { x: 48, y: i * 31 }]));
+  const colors = graphColors(commits, commits, branches, 'dev', spine);
+  const tracks = branchTracks(commits, branches, 'dev', spine, positions, false, colors);
+  const paths = graphHoverIndex(commits, tracks);
+  const dev = resolveGraphHover({ kind: 'branch', id: 'dev' }, paths)!;
+  const main = resolveGraphHover({ kind: 'branch', id: 'main' }, paths)!;
+
+  assert.deepEqual([...dev.nodes], ['d4', 'd3', 'd2', 'd1']);
+  assert.deepEqual([...main.nodes], ['d2', 'd1']);
+  assert.deepEqual([...main.edges], ['d2:d1']);
+  assert.deepEqual([...main.branches], ['main']);
+  for (const sha of ['d4', 'd3']) {
+    assert.equal(resolveGraphHover({ kind: 'commit', id: sha }, paths), dev);
+  }
+  for (const sha of ['d2', 'd1']) {
+    const shared = resolveGraphHover({ kind: 'commit', id: sha }, paths)!;
+    assert.deepEqual([...shared.nodes], [sha]);
+    assert.equal(shared.edges.size, 0);
+    assert.equal(shared.branches.size, 0);
+  }
+});
+
 test('identical lane coordinates and palette colors cannot join unrelated paths', () => {
   const { index: paths } = index(merged(), undefined, false, true);
   const focus = resolveGraphHover({ kind: 'branch', id: 'feature' }, paths)!;
