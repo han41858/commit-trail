@@ -1,5 +1,11 @@
 import { debug } from './debug';
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  graphHoverIndex,
+  resolveGraphHover,
+  graphHoverAlpha,
+  type GraphHoverTarget,
+} from './graphHover';
 import { ROW, type Commit, type Branch, type HistoryFrontier } from './model';
 import { measuredLayout } from './measuredLayout';
 import {
@@ -32,6 +38,7 @@ type BranchBadge = {
 type Props = {
   active?: boolean;
   containerResponsive?: boolean;
+  columnOrder?: number;
   label?: string;
   theme: string;
   commits: Commit[];
@@ -54,6 +61,7 @@ type Props = {
 export function Graph({
   active = true,
   containerResponsive = false,
+  columnOrder = 0,
   label,
   theme,
   commits,
@@ -81,6 +89,15 @@ export function Graph({
   const captureFrontiers = useRef<() => void>(() => {});
   const badgeHits = useRef<BranchBadge[]>([]);
   const [hoveredBadge, setHoveredBadge] = useState<BranchBadge | null>(null);
+  const hoverRef = useRef<GraphHoverTarget | null>(null);
+  const [hoverTarget, setHoverTarget] = useState<GraphHoverTarget | null>(null);
+  const [canHover, setCanHover] = useState(() => window.matchMedia('(any-hover: hover)').matches);
+  const updateHover = useCallback((target: GraphHoverTarget | null) => {
+    const previous = hoverRef.current;
+    if (previous?.kind === target?.kind && previous?.id === target?.id) return;
+    hoverRef.current = target;
+    setHoverTarget(target);
+  }, []);
   const branchTooltipId = useId();
   const messageHits = useRef(new Map<string, number>());
   const [view, setView] = useState({
@@ -170,10 +187,37 @@ export function Graph({
       branchTracks(commits, branches, branch, data.spine, positions, reverse, tones, data.lanes),
     [commits, branches, branch, data, positions, reverse, tones],
   );
+  const hoverIndex = useMemo(() => graphHoverIndex(commits, tracks), [commits, tracks]);
+  const hoverFocus = useMemo(
+    () => (canHover && pageVisible ? resolveGraphHover(hoverTarget, hoverIndex) : null),
+    [canHover, pageVisible, hoverTarget, hoverIndex],
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(any-hover: hover)');
+    const update = () => setCanHover(media.matches);
+    const clear = () => {
+      updateHover(null);
+      setHoveredBadge(null);
+    };
+    update();
+    media.addEventListener('change', update);
+    window.addEventListener('blur', clear);
+    return () => {
+      media.removeEventListener('change', update);
+      window.removeEventListener('blur', clear);
+    };
+  }, [updateHover]);
+  useLayoutEffect(() => {
+    if (!canHover || !pageVisible || (hoverTarget && !hoverFocus)) updateHover(null);
+    if (!canHover || !pageVisible) setHoveredBadge(null);
+  }, [canHover, pageVisible, hoverTarget, hoverFocus, updateHover]);
+  useLayoutEffect(() => {
+    updateHover(null);
+  }, [columnOrder, view.width, view.height, reverse, branch, theme, updateHover]);
   useLayoutEffect(() => {
     setHoveredBadge(null);
     if (canvas.current) canvas.current.title = '';
-  }, [tracks, view, pageVisible, theme]);
+  }, [tracks, view, pageVisible, theme, columnOrder]);
   useLayoutEffect(() => {
     const tooltip = branchTooltip.current,
       graph = container.current;
@@ -449,7 +493,9 @@ export function Graph({
         const ey = end?.y ?? p.y + (reverse ? -ROW / 2 : ROW / 2);
         if (Math.max(p.y, ey) < view.top - ROW || Math.min(p.y, ey) > view.top + view.height + ROW)
           continue;
-        ctx.globalAlpha = spineEdge ? 0.95 : 0.65;
+        ctx.globalAlpha =
+          (spineEdge ? 0.95 : 0.65) *
+          graphHoverAlpha(hoverFocus, 'edges', `${c.sha}:${parent.sha}`);
         ctx.strokeStyle = colors[(tones.edges.get(`${c.sha}:${parent.sha}`) || 0) % colors.length];
         ctx.lineWidth = spineEdge ? 2.5 : 1.6;
         ctx.setLineDash(end ? [] : [4, 4]);
@@ -477,7 +523,7 @@ export function Graph({
         )
           visible++;
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = graphHoverAlpha(hoverFocus, 'nodes', c.sha);
       ctx.fillStyle = colors[(tones.nodes.get(c.sha) || 0) % colors.length];
       ctx.beginPath();
       ctx.arc(p.x, p.y, c.sha === selected ? 7 : 4.5, 0, Math.PI * 2);
@@ -487,6 +533,7 @@ export function Graph({
         ctx.lineWidth = 1;
         ctx.stroke();
       }
+      ctx.globalAlpha = 1;
       const extra = info?.get(c.sha);
       if (extra?.actions) {
         const summary = extra.actions,
@@ -516,6 +563,7 @@ export function Graph({
       for (const icon of icons(c.sha, p.x)) ctx.fillText(icon.text, icon.x, p.y + 4);
       ctx.textAlign = 'left';
       ctx.fillStyle = text;
+      ctx.globalAlpha = graphHoverAlpha(hoverFocus, 'nodes', c.sha);
       if (showMessages) {
         ctx.font = `${mobile ? 12 : 13}px system-ui`;
         const message = fitMessage(emojify(c.commit.message.split('\n')[0]));
@@ -523,7 +571,7 @@ export function Graph({
         messageWidths.set(c.sha, ctx.measureText(message).width);
       }
       if (!mobile) {
-        ctx.globalAlpha = 0.5;
+        ctx.globalAlpha = 0.5 * graphHoverAlpha(hoverFocus, 'nodes', c.sha);
         ctx.font = '11px monospace';
         const meta = fitMessage(
           `${c.sha.slice(0, 7)}  ${c.commit.author?.name || 'Unknown author'}`,
@@ -579,7 +627,11 @@ export function Graph({
       const color = colors[(label.color ?? label.lane) % colors.length];
       if (label.names.length > 1) {
         ctx.strokeStyle = color;
-        ctx.globalAlpha = 0.4;
+        ctx.globalAlpha =
+          0.4 *
+          (label.names.some((name) => graphHoverAlpha(hoverFocus, 'branches', name) === 1)
+            ? 1
+            : 0.5);
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x - 3, y + badgeHeight / 2);
@@ -589,16 +641,17 @@ export function Graph({
       }
       label.names.forEach((ref, index) => {
         const { text: name, width: boxWidth } = badge(ref, label.x),
-          rowY = y + index * (badgeHeight + badgeGap);
-        ctx.globalAlpha = 0.35;
+          rowY = y + index * (badgeHeight + badgeGap),
+          opacity = graphHoverAlpha(hoverFocus, 'branches', ref);
+        ctx.globalAlpha = 0.35 * opacity;
         ctx.fillStyle = surface;
         ctx.beginPath();
         ctx.roundRect(x, rowY, boxWidth, badgeHeight, 4);
         ctx.fill();
-        ctx.globalAlpha = theme === 'light' ? 0.06 : 0.08;
+        ctx.globalAlpha = (theme === 'light' ? 0.06 : 0.08) * opacity;
         ctx.fillStyle = color;
         ctx.fill();
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = opacity;
         ctx.fillStyle = color;
         ctx.fillText(name, x + 6, rowY + (mobile ? 12 : 14));
         const hitTop = Math.max(rowY, view.top + padding - 20),
@@ -649,6 +702,7 @@ export function Graph({
     info,
     displayNames,
     pageVisible,
+    hoverFocus,
   ]);
   function badgeAt(clientX: number, clientY: number) {
     const el = container.current!,
@@ -663,7 +717,7 @@ export function Graph({
         x >= label.x && x <= label.x + label.width && y >= label.y && y <= label.y + label.height,
     );
   }
-  function pick(clientX: number, clientY: number) {
+  function pick(clientX: number, clientY: number, forHover = false) {
     const el = container.current!,
       rect = el.getBoundingClientRect();
     const x = clientX - rect.left + el.scrollLeft,
@@ -672,8 +726,8 @@ export function Graph({
     if (!c) return;
     const p = positions.get(c.sha)!;
     return Math.abs(y - p.y) <= 22 &&
-      (Math.abs(x - p.x) <= 22 ||
-        icons(c.sha, p.x).some((icon) => Math.abs(x - icon.x) <= 9) ||
+      ((forHover ? Math.hypot(x - p.x, y - p.y) <= 12 : Math.abs(x - p.x) <= 22) ||
+        (!forHover && icons(c.sha, p.x).some((icon) => Math.abs(x - icon.x) <= 9)) ||
         (showMessages && x >= messageX && x <= messageX + (messageHits.current.get(c.sha) || 0)))
       ? c
       : undefined;
@@ -686,8 +740,9 @@ export function Graph({
       aria-label={label || 'Commit graph. Scroll to load more history.'}
       onWheelCapture={stopFollowing}
       onTouchStartCapture={stopFollowing}
-      onPointerDownCapture={() => {
+      onPointerDownCapture={(event) => {
         setHoveredBadge(null);
+        if (event.pointerType === 'touch') updateHover(null);
         stopFollowing();
       }}
       onKeyDownCapture={(event) => {
@@ -696,6 +751,7 @@ export function Graph({
       }}
       onScroll={(e) => {
         setHoveredBadge(null);
+        updateHover(null);
         if (canvas.current) canvas.current.title = '';
         const top = e.currentTarget.scrollTop;
         scrollTop.current = top;
@@ -724,18 +780,37 @@ export function Graph({
           }}
           onPointerLeave={(e) => {
             setHoveredBadge(null);
+            updateHover(null);
             e.currentTarget.title = '';
           }}
           onPointerMove={(e) => {
-            if (e.pointerType === 'touch') return;
+            if (e.pointerType === 'touch' || e.buttons) {
+              updateHover(null);
+              setHoveredBadge(null);
+              e.currentTarget.title = '';
+              return;
+            }
             const badge = badgeAt(e.clientX, e.clientY);
             if (badge) {
+              updateHover(canHover ? { kind: 'branch', id: badge.names[0] } : null);
               e.currentTarget.title = '';
               if (badge.text === badge.names.join(' · ')) setHoveredBadge(null);
-              else setHoveredBadge((previous) => (previous === badge ? previous : badge));
+              else
+                setHoveredBadge((previous) =>
+                  previous?.names[0] === badge.names[0] &&
+                  previous.x === badge.x &&
+                  previous.y === badge.y &&
+                  previous.width === badge.width &&
+                  previous.height === badge.height &&
+                  previous.text === badge.text
+                    ? previous
+                    : badge,
+                );
               return;
             }
             setHoveredBadge(null);
+            const hoverCommit = canHover && pick(e.clientX, e.clientY, true);
+            updateHover(hoverCommit ? { kind: 'commit', id: hoverCommit.sha } : null);
             const c = pick(e.clientX, e.clientY);
             if (!c) {
               e.currentTarget.title = '';

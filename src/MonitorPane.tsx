@@ -108,6 +108,7 @@ export const MonitorPane = memo(function MonitorPane({
         <Graph
           theme={theme}
           containerResponsive
+          columnOrder={order}
           commits={state.commits}
           branches={state.branches}
           branch={state.base}

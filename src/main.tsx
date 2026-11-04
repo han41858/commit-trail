@@ -618,6 +618,7 @@ function App() {
             <Graph
               active={primaryActive}
               containerResponsive={monitorState.active}
+              columnOrder={primaryOrder}
               label={monitorState.active ? `Commit graph for ${state.repo}` : undefined}
               key={`${state.repo}:${state.base}:${reverse}`}
               theme={resolvedTheme}
