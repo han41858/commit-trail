@@ -69,6 +69,9 @@ input {
   --text: #eaf2fc;
   --muted: #9aa9bd;
   --border: #27354a;
+  --notice-surface: #1b2736;
+  --notice-border: #60738b;
+  --notice-shadow: 0 8px 28px #0008;
   --month-line: #3d4f69;
   --accent: #55c8ff;
   --action: #ffca61;
@@ -94,6 +97,9 @@ input {
   --text: #16253b;
   --muted: #5b6b80;
   --border: #ced9e8;
+  --notice-surface: var(--surface);
+  --notice-border: #788ca5;
+  --notice-shadow: 0 8px 28px #16253b33;
   --month-line: #e0e7f2;
   --accent: #075f9b;
   --action: #f8b23e;
@@ -1459,16 +1465,11 @@ pre {
   gap: 8px;
   max-width: 100%;
   padding: 10px 12px;
-  border: 1px solid #60738b;
+  border: 1px solid var(--notice-border);
   border-radius: 8px;
-  background: #1b2736;
+  background: var(--notice-surface);
   font-size: 12px;
-  box-shadow: 0 8px 28px #0008;
-}
-.app[data-theme='light'] .pwa-update {
-  border-color: #7d91aa;
-  background: var(--surface);
-  box-shadow: 0 8px 28px #16253b33;
+  box-shadow: var(--notice-shadow);
 }
 .pwa-update button {
   appearance: none;
