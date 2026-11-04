@@ -1,8 +1,8 @@
-# GitStream — PWA 개발 명세서 v0.1
+# Commit Trail — PWA 개발 명세서 v0.1
 
 ## 1. 목적
 
-GitStream을 모바일과 데스크톱에 설치할 수 있는 Progressive Web App(PWA)으로 확장합니다.
+Commit Trail을 모바일과 데스크톱에 설치할 수 있는 Progressive Web App(PWA)으로 확장합니다.
 
 특히 모바일에서는 브라우저 주소창 없이 전체 화면에 가까운 공간을 사용해 세로형 Git 커밋 그래프를 탐색하는 경험을 제공합니다.
 
@@ -27,8 +27,8 @@ Web App Manifest를 구성합니다.
 
 | 속성 | 설정 |
 |---|---|
-| name | GitStream |
-| short_name | GitStream |
+| name | Commit Trail |
+| short_name | Commit Trail |
 | id | `/` |
 | start_url | `/` |
 | scope | `/` |
@@ -37,9 +37,9 @@ Web App Manifest를 구성합니다.
 | theme_color | 기존 UI 테마와 일치 |
 | background_color | 기존 앱 배경색과 일치 |
 
-- 앱 이름과 아이콘은 기존 GitStream 브랜드 사용
+- 앱 이름과 아이콘은 기존 Commit Trail 브랜드 사용
 - 모바일 세로·가로 방향 모두 허용
-- 홈 화면에서 실행하면 GitStream의 시작 화면 표시
+- 홈 화면에서 실행하면 Commit Trail의 시작 화면 표시
 - 특정 저장소 URL은 기존 `?repo=` 파라미터 유지. 반복 `repo`와 `mode=monitor`를 사용하는 분할 구성도 현재 URL에서 복원하며 상세 정책은 [Monitor Mode 명세](monitor-mode.md)를 따른다.
 - 주소창 없는 실행에서도 저장소 입력창에 `:debug`를 입력하고 제출해 개발자 진단을 연다. 명령은 현재 저장소를 유지하며 추가 API 조회나 페이지 이동을 발생시키지 않는다. 상세 활성화·종료 정책은 [개발자 디버그 모드 명세](developer-debug-mode.md)를 따른다.
 - 쿼리 파라미터에 따라 별개의 PWA로 인식되지 않도록 고정된 `id` 사용
@@ -48,7 +48,7 @@ Manifest는 Vercel의 Production과 Preview에서 올바르게 제공되어야 �
 
 ### 2.2 앱 아이콘
 
-현재 저장소에 있는 공식 GitStream 로고를 활용합니다.
+현재 저장소에 있는 공식 Commit Trail 로고를 활용합니다.
 
 필요한 아이콘:
 
@@ -126,7 +126,7 @@ Service Worker를 사용하여 앱의 정적 리소스를 캐싱합니다.
 - Manifest 관련 정적 리소스
 - 앱 시작에 필요한 정적 HTML
 
-GitStream은 GitHub API를 사용하므로 앱 셸과 Git 데이터의 캐싱 정책을 구분합니다.
+Commit Trail은 GitHub API를 사용하므로 앱 셸과 Git 데이터의 캐싱 정책을 구분합니다.
 
 ### 4.2 캐싱 금지 대상
 
@@ -162,20 +162,21 @@ Vercel에 새 버전이 배포되면 Service Worker 업데이트를 감지합니
 
 단, 새 버전이 확인되었다는 이유로 현재 화면을 즉시 새로고침하지 않습니다.
 
-GitStream은 자동 갱신되는 커밋 그래프를 사용자가 탐색할 수 있으므로, 앱 버전 업데이트와 GitHub 데이터 갱신을 구분해야 합니다.
+Commit Trail은 자동 갱신되는 커밋 그래프를 사용자가 탐색할 수 있으므로, 앱 버전 업데이트와 GitHub 데이터 갱신을 구분해야 합니다.
 
 ### 5.2 업데이트 적용
 
 **사용자 확인 후 새 버전을 적용하는 방식을 기본으로 합니다.**
 
 - 새 앱 버전이 준비되면 오른쪽 아래에 간결한 업데이트 안내 표시. 기본 오른쪽·하단 여백은 12px이며 Safe Area가 더 크면 해당 값을 적용
+- 안내는 테마에 맞춘 대비가 높은 배경·테두리·그림자로 그래프와 구분한다. `Update app`은 기존 노란 강조색의 채움 버튼을 사용하고, `Later`는 차분한 윤곽 버튼으로 표시한다
 - 사용자가 갱신을 선택하면 새 버전 적용
 - 적용 버튼은 클릭 직전 실제 너비·높이를 고정한 뒤 `Update app`을 `Updating…`로 바꿔, 문구 전환으로 버튼·인접 버튼·안내창의 크기와 위치가 바뀌지 않음. 버튼은 줄바꿈·축소와 브라우저 기본 외형의 영향을 받지 않도록 표시
 - 나중에 적용할 수 있도록 닫기 제공
 - 불필요하게 반복해서 안내하지 않음
 - 탐색 중인 그래프를 강제로 새로고침하지 않음
 
-UI는 기존 GitStream 디자인을 따릅니다.
+UI는 기존 Commit Trail 디자인을 따릅니다.
 
 복잡한 업데이트 관리자나 별도 설정 화면을 만들지 않습니다.
 
@@ -195,7 +196,7 @@ UI는 기존 GitStream 디자인을 따릅니다.
 
 기존 GitHub PAT 정책을 변경하지 않습니다.
 
-현재 GitStream은 사용자가 적용한 PAT를 `localStorage`에 저장하고 재실행 시 복원할 수 있으므로, PWA에서도 기존 정책을 그대로 유지합니다.
+현재 Commit Trail은 사용자가 적용한 PAT를 `localStorage`에 저장하고 재실행 시 복원할 수 있으므로, PWA에서도 기존 정책을 그대로 유지합니다.
 
 - Service Worker에는 PAT 전달 금지
 - 인증 헤더 및 토큰 로깅 금지
@@ -307,7 +308,7 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 ## 11. 완료 기준
 
-- GitStream을 모바일 홈 화면에 설치 가능
+- Commit Trail을 모바일 홈 화면에 설치 가능
 - Standalone 모드에서 기존 Git 그래프 정상 동작
 - 기존 공식 로고가 앱 아이콘으로 표시
 - 모바일 Safe Area 및 화면 회전 지원
@@ -328,7 +329,7 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 - `src/PwaUpdates.ts`, `src/pwa.ts`, `src/PwaUpdatePrompt.tsx`: 등록·새 버전 안내·적용을 API 갱신과 분리한다. 최초 설치 안내나 설치 유도 배너는 없다. 같은 worker의 Later는 반복 안내하지 않으며 새 버전은 다시 알릴 수 있다.
 - 배포 빌드에서만 SW를 등록한다. 기본 갱신 검사는 브라우저 등록 시, 열린 화면에서는 1시간 주기 및 온라인·탭 복귀 시 수행한다. 후자는 1분 이내 중복 검사, 숨긴 탭·오프라인·설치 중 검사를 생략한다. GitHub API를 호출하지 않는다.
 - 적용 버튼을 누른 창만 새 controller가 준비된 후 새로고침한다. 다른 창에서 업데이트를 적용해도 현재 창을 강제 새로고침하지 않는다. 적용 실패·15초 이내 제어권 미전환 시 기존 화면과 오류 안내를 유지하고 재시도할 수 있다.
-- Workbox는 빌드된 HTML·JS·CSS·PNG와 Manifest만 precache한다. 런타임 캐시 경로는 없다. `/` 및 쿼리를 가진 `/` 탐색만 캐시된 `index.html`로 처리하고 쿼리·저장소별 HTML 캐시를 만들지 않는다. GitHub 응답·Authorization·PAT를 SW에 전달하거나 저장하는 코드는 없다. 기존 PAT localStorage 키·복원·삭제는 바꾸지 않았다.
+- Workbox는 빌드된 HTML·JS·CSS·PNG와 Manifest만 precache한다. 런타임 캐시 경로는 없다. `/` 및 쿼리를 가진 `/` 탐색만 캐시된 `index.html`로 처리하고 쿼리·저장소별 HTML 캐시를 만들지 않는다. GitHub 응답·Authorization·PAT를 SW에 전달하거나 저장하는 코드는 없다. PAT는 새 제품명에 맞춘 localStorage 키를 사용하며, 이전 제품의 데이터는 이전하지 않는다. 복원·삭제 정책은 유지한다.
 - 새 worker 설치가 실패하면 기존 worker와 앱 셸을 유지한다. 활성화 때 현재 정적 자산을 보존하고 오래된 precache 항목을 정리한다. 이미 열린 다른 창의 앱 코드는 사용자 적용·재시작 전까지 유지될 수 있다.
 - `index.html`의 `viewport-fit=cover`, Chromium의 `interactive-widget=resizes-content`, iOS 홈 화면 메타데이터를 사용한다. 기존 동적 theme-color는 유지한다. Safe Area를 그래프 좌우·하단과 오버레이에 적용하고 그래프 상단은 기존 toolbar 측정값만 사용하여 여백을 이중 적용하지 않는다. 모바일 입력 글자 크기는 16px로 맞춘다.
 - CSP는 기존 제한에 정적 자산 접근용 `connect-src 'self'`, 명시적 `worker-src 'self'`, `manifest-src 'self'`만 추가한다. SW는 재검증하며 immutable 캐시를 쓰지 않고, 기존 해시 자산은 immutable 정책을 유지한다. Preview/Production은 같은 코드이며 SW·캐시·설치는 Origin별로 분리된다.
@@ -355,7 +356,7 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 ### 배포 후 확인 (2026-11-01, KST)
 
-- [main 커밋 `a76ea8d`](https://github.com/han41858/git-stream/commit/a76ea8d9e54f108df6360efd0871a95d20d3e666)의 Vercel Production 배포가 READY이고, CI 및 Production release 워크플로가 성공한 것을 확인했다. 자동 생성한 [릴리즈 `rel-20261101020811`](https://github.com/han41858/git-stream/releases/tag/rel-20261101020811)의 태그도 같은 배포 커밋을 가리킨다. Production 대표 주소는 `https://git-stream-view.vercel.app/`다.
+- [main 커밋 `a76ea8d`](https://github.com/han41858/commit-trail/commit/a76ea8d9e54f108df6360efd0871a95d20d3e666)의 Vercel Production 배포가 READY이고, CI 및 Production release 워크플로가 성공한 것을 확인했다. 자동 생성한 [릴리즈 `rel-20261101020811`](https://github.com/han41858/commit-trail/releases/tag/rel-20261101020811)의 태그도 같은 배포 커밋을 가리킨다. 이 검증은 당시의 Production Origin에서 수행했다. 이름 변경 후 목표 주소는 `https://commit-trail-view.vercel.app/`이며, 새 도메인 배포 검증은 별도로 수행한다.
 - 이전 PWA 배포 후 사용자로부터 설치 성공 확인을 받았다. 기기·OS·브라우저와 앱 업데이트 적용 결과는 기록되지 않았으므로, 이번 릴리즈의 플랫폼별 설치·업데이트 검증 완료를 의미하지 않는다.
 - 실제 Android Chrome 설치·업데이트, iOS Safari 홈 화면·상태 표시줄·키보드·회전, 데스크톱 OS 설치 실행 및 업데이트 적용은 플랫폼별로 추가 확인해야 한다.
 
@@ -378,7 +379,7 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 3. 독립 Origin의 Preview/로컬 환경에서 이전 PWA를 먼저 설치한 후 같은 Origin에 해제 빌드를 제공해 검증한다. 매번 달라지는 Preview 배포 URL끼리는 이 검증이 되지 않는다. 보호된 Preview는 기존 인증을 사용한다.
 4. 실제 서비스 반영에는 별도 Production 승인이 필요하다. 장애 안내 후 정상 PR·릴리즈 또는 승인된 Vercel 롤백 경로로 배포한다. 이 문서 작성·검증 과정에서는 실제 Production에 배포하지 않는다.
 5. 기존 클라이언트가 SW 갱신 검사를 수행하면 해제 worker가 즉시 활성화되어 등록을 해제하고 제어 중인 창을 현재 URL로 다시 이동시킨다. **이 예외 절차는 다른 열린 창도 새로고침할 수 있다.** 평상시 사용자 확인 방식과 다르므로 장애 복구 때만 사용한다.
-6. 플러그인 2.0.0이 생성하는 해제 worker는 **해당 Origin의 Cache Storage 전체를 삭제**한다. GitStream 전용 Origin에서 사용하고, 같은 Origin을 다른 앱과 공유한다면 먼저 영향 범위를 검토한다. localStorage·PAT는 삭제하지 않는다.
+6. 플러그인 2.0.0이 생성하는 해제 worker는 **해당 Origin의 Cache Storage 전체를 삭제**한다. Commit Trail 전용 Origin에서 사용하고, 같은 Origin을 다른 앱과 공유한다면 먼저 영향 범위를 검토한다. localStorage·PAT는 삭제하지 않는다.
 7. DevTools Application → Service Workers에서 해당 scope 등록 해제를 확인하고 Cache Storage가 비었는지 확인한다. 기존 쿼리·토큰 복원·GitHub 조회를 확인한다. 다른 Origin의 Preview/Production 캐시는 영향을 받지 않아야 한다.
 8. 오프라인·장기 미접속 클라이언트에는 즉시 도달하지 않는다. 필요한 복구 기간 동안 같은 `/sw.js`의 해제 응답을 유지한다. 등록 코드나 endpoint를 성급히 삭제하지 않는다. 안정화 후 정상 PWA를 복원하면 평상시 등록·사용자 확인 정책으로 돌아간다.
 
@@ -386,7 +387,7 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 ### 개별 브라우저의 수동 복구
 
-장애 영향이 있는 **GitStream Origin에서만** DevTools를 사용한다. 해당 scope를 unregister하고 현재 앱의 precache만 삭제한 뒤 다시 연다. 예시:
+장애 영향이 있는 **Commit Trail Origin에서만** DevTools를 사용한다. 해당 scope를 unregister하고 현재 앱의 precache만 삭제한 뒤 다시 연다. 예시:
 
 ```js
 const registration = await navigator.serviceWorker.getRegistration('/');

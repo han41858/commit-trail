@@ -6,8 +6,9 @@
 
 ## 데이터와 성공 기록
 
-- 키: `gitstream.recent-repositories`. PAT 키 `gitstream.github-token`과 분리한다.
-- 직접 선택한 기준 브랜치는 별도 `gitstream.branch-selections`에 저장소·브랜치·공개 여부만 기록한다. 최근 방문 목록의 10개 제한과 독립적이며 같은 메타데이터·PAT 변경 처리를 재사용한다. URL 진입이나 자동 선택은 이 기록을 덮어쓰지 않는다.
+- 키: `commit-trail.recent-repositories`. PAT 키 `commit-trail.github-token`과 분리한다.
+- 직접 선택한 기준 브랜치는 별도 `commit-trail.branch-selections`에 저장소·브랜치·공개 여부만 기록한다. 최근 방문 목록의 10개 제한과 독립적이며 같은 메타데이터·PAT 변경 처리를 재사용한다. URL 진입이나 자동 선택은 이 기록을 덮어쓰지 않는다.
+- 제품명 변경과 함께 새 저장 키로 시작하며 이전 데이터는 읽거나 이전하지 않는다. 토큰·최근 저장소·브랜치·Split view 선택은 다시 설정한다. 상세 정책은 [기술 가이드](technical-guide.md#product-rename-and-saved-browser-data)를 따른다.
 - JSON 배열의 각 항목은 `repository`(소문자 `owner/repo`), `visibility`(`public`/`private`), `visitedAt`(성공 시각의 Unix 밀리초)만 포함한다.
 - 중복 저장소는 가장 최근 항목으로 합치며 최근순으로 최대 10개를 유지한다. 유효하지 않은 항목·시각·공개 여부와 알 수 없는 필드는 제거한다.
 - `History.open()`이 기존 `/repos/{owner}/{repo}` 응답을 받고 취소되지 않은 것을 확인한 시점에 기록한다. 주소 입력·추천 검색 자체는 기록하지 않는다.
@@ -63,7 +64,7 @@ PWA 재실행에서도 같은 브라우저 저장소의 이력을 복원한다. 
 - `npm test`: 244개 통과. 이 기능의 저장소 단위 테스트 18개와 History 통합 테스트 8개를 포함한다.
 - `node --test --test-isolation=none .github/scripts/*.test.mjs`: 기존 릴리즈 테스트 26개 통과. `npm run build` 성공.
 - Production 빌드를 Chromium에서 실행해 23개 시나리오 묶음을 통과했다. GitHub API는 성공·실패·공개 여부 변경을 재현하는 테스트 응답을 사용했다. 입력·필터·삭제·현재 저장소 재선택은 추가 요청 0회를 확인했다.
-- 실제 공개 저장소 `han41858/git-stream`도 조회해 메타데이터 HTTP 200·공개 이력 저장·그래프 표시를 확인했다. 최초 로딩은 기존 API 요청 10회, 현재 저장소 추천 재선택은 추가 요청 0회였다. 브라우저의 외부 접속 제한 때문에 세션 프록시를 통한 TLS 검증 중계로 실제 GitHub 응답을 전달했으며, 이 확인에는 테스트 응답을 사용하지 않았다.
+- 실제 공개 저장소 `han41858/commit-trail`도 조회해 메타데이터 HTTP 200·공개 이력 저장·그래프 표시를 확인했다. 최초 로딩은 기존 API 요청 10회, 현재 저장소 추천 재선택은 추가 요청 0회였다. 브라우저의 외부 접속 제한 때문에 세션 프록시를 통한 TLS 검증 중계로 실제 GitHub 응답을 전달했으며, 이 확인에는 테스트 응답을 사용하지 않았다.
 - 320·390·430·1280px에서 목록 폭·44px 터치 영역·Tab·팝업 닫기를 확인했다. 모바일 높이를 310px로 줄여 목록 내부 스크롤을 확인하고, 터치·마우스 선택과 키보드 삭제를 각각 검증했다.
 - 실제 Service Worker가 제어하는 페이지를 오프라인으로 다시 열어 공개·비공개 이력 복원과 삭제를 확인했다. 자동 갱신은 테스트 시계를 61초 진행해 확인했다.
 - 설치된 iOS/Android PWA, 실제 가상 키보드와 Safe Area, VoiceOver/TalkBack/NVDA의 음성 안내는 실기기에서 별도 확인이 필요하다. 플랫폼 간 브라우저/PWA 저장소 공유는 보장하지 않는다.

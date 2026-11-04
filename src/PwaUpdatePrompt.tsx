@@ -18,9 +18,9 @@ export function PwaUpdatePrompt() {
         }
       }}
     >
-      <span>{state.error || 'A new version of GitStream is ready.'}</span>
+      <span>{state.error || 'A new version of Commit Trail is ready.'}</span>
       <button
-        className="pwa-update-apply"
+        className="pwa-update-apply primary"
         type="button"
         style={state.applying ? buttonSize : undefined}
         disabled={state.applying}
@@ -33,6 +33,7 @@ export function PwaUpdatePrompt() {
         {state.applying ? 'Updating…' : 'Update app'}
       </button>
       <button
+        className="pwa-update-later"
         type="button"
         disabled={state.applying}
         aria-label="Dismiss app update"

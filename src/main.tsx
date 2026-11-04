@@ -48,7 +48,7 @@ import { analyticsBeforeSend } from './analytics';
 import './style.css';
 import './monitor.css';
 
-const DEMO_REPO = 'han41858/git-stream';
+const DEMO_REPO = 'han41858/commit-trail';
 const BUILD_DATE = import.meta.env.DEV
   ? ''
   : (() => {
@@ -711,8 +711,8 @@ function App() {
           )}
       </main>
       <header className="topbar" ref={toolbarRef}>
-        <a className="brand" href="./" aria-label="GitStream home">
-          <img src={logo} alt="" width="36" height="36" /> GitStream
+        <a className="brand" href="./" aria-label="Commit Trail home">
+          <img src={logo} alt="" width="36" height="36" /> Commit Trail
         </a>
         <RepositoryInput
           value={input}
@@ -895,7 +895,7 @@ function App() {
               setErrorDismissed(true);
               setAuth(false);
             }}
-            href="https://github.com/settings/personal-access-tokens/new?name=GitStream&amp;contents=read&amp;pull_requests=read&amp;actions=read"
+            href="https://github.com/settings/personal-access-tokens/new?name=Commit%20Trail&amp;contents=read&amp;pull_requests=read&amp;actions=read"
             target="_blank"
             rel="noreferrer"
           >

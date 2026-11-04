@@ -8,7 +8,7 @@ export default defineConfig({
   injectRegister:false,
   includeManifestIcons:false,
   manifest:{
-   id:'/',name:'GitStream',short_name:'GitStream',start_url:'/',scope:'/',display:'standalone',
+   id:'/',name:'Commit Trail',short_name:'Commit Trail',start_url:'/',scope:'/',display:'standalone',
    theme_color:'#070a11',background_color:'#070a11',
    icons:[
     {src:'/icons/icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},

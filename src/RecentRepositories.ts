@@ -1,6 +1,6 @@
 import { lowercaseRepoInput, parseRepo } from './model';
 
-export const RECENT_REPOSITORIES_KEY = 'gitstream.recent-repositories';
+export const RECENT_REPOSITORIES_KEY = 'commit-trail.recent-repositories';
 export const RECENT_REPOSITORIES_LIMIT = 10;
 export type RecentRepository = Readonly<{
   repository: string;

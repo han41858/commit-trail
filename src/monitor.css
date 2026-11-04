@@ -283,16 +283,33 @@
 .monitor-setup {
   position: relative;
   inset: auto;
+  display: flex;
+  flex-direction: column;
   width: min(480px, 100%);
+  min-height: 0;
   max-height: 100%;
-  overflow: auto;
+  overflow: hidden;
   padding: 24px;
   font-size: 12px;
 }
 .monitor-setup h2 {
+  flex-shrink: 0;
   font-size: 17px;
   margin: 0 0 8px;
   font-weight: 500;
+}
+.monitor-setup-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: -4px;
+  padding: 4px;
+  overflow: auto;
+  scroll-padding: 4px;
+  overscroll-behavior: contain;
+}
+.monitor-setup-body > p:first-child {
+  margin-top: 0;
 }
 .monitor-setup p {
   color: var(--muted);
@@ -378,11 +395,6 @@
 .monitor-setup .monitor-setup-error {
   color: var(--warning);
 }
-.monitor-recent {
-  max-height: 220px;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
 .monitor-recent button {
   display: flex;
   gap: 8px;
@@ -400,6 +412,7 @@
 }
 .monitor-setup-actions {
   display: flex;
+  flex-shrink: 0;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
@@ -448,5 +461,10 @@
   }
   .monitor-repository {
     font-size: 13px;
+  }
+}
+@media (max-height: 400px) {
+  .monitor-setup {
+    padding: 12px;
   }
 }

@@ -24,14 +24,14 @@ function fixture() {
     deployment: { id: 42, sha: SHA, ref: 'main', environment: 'Production',
       production_environment: true, transient_environment: false, creator: bot },
     status: { id: 99, state: 'success', creator: bot, created_at: '2026-10-30T14:45:12Z',
-      environment_url: 'https://git-stream-abc-han-janghyuns-projects.vercel.app',
-      log_url: 'https://git-stream-abc-han-janghyuns-projects.vercel.app',
-      target_url: 'https://git-stream-abc-han-janghyuns-projects.vercel.app' },
+      environment_url: 'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
+      log_url: 'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
+      target_url: 'https://commit-trail-abc-han-janghyuns-projects.vercel.app' },
     commitStatuses: [{ state: 'success', context: 'Vercel', creator: bot,
-      target_url: 'https://vercel.com/han-janghyuns-projects/git-stream/Abc123' }],
+      target_url: 'https://vercel.com/han-janghyuns-projects/commit-trail/Abc123' }],
     comparison: 'ahead', refs: [], releases: [], calls: [], failNotes: false, failRelease: false,
   };
-  const context = { repo: { owner: 'han41858', repo: 'git-stream' },
+  const context = { repo: { owner: 'han41858', repo: 'commit-trail' },
     eventName: 'deployment_status', ref: 'refs/heads/main', payload: {
       sender: bot, deployment: { id: 42, sha: SHA }, deployment_status: { id: 99, state: 'success' },
       repository: { default_branch: 'dev' },
@@ -51,10 +51,10 @@ function fixture() {
     createRelease: wrap('createRelease', args => {
       if (state.failRelease) throw error(503);
       if (state.releaseRace) {
-        state.releases.push({ ...args, html_url: 'https://github.com/han41858/git-stream/releases/existing' });
+        state.releases.push({ ...args, html_url: 'https://github.com/han41858/commit-trail/releases/existing' });
         state.releaseRace = false; throw error(422);
       }
-      const release = { ...args, html_url: `https://github.com/han41858/git-stream/releases/tag/${args.tag_name}` };
+      const release = { ...args, html_url: `https://github.com/han41858/commit-trail/releases/tag/${args.tag_name}` };
       state.releases.push(release); return release;
     }),
     getReleaseByTag: wrap('getReleaseByTag', ({ tag }) => {
@@ -98,14 +98,23 @@ test('a verified Vercel Production success creates a tag on the deployed SHA and
   assert.equal(f.state.refs[0].object.sha, SHA);
   const release = f.state.releases[0];
   assert.equal(release.target_commitish, SHA); assert.equal(release.make_latest, 'true');
-  assert.match(release.body, /git-stream-view\.vercel\.app/);
+  assert.match(release.body, /commit-trail-view\.vercel\.app/);
   assert.match(release.body, /Verified application changes/);
-  assert.match(release.body, /gitstream-deployment:42/);
+  assert.match(release.body, /commit-trail-deployment:42/);
 });
 
 test('Preview success never creates tags or releases', async () => {
   const f = fixture(); f.state.deployment.environment = 'Preview'; f.state.deployment.production_environment = false;
   assert.equal((await publishRelease(f.api)).eligible, false); assert.equal(f.writes().length, 0);
+});
+
+test('the renamed public Production domain is accepted and recorded in release notes', async () => {
+  const f = fixture();
+  f.state.status.environment_url = 'https://commit-trail-view.vercel.app/';
+  const result = await publishRelease(f.api);
+  assert.equal(result.created, true);
+  assert.match(f.state.releases[0].body, /Production: https:\/\/commit-trail-view\.vercel\.app\//);
+  assert.match(f.state.releases[0].body, /github\.com\/han41858\/commit-trail\/commit\//);
 });
 
 test('Vercel Production succeeds even when GitHub production_environment is false', async () => {
@@ -132,9 +141,9 @@ test('persisted deployment and success status must both belong to the Vercel bot
 });
 
 test('another project or team cannot publish this repository release', async () => {
-  for (const url of ['https://vercel.com/other/git-stream/Abc123',
+  for (const url of ['https://vercel.com/other/commit-trail/Abc123',
     'https://vercel.com/han-janghyuns-projects/other/Abc123',
-    'https://vercel.com.attacker.example/han-janghyuns-projects/git-stream/Abc123']) {
+    'https://vercel.com.attacker.example/han-janghyuns-projects/commit-trail/Abc123']) {
     const f = fixture(); f.state.commitStatuses[0].target_url = url;
     await assert.rejects(publishRelease(f.api), /expected Vercel team and project/);
     assert.equal(f.writes().length, 0);
@@ -150,8 +159,8 @@ test('the real Vercel deployment-status URL shape is cross-checked against its a
 });
 
 test('lookalike project and team deployment hosts are rejected even with a valid project commit status', async () => {
-  for (const url of ['https://git-stream-other-abc-han-janghyuns-projects.vercel.app',
-    'https://git-stream-abc-other-team.vercel.app']) {
+  for (const url of ['https://commit-trail-other-abc-han-janghyuns-projects.vercel.app',
+    'https://commit-trail-abc-other-team.vercel.app']) {
     const f = fixture(); f.state.status.environment_url = url;
     await assert.rejects(publishRelease(f.api), /Unexpected deployment URL/);
     assert.equal(f.writes().length, 0);

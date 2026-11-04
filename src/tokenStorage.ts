@@ -1,4 +1,4 @@
-export const TOKEN_STORAGE_KEY = 'gitstream.github-token';
+export const TOKEN_STORAGE_KEY = 'commit-trail.github-token';
 export function readStoredToken() {
   try {
     return { token: localStorage.getItem(TOKEN_STORAGE_KEY) || '', error: '' };
