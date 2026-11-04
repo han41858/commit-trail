@@ -302,7 +302,10 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  margin: -4px;
+  padding: 4px;
   overflow: auto;
+  scroll-padding: 4px;
   overscroll-behavior: contain;
 }
 .monitor-setup-body > p:first-child {
@@ -391,11 +394,6 @@
 }
 .monitor-setup .monitor-setup-error {
   color: var(--warning);
-}
-.monitor-recent {
-  max-height: 220px;
-  overflow: auto;
-  overscroll-behavior: contain;
 }
 .monitor-recent button {
   display: flex;
