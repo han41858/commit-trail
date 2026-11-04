@@ -1469,6 +1469,17 @@ pre {
   font-size: 12px;
   padding: 6px 9px;
 }
+.pwa-update-apply {
+  display: grid;
+  place-items: center;
+}
+.pwa-update-apply > span {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+.pwa-update-apply > span[aria-hidden='true'] {
+  visibility: hidden;
+}
 @media (max-width: 800px) {
   .topbar {
     left: max(10px, var(--safe-left));
