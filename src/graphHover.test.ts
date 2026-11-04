@@ -54,9 +54,9 @@ test('a branch focuses its first-parent segment and real incoming merge connecto
   assert.deepEqual([...focus.nodes].sort(), ['base', 'feature', 'merge']);
   assert.deepEqual([...focus.edges].sort(), ['feature:base', 'merge:feature']);
   assert.deepEqual([...focus.branches], ['feature']);
-  assert.equal(graphHoverAlpha(focus, 'edges', 'base:root'), 0.5);
-  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:base'), 0.5);
-  assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.5);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'base:root'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:base'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.25);
   assert.equal(tracks.find((track) => track.name === 'feature')!.points.length, 2);
 });
 
@@ -93,7 +93,7 @@ test('shared HEAD aliases retain separate badge focus and common commit ancestry
   );
   const alias = resolveGraphHover({ kind: 'branch', id: 'alias' }, paths)!;
   assert.equal(graphHoverAlpha(alias, 'branches', 'alias'), 1);
-  assert.equal(graphHoverAlpha(alias, 'branches', 'main'), 0.5);
+  assert.equal(graphHoverAlpha(alias, 'branches', 'main'), 0.25);
   const node = resolveGraphHover({ kind: 'commit', id: 'merge' }, paths)!;
   assert.deepEqual([...node.nodes].sort(), ['base', 'feature', 'merge', 'root']);
   assert.ok(node.edges.has('merge:feature'));
@@ -131,8 +131,8 @@ test('older references on the base spine cannot change commit ancestry', () => {
 test('identical lane coordinates and palette colors cannot join unrelated paths', () => {
   const { index: paths } = index(merged(), undefined, false, true);
   const focus = resolveGraphHover({ kind: 'branch', id: 'feature' }, paths)!;
-  assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.5);
-  assert.equal(graphHoverAlpha(focus, 'edges', 'other:root'), 0.5);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'other:root'), 0.25);
   const unclassified: BranchTrack = { name: 'guess', lane: 0, color: 0, points: [{ x: 48, y: 0 }] };
   const unknown = graphHoverIndex(merged(), [unclassified]);
   assert.equal(resolveGraphHover({ kind: 'branch', id: 'guess' }, unknown), null);
@@ -197,8 +197,8 @@ test('only actual parent edges are accepted and relative alpha returns exactly t
   const focus = resolveGraphHover({ kind: 'branch', id: 'feature' }, paths)!;
   assert.deepEqual([...focus.edges], ['a:b']);
   assert.equal(graphHoverAlpha(focus, 'nodes', 'a'), 1);
-  assert.equal(0.65 * graphHoverAlpha(focus, 'edges', 'a:c'), 0.325);
-  assert.equal(0.35 * graphHoverAlpha(focus, 'branches', 'other'), 0.175);
+  assert.equal(0.65 * graphHoverAlpha(focus, 'edges', 'a:c'), 0.1625);
+  assert.equal(0.35 * graphHoverAlpha(focus, 'branches', 'other'), 0.0875);
   assert.equal(0.65 * graphHoverAlpha(resolveGraphHover(null, paths), 'edges', 'a:c'), 0.65);
 });
 
@@ -214,8 +214,8 @@ test('commit selection follows every parent through joins without highlighting u
     'merge:feature',
   ]);
   assert.deepEqual([...focus.branches].sort(), ['feature', 'main']);
-  assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.5);
-  assert.equal(graphHoverAlpha(focus, 'edges', 'newer:merge'), 0.5);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'newer:merge'), 0.25);
 });
 
 test('a commit inside a branch keeps that branch badge but excludes its newer commits and merge connector', () => {
@@ -225,8 +225,8 @@ test('a commit inside a branch keeps that branch badge but excludes its newer co
   assert.deepEqual([...focus.nodes].sort(), ['base', 'feature', 'root']);
   assert.deepEqual([...focus.edges].sort(), ['base:root', 'feature:base']);
   assert.deepEqual([...focus.branches].sort(), ['feature', 'older']);
-  assert.equal(graphHoverAlpha(focus, 'nodes', 'tip'), 0.5);
-  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:feature'), 0.5);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'tip'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:feature'), 0.25);
 });
 
 test('commit ancestry stays deterministic for shared commits and does not need surviving branch names', () => {

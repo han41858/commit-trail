@@ -82,5 +82,5 @@ export function graphHoverAlpha(
   kind: keyof GraphHoverFocus,
   id: string,
 ) {
-  return !focus || focus[kind].has(id) ? 1 : 0.5;
+  return !focus || focus[kind].has(id) ? 1 : 0.25;
 }
