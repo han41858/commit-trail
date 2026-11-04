@@ -6,6 +6,7 @@ import { Graph } from './Graph';
 import { CommitDetails } from './CommitDetails';
 import type { MonitorEntry, MonitorSession } from './MonitorSession';
 import { useMonitorDetailsPosition } from './useMonitorDetailsPosition';
+import { LoadingIndicator } from './LoadingIndicator';
 
 export function MonitorStatus({
   state,
@@ -26,9 +27,11 @@ export function MonitorStatus({
   return (
     <div className="monitor-status">
       <span>{state.commits.length.toLocaleString()} commits</span>
-      {(state.busy || extras.busy || refreshing) && (
-        <span className="loading-spinner" role="status" aria-label="Loading repository" />
-      )}
+      <LoadingIndicator
+        busy={state.busy || extras.busy || refreshing}
+        repository={state.repo}
+        label="Loading repository"
+      />
       {limited ? (
         <p role="status">GitHub rate limit · waiting to retry</p>
       ) : error ? (
