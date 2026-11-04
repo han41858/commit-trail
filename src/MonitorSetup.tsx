@@ -42,6 +42,7 @@ export function MonitorSetup({
   const [dragging, setDragging] = useState(''),
     [orderStatus, setOrderStatus] = useState('');
   const dialog = useRef<HTMLElement>(null),
+    scrollArea = useRef<HTMLDivElement>(null),
     field = useRef<HTMLInputElement>(null),
     list = useRef<HTMLOListElement>(null);
   const drag = useRef<{ repository: string; pointerId: number; index: number } | null>(null);
@@ -164,160 +165,168 @@ export function MonitorSetup({
           ×
         </button>
         <h2 id="monitor-setup-title">Split view</h2>
-        <p>Watch up to {MONITOR_LIMIT} repositories side by side. Landscape works best.</p>
-        <ol
-          className="monitor-selected"
-          ref={list}
-          aria-label="Selected repositories"
-          onPointerMove={(event) => {
-            const current = drag.current;
-            if (!current || current.pointerId !== event.pointerId || !list.current) return;
-            const rows = [...list.current.children];
-            let target = 0,
-              distance = Infinity;
-            rows.forEach((row, index) => {
-              const rect = row.getBoundingClientRect(),
-                next = Math.abs(event.clientY - (rect.top + rect.height / 2));
-              if (next < distance) {
-                target = index;
-                distance = next;
+        <div className="monitor-setup-body" ref={scrollArea}>
+          <p>Watch up to {MONITOR_LIMIT} repositories side by side. Landscape works best.</p>
+          <ol
+            className="monitor-selected"
+            ref={list}
+            aria-label="Selected repositories"
+            onPointerMove={(event) => {
+              const current = drag.current;
+              if (!current || current.pointerId !== event.pointerId || !list.current) return;
+              const rows = [...list.current.children];
+              let target = 0,
+                distance = Infinity;
+              rows.forEach((row, index) => {
+                const rect = row.getBoundingClientRect(),
+                  next = Math.abs(event.clientY - (rect.top + rect.height / 2));
+                if (next < distance) {
+                  target = index;
+                  distance = next;
+                }
+              });
+              current.index = target;
+              move(current.repository, target);
+              const panel = scrollArea.current;
+              if (panel) {
+                const rect = panel.getBoundingClientRect();
+                if (event.clientY > rect.bottom - 28) panel.scrollTop += 12;
+                else if (event.clientY < rect.top + 28) panel.scrollTop -= 12;
               }
-            });
-            current.index = target;
-            move(current.repository, target);
-            const panel = dialog.current;
-            if (panel) {
-              const rect = panel.getBoundingClientRect();
-              if (event.clientY > rect.bottom - 28) panel.scrollTop += 12;
-              else if (event.clientY < rect.top + 28) panel.scrollTop -= 12;
-            }
-          }}
-          onPointerUp={finishDrag}
-          onPointerCancel={finishDrag}
-          onLostPointerCapture={finishDrag}
-        >
-          {selected.map((repository, index) => (
-            <li key={repository} data-dragging={dragging === repository}>
-              <button
-                type="button"
-                className="monitor-drag"
-                aria-label={`Reorder ${repository}`}
-                aria-description="Drag or use Up/Down to reorder"
-                aria-pressed={dragging === repository}
-                disabled={selected.length < 2}
-                title="Drag or use Up/Down to reorder"
-                onPointerDown={(event) => {
-                  if (!event.isPrimary || event.button !== 0 || drag.current || selected.length < 2)
-                    return;
-                  event.preventDefault();
-                  event.currentTarget.focus({ preventScroll: true });
-                  drag.current = { repository, pointerId: event.pointerId, index };
-                  setDragging(repository);
-                  setOrderStatus('');
-                  list.current?.setPointerCapture(event.pointerId);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-                  event.preventDefault();
-                  const target = Math.max(
-                    0,
-                    Math.min(selected.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)),
-                  );
-                  move(repository, target);
-                  setOrderStatus(
-                    `${repository} moved to position ${target + 1} of ${selected.length}.`,
-                  );
-                }}
-              >
-                <svg
-                  width="16"
-                  height="18"
-                  viewBox="0 0 16 18"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  {[4, 9, 14].flatMap((y) =>
-                    [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />),
-                  )}
-                </svg>
-              </button>
-              <span title={repository}>{repository}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${repository} from monitor`}
-                onClick={() => {
-                  setSelected((names) => names.filter((name) => name !== repository));
-                  setError('');
-                  resetCopy();
-                  setOrderStatus('');
-                }}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ol>
-        <div className="monitor-order-status" role="status" aria-live="polite">
-          {orderStatus}
-        </div>
-        <form
-          className="monitor-add"
-          onSubmit={(event) => {
-            event.preventDefault();
-            add(input);
-            field.current?.focus();
-          }}
-        >
-          <input
-            ref={field}
-            aria-label="Repository to monitor"
-            placeholder="owner/repository"
-            autoComplete="off"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            value={input}
-            onChange={(event) => {
-              setInput(lowercaseField(event.currentTarget));
-              setError('');
             }}
-          />
-          <button type="submit" disabled={selected.length >= MONITOR_LIMIT}>
-            Add
-          </button>
-        </form>
-        {error && (
-          <p className="monitor-setup-error" role="alert">
-            {error}
-          </p>
-        )}
-        {available.length > 0 && (
-          <>
-            <h3>Recent repositories</h3>
-            <div className="monitor-recent">
-              {available.map((entry) => (
+            onPointerUp={finishDrag}
+            onPointerCancel={finishDrag}
+            onLostPointerCapture={finishDrag}
+          >
+            {selected.map((repository, index) => (
+              <li key={repository} data-dragging={dragging === repository}>
                 <button
                   type="button"
-                  key={entry.repository}
-                  title={entry.repository}
-                  aria-label={`Add ${entry.repository} to monitor`}
-                  onClick={() => add(entry.repository)}
+                  className="monitor-drag"
+                  aria-label={`Reorder ${repository}`}
+                  aria-description="Drag or use Up/Down to reorder"
+                  aria-pressed={dragging === repository}
+                  disabled={selected.length < 2}
+                  title="Drag or use Up/Down to reorder"
+                  onPointerDown={(event) => {
+                    if (
+                      !event.isPrimary ||
+                      event.button !== 0 ||
+                      drag.current ||
+                      selected.length < 2
+                    )
+                      return;
+                    event.preventDefault();
+                    event.currentTarget.focus({ preventScroll: true });
+                    drag.current = { repository, pointerId: event.pointerId, index };
+                    setDragging(repository);
+                    setOrderStatus('');
+                    list.current?.setPointerCapture(event.pointerId);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                    event.preventDefault();
+                    const target = Math.max(
+                      0,
+                      Math.min(selected.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)),
+                    );
+                    move(repository, target);
+                    setOrderStatus(
+                      `${repository} moved to position ${target + 1} of ${selected.length}.`,
+                    );
+                  }}
                 >
-                  <span>{entry.repository}</span>
+                  <svg
+                    width="16"
+                    height="18"
+                    viewBox="0 0 16 18"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    {[4, 9, 14].flatMap((y) =>
+                      [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />),
+                    )}
+                  </svg>
                 </button>
-              ))}
-            </div>
-          </>
-        )}
-        <p className="monitor-share-note">
-          Shared links include repository and branch names, including private ones. Share with care.
-        </p>
-        <div className="monitor-copy-status" role="status" aria-live="polite">
-          {
-            { idle: '', copying: '', copied: 'Link copied.', failed: 'Could not copy link.' }[
-              copyStatus
-            ]
-          }
+                <span title={repository}>{repository}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${repository} from monitor`}
+                  onClick={() => {
+                    setSelected((names) => names.filter((name) => name !== repository));
+                    setError('');
+                    resetCopy();
+                    setOrderStatus('');
+                  }}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className="monitor-order-status" role="status" aria-live="polite">
+            {orderStatus}
+          </div>
+          <form
+            className="monitor-add"
+            onSubmit={(event) => {
+              event.preventDefault();
+              add(input);
+              field.current?.focus();
+            }}
+          >
+            <input
+              ref={field}
+              aria-label="Repository to monitor"
+              placeholder="owner/repository"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={input}
+              onChange={(event) => {
+                setInput(lowercaseField(event.currentTarget));
+                setError('');
+              }}
+            />
+            <button type="submit" disabled={selected.length >= MONITOR_LIMIT}>
+              Add
+            </button>
+          </form>
+          {error && (
+            <p className="monitor-setup-error" role="alert">
+              {error}
+            </p>
+          )}
+          {available.length > 0 && (
+            <>
+              <h3>Recent repositories</h3>
+              <div className="monitor-recent">
+                {available.map((entry) => (
+                  <button
+                    type="button"
+                    key={entry.repository}
+                    title={entry.repository}
+                    aria-label={`Add ${entry.repository} to monitor`}
+                    onClick={() => add(entry.repository)}
+                  >
+                    <span>{entry.repository}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="monitor-share-note">
+            Shared links include repository and branch names, including private ones. Share with
+            care.
+          </p>
+          <div className="monitor-copy-status" role="status" aria-live="polite">
+            {
+              { idle: '', copying: '', copied: 'Link copied.', failed: 'Could not copy link.' }[
+                copyStatus
+              ]
+            }
+          </div>
         </div>
         <div className="monitor-setup-actions">
           <small>
