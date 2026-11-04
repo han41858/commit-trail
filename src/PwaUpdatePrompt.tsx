@@ -1,8 +1,9 @@
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { pwaUpdates } from './pwa';
 
 export function PwaUpdatePrompt() {
   const state = useSyncExternalStore(pwaUpdates.subscribe, pwaUpdates.getSnapshot);
+  const [buttonSize, setButtonSize] = useState<{ width: number; height: number }>();
   if (!state.visible) return null;
   return (
     <section
@@ -21,11 +22,15 @@ export function PwaUpdatePrompt() {
       <button
         className="pwa-update-apply"
         type="button"
+        style={state.applying ? buttonSize : undefined}
         disabled={state.applying}
-        onClick={() => void pwaUpdates.apply()}
+        onClick={(event) => {
+          const { width, height } = event.currentTarget.getBoundingClientRect();
+          setButtonSize({ width, height });
+          void pwaUpdates.apply();
+        }}
       >
-        <span aria-hidden={state.applying}>Update app</span>
-        <span aria-hidden={!state.applying}>Updating…</span>
+        {state.applying ? 'Updating…' : 'Update app'}
       </button>
       <button
         type="button"
