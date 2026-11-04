@@ -183,4 +183,6 @@ A ready app version shows **Update app** and **Later** at the bottom right, with
 
 Before changing **Update app** to **Updating…**, the click handler captures the button's rendered width and height and keeps those dimensions while activation is pending. Each retry measures again; outside activation the button uses its natural size. The button cannot shrink in its flex row, and update controls use explicit CSS appearance. This avoids relying on overlapping hidden labels or a native button's Grid sizing. Only the current label is rendered, so its accessible name follows the visible text. Error messages still use the existing wrapping behavior.
 
+The update notice uses an elevated slate surface in dark mode and a white surface in light mode, with stronger borders and shadows to separate it from the graph. **Update app** reuses the app's yellow primary-button palette; **Later** is a muted outline button. These styles are scoped to the update notice.
+
 See [the PWA specification and verification checklist](pwa.md) for cache boundaries, update behavior, CSP changes and physical-device checks that still need a release environment.

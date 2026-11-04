@@ -1459,11 +1459,16 @@ pre {
   gap: 8px;
   max-width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid #60738b;
   border-radius: 8px;
-  background: var(--surface);
+  background: #1b2736;
   font-size: 12px;
-  box-shadow: 0 3px 18px #0003;
+  box-shadow: 0 8px 28px #0008;
+}
+.app[data-theme='light'] .pwa-update {
+  border-color: #7d91aa;
+  background: var(--surface);
+  box-shadow: 0 8px 28px #16253b33;
 }
 .pwa-update button {
   appearance: none;
@@ -1473,6 +1478,11 @@ pre {
 .pwa-update-apply {
   flex-shrink: 0;
   white-space: nowrap;
+}
+.pwa-update-later {
+  color: var(--muted);
+  background: transparent;
+  border-color: inherit;
 }
 @media (max-width: 800px) {
   .topbar {
