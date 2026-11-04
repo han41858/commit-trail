@@ -181,4 +181,6 @@ Production builds use `vite-plugin-pwa` to cache the static app shell, including
 
 A ready app version shows **Update app** and **Later** at the bottom right, with 12px edge spacing or the larger safe-area inset. When present, the debug entry or load-error notice stacks 8px above it without raising the update prompt; the debug position without an update stays unchanged. Applying reloads the consenting window after the new worker activates, preserving its URL. Another tab's approval does not force the current tab to reload. Failed downloads leave the installed shell available. Static cache cleanup happens on activation. Preview and Production have separate origins, workers, caches and installations; use the stable Production domain for normal installation.
 
+The apply button reserves the space of both **Update app** and **Updating…**, so switching labels does not move or resize the button, its neighbor or the prompt. Only the active label is visible and included in the button's accessible name.
+
 See [the PWA specification and verification checklist](pwa.md) for cache boundaries, update behavior, CSP changes and physical-device checks that still need a release environment.
