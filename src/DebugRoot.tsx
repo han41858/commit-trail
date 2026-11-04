@@ -12,7 +12,7 @@ class DebugLoadBoundary extends Component<{ children: ReactNode }, { failed: boo
   }
   componentDidCatch(error: unknown) {
     console.debug(
-      '[GitStream debug] panel failed to load',
+      '[Commit Trail debug] panel failed to load',
       error instanceof Error ? error.name : 'error',
     );
   }

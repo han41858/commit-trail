@@ -197,7 +197,7 @@ export class DebugMetrics {
   constructor(
     private readonly clock = () => performance.now(),
     private readonly log = (kind: string, value: unknown) =>
-      console.debug(`[GitStream debug] ${kind}`, value),
+      console.debug(`[Commit Trail debug] ${kind}`, value),
   ) {}
   enabled = () => this.mode !== 'off';
   getMode = () => this.mode;

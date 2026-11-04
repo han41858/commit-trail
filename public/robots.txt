@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://git-stream-view.vercel.app/sitemap.xml
+Sitemap: https://commit-trail-view.vercel.app/sitemap.xml

@@ -1,4 +1,4 @@
-# GitStream 개발자 디버그 모드
+# Commit Trail 개발자 디버그 모드
 
 ## 활성화와 UI
 
@@ -49,7 +49,7 @@
 - HTTP 요청, 갱신, DAG 계산, Canvas 그리기 **각각 최근 20개**를 메모리에 유지한다. 세션 누적 수는 별도로 유지한다. 새로고침·Reset·Disable debug 시 상세 측정과 누적 수를 지운다. 앱 데이터·캐시·요청에는 영향을 주지 않는다.
 - **Copy diagnostics**는 허용된 필드만으로 JSON을 만든다. 수치 집계, 고정된 API 종류, 상태 코드, 갱신 ID·종류, 시간, Rate Limit 수치, 현재 진행·대기 수만 포함한다.
 - 저장소·브랜치·태그 이름, SHA, 커밋 메시지·작성자, URL·쿼리, PAT, Authorization, ETag 원문, 오류 메시지, 원본 응답을 복사하거나 Console에 기록하지 않는다. Console 버튼은 같은 수치 스냅샷을 제공한다. 클립보드 접근이 불가능하면 오류를 표시하고 Console로 확인할 수 있다.
-- 상세 로그는 DevTools Console에서 `[GitStream debug]`로 찾을 수 있다. 분석 서버, 외부 전송, 분석 라이브러리, 영속 DB나 디버그용 localStorage를 사용하지 않는다.
+- 상세 로그는 DevTools Console에서 `[Commit Trail debug]`로 찾을 수 있다. 분석 서버, 외부 전송, 분석 라이브러리, 영속 DB나 디버그용 localStorage를 사용하지 않는다.
 
 ## 비활성 상태의 비용
 

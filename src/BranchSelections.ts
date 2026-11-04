@@ -1,7 +1,7 @@
 import { monitorRepository } from './MonitorRepositories';
 import { branchName } from './branchName';
 
-export const BRANCH_SELECTIONS_KEY = 'gitstream.branch-selections';
+export const BRANCH_SELECTIONS_KEY = 'commit-trail.branch-selections';
 type Entry = { repository: string; branch: string; visibility: 'public' | 'private' };
 type StorageAccess = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 type Options = {

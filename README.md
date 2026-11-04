@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="public/icons/icon-192.png" alt="GitStream logo" width="96" height="96" />
+  <img src="public/icons/icon-192.png" alt="Commit Trail logo" width="96" height="96" />
 </p>
 
-<h1 align="center">GitStream</h1>
+<h1 align="center">Commit Trail</h1>
 
 <p align="center">
-  <a href="LICENSE.md"><img src="https://img.shields.io/github/license/han41858/git-stream?label=License" alt="License: MIT" /></a>
-  <a href="https://github.com/han41858/git-stream/releases"><img src="https://img.shields.io/github/v/release/han41858/git-stream?sort=date&amp;display_name=tag&amp;label=Latest%20Release" alt="Latest Release" /></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/github/license/han41858/commit-trail?label=License" alt="License: MIT" /></a>
+  <a href="https://github.com/han41858/commit-trail/releases"><img src="https://img.shields.io/github/v/release/han41858/commit-trail?sort=date&amp;display_name=tag&amp;label=Latest%20Release" alt="Latest Release" /></a>
 </p>
 
 <h3 align="center">Watch your Git history unfold.</h3>
@@ -14,12 +14,12 @@
 <p align="center">Read-only · Web app · PWA</p>
 
 <p align="center">
-  <a href="https://git-stream-view.vercel.app/?repo=han41858%2Fgit-stream"><strong>Live Demo</strong></a>
+  <a href="https://commit-trail-view.vercel.app/?repo=han41858%2Fcommit-trail"><strong>Live Demo</strong></a>
   · <a href="#getting-started">Get started</a>
   · <a href="#development--documentation">Documentation</a>
 </p>
 
-![GitStream on desktop, showing the public GitStream repository and its commit graph](docs/images/desktop.png)
+![Commit Trail on desktop, showing the public Commit Trail repository and its commit graph](docs/images/desktop.png)
 
 ## Features
 
@@ -33,11 +33,11 @@
 <details>
 <summary>See automatic refresh in action</summary>
 
-![A newly pushed commit appearing automatically in GitStream after a scheduled refresh](docs/images/auto-refresh.gif)
+![Commit Trail checking for repository updates on its automatic refresh schedule](docs/images/auto-refresh.gif)
 
 </details>
 
-![GitStream Split view showing GitStream, AI Template, Angular and VS Code in four desktop columns](docs/images/split-desktop.png)
+![Commit Trail Split view showing Commit Trail, AI Template, Angular and VS Code in four desktop columns](docs/images/split-desktop.png)
 
 Choose **Split view** to select repositories. Drag a header handle to reorder columns; on touch screens, press and hold the handle first. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
 
@@ -45,7 +45,7 @@ Choose **Split view** to select repositories. Drag a header handle to reorder co
   <tr><th>Portrait</th><th>Landscape</th></tr>
   <tr>
     <td width="28%" align="center" valign="top"><img src="docs/images/split-mobile-portrait.png" alt="The same four public repositories in portrait Split view, with narrow graph columns" width="195" /></td>
-    <td width="72%" align="center" valign="top"><img src="docs/images/split-mobile-landscape.png" alt="The same four repositories in landscape Split view, with messages in the AI Template, Angular and VS Code columns and a graph-only GitStream column" width="562" /></td>
+    <td width="72%" align="center" valign="top"><img src="docs/images/split-mobile-landscape.png" alt="The same four repositories in landscape Split view, with commit messages where column width and lane spacing allow" width="562" /></td>
   </tr>
 </table>
 
@@ -55,13 +55,13 @@ Portrait Split view emphasizes the DAG. Landscape can show one-line commit messa
 
 ## Getting started
 
-1. Open the [Live Demo](https://git-stream-view.vercel.app/?repo=han41858%2Fgit-stream).
+1. Open the [Live Demo](https://commit-trail-view.vercel.app/?repo=han41858%2Fcommit-trail).
 2. Enter `owner/repo` or a GitHub repository URL and press Enter.
 3. Choose a branch, scroll through history and select a commit for details.
 
-GitStream remembers the last branch you choose for each repository in this browser. An explicit `branch` in a shared URL takes priority for that visit without changing your saved choice; otherwise it restores your choice, then falls back to `main`, `master`, or the repository default.
+Commit Trail remembers the last branch you choose for each repository in this browser. An explicit `branch` in a shared URL takes priority for that visit without changing your saved choice; otherwise it restores your choice, then falls back to `main`, `master`, or the repository default.
 
-Use **Options** to choose a theme and refresh interval. Install GitStream from your browser's app menu or add it to your home screen. The PWA caches the app shell; GitHub data still needs a connection.
+Use **Options** to choose a theme and refresh interval. Install Commit Trail from your browser's app menu or add it to your home screen. The PWA caches the app shell; GitHub data still needs a connection.
 
 Shared links restore the view when opened or reloaded, with repositories arranged left to right in URL order:
 
@@ -102,7 +102,7 @@ npm run dev
 - [Recent repositories](docs/recent-repositories.md) — local suggestions, deletion and PAT changes.
 - [Split view](docs/monitor-mode.md) — selection and ordering, shared URLs, refresh and mobile limits.
 
-Ideas and bug reports are welcome in [Issues](https://github.com/han41858/git-stream/issues).
+Ideas and bug reports are welcome in [Issues](https://github.com/han41858/commit-trail/issues).
 
 ## License
 

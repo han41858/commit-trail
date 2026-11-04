@@ -1,16 +1,16 @@
-# GitStream — 자동 갱신 및 커밋 메타데이터 확장 명세서
+# Commit Trail — 자동 갱신 및 커밋 메타데이터 확장 명세서
 
 ## 1. 개요
 
-GitStream에 GitHub 저장소의 변경 사항을 자동으로 감지하고 그래프에 반영하는 기능을 추가합니다.
+Commit Trail에 GitHub 저장소의 변경 사항을 자동으로 감지하고 그래프에 반영하는 기능을 추가합니다.
 
 아울러 Git 태그, GitHub Release, GitHub Actions 실행 상태를 각 커밋에 연결하여 표시합니다.
 
-AI 코딩 에이전트나 GitHub Actions가 작업하는 동안 GitStream을 열어두면, 커밋과 브랜치의 변화뿐 아니라 자동화 작업의 진행 상황도 확인할 수 있도록 합니다.
+AI 코딩 에이전트나 GitHub Actions가 작업하는 동안 Commit Trail을 열어두면, 커밋과 브랜치의 변화뿐 아니라 자동화 작업의 진행 상황도 확인할 수 있도록 합니다.
 
 ### 기본 원칙
 
-- 기존 GitStream의 세로형 Git DAG 시각화 유지
+- 기존 Commit Trail의 세로형 Git DAG 시각화 유지
 - GitHub REST API 기반 Polling 사용
 - 별도 백엔드, WebSocket, Webhook 불필요
 - 변경된 데이터만 필요한 범위에서 조회
@@ -641,7 +641,7 @@ WebGL이나 새로운 그래프 라이브러리로 변경하지 않습니다.
 
 ## 16. Codex 작업 지침
 
-기존 GitStream 구현과 `docs/specification.md`를 먼저 확인합니다.
+기존 Commit Trail 구현과 `docs/specification.md`를 먼저 확인합니다.
 
 이번 명세는 기존 기본 그래프 기능을 대체하지 않고 확장하는 작업입니다.
 

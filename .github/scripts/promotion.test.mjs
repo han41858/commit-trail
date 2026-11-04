@@ -6,8 +6,8 @@ const promotion = {
   eventName: 'pull_request',
   baseRef: 'main',
   headRef: 'dev',
-  headRepository: 'han41858/git-stream',
-  repository: 'han41858/git-stream',
+  headRepository: 'han41858/commit-trail',
+  repository: 'han41858/commit-trail',
 };
 
 test('main accepts a promotion from the same repository dev branch', () => {
@@ -22,7 +22,7 @@ test('feature, release, hotfix and other branches cannot bypass dev', () => {
 
 test('a fork branch named dev cannot promote directly to main', () => {
   assert.throws(
-    () => assertMainPromotion({ ...promotion, headRepository: 'someone/git-stream' }),
+    () => assertMainPromotion({ ...promotion, headRepository: 'someone/commit-trail' }),
     /Merge into dev first/,
   );
 });
@@ -46,7 +46,7 @@ test('feature and fork PRs targeting dev continue through ordinary validation', 
       ...promotion,
       baseRef: 'dev',
       headRef: 'fix/example',
-      headRepository: 'someone/git-stream',
+      headRepository: 'someone/commit-trail',
     }),
   );
 });

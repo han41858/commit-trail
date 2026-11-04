@@ -18,7 +18,7 @@ export function PwaUpdatePrompt() {
         }
       }}
     >
-      <span>{state.error || 'A new version of GitStream is ready.'}</span>
+      <span>{state.error || 'A new version of Commit Trail is ready.'}</span>
       <button
         className="pwa-update-apply primary"
         type="button"
