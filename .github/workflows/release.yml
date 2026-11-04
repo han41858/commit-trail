@@ -23,7 +23,7 @@ jobs:
   inspect:
     name: Verify production deployment
     if: >-
-      github.repository == 'han41858/git-stream' &&
+      github.repository == 'han41858/commit-trail' &&
       ((github.event_name == 'deployment_status' &&
         github.event.deployment_status.state == 'success' &&
         github.event.deployment.environment == 'Production' &&

@@ -1,8 +1,8 @@
-const REPOSITORY = 'han41858/git-stream';
+const REPOSITORY = 'han41858/commit-trail';
 const VERCEL_BOT_ID = 35613825;
 const TEAM = 'han-janghyuns-projects';
-const PROJECT = 'git-stream';
-const PRODUCTION_URL = 'https://git-stream-view.vercel.app/';
+const PROJECT = 'commit-trail';
+const PRODUCTION_URL = 'https://commit-trail-view.vercel.app/';
 const TAG = /^rel-\d{14}$/;
 const SHA = /^[a-f0-9]{40}$/;
 const params = context => ({ owner: context.repo.owner, repo: context.repo.repo });
@@ -36,7 +36,7 @@ function deploymentUrl(value) {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.port || url.username || url.password ||
       !(url.hostname === new URL(PRODUCTION_URL).hostname ||
-        /^git-stream-[a-z0-9]+-han-janghyuns-projects\.vercel\.app$/.test(url.hostname))) {
+        /^commit-trail-[a-z0-9]+-han-janghyuns-projects\.vercel\.app$/.test(url.hostname))) {
     throw new Error('Unexpected deployment URL.');
   }
   return url.href;
@@ -159,8 +159,8 @@ export async function publishRelease({ github, context, core }) {
   if (dryRun) return { dryRun: true, tag, sha, deploymentId: deployment.deploymentId };
   const { data: notes } = await github.rest.repos.generateReleaseNotes({ ...scope, tag_name: tag, target_commitish: sha });
   const body = [
-    `<!-- gitstream-production-release:${sha} -->`,
-    `<!-- gitstream-deployment:${deployment.deploymentId} -->`,
+    `<!-- commit-trail-production-release:${sha} -->`,
+    `<!-- commit-trail-deployment:${deployment.deploymentId} -->`,
     '## Production deployment',
     `- Commit: [\`${sha.slice(0, 7)}\`](https://github.com/${REPOSITORY}/commit/${sha})`,
     `- Production: ${PRODUCTION_URL}`,

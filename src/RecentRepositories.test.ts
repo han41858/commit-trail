@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { TOKEN_STORAGE_KEY } from './tokenStorage';
 import {
   RecentRepositories,
   RECENT_REPOSITORIES_KEY,
@@ -104,9 +105,9 @@ test('timestamp validation rejects nonfinite and unsafe dates and keeps equal-da
   );
 });
 test('search is a local case-insensitive substring match and supports GitHub URL input', () => {
-  const entries = [row('angular/angular'), row('han41858/git-stream'), row('other/project')];
+  const entries = [row('angular/angular'), row('han41858/commit-trail'), row('other/project')];
   assert.deepEqual(matchingRecentRepositories(entries, ''), entries);
-  assert.deepEqual(matchingRecentRepositories(entries, 'GIT'), [entries[1]]);
+  assert.deepEqual(matchingRecentRepositories(entries, 'TRAIL'), [entries[1]]);
   assert.deepEqual(matchingRecentRepositories(entries, '41858'), [entries[1]]);
   assert.deepEqual(matchingRecentRepositories(entries, 'https://github.com/ANGULAR/angular.git/'), [
     entries[0],
@@ -114,16 +115,19 @@ test('search is a local case-insensitive substring match and supports GitHub URL
   assert.deepEqual(matchingRecentRepositories(entries, ':debug'), []);
 });
 test('the unchanged current address shows all recent visits in visit order, while other input is filtered', () => {
-  const entries = [row('angular/angular'), row('han41858/git-stream'), row('other/project')];
+  const entries = [row('angular/angular'), row('han41858/commit-trail'), row('other/project')];
   assert.deepEqual(
-    matchingRecentRepositories(entries, 'han41858/git-stream', 'han41858/git-stream'),
+    matchingRecentRepositories(entries, 'han41858/commit-trail', 'han41858/commit-trail'),
     entries,
   );
-  assert.deepEqual(matchingRecentRepositories(entries, 'angular', 'han41858/git-stream'), [
+  assert.deepEqual(matchingRecentRepositories(entries, 'angular', 'han41858/commit-trail'), [
     entries[0],
   ]);
-  assert.deepEqual(matchingRecentRepositories(entries, 'han41858/git-stream'), [entries[1]]);
-  assert.deepEqual(matchingRecentRepositories(entries, 'missing/repo', 'han41858/git-stream'), []);
+  assert.deepEqual(matchingRecentRepositories(entries, 'han41858/commit-trail'), [entries[1]]);
+  assert.deepEqual(
+    matchingRecentRepositories(entries, 'missing/repo', 'han41858/commit-trail'),
+    [],
+  );
 });
 test('first PAT registration, replacement and deletion clear only private visits', () => {
   for (const [previous, next] of [
@@ -198,12 +202,12 @@ test('touching the current repository preserves the latest known visibility with
 });
 test('individual and all-history deletion preserve unrelated browser data', () => {
   const { store, storage } = setup([row('a/one'), row('a/two', 'private', 90)]);
-  storage.data.set('gitstream.github-token', 'FAKE_TEST_TOKEN');
+  storage.data.set(TOKEN_STORAGE_KEY, 'FAKE_TEST_TOKEN');
   store.remove('A/One');
   assert.deepEqual(store.getSnapshot().entries, [row('a/two', 'private', 90)]);
   store.clear();
   assert.equal(storage.getItem(RECENT_REPOSITORIES_KEY), null);
-  assert.equal(storage.getItem('gitstream.github-token'), 'FAKE_TEST_TOKEN');
+  assert.equal(storage.getItem(TOKEN_STORAGE_KEY), 'FAKE_TEST_TOKEN');
   store.record('new/visit', false);
   assert.equal(store.getSnapshot().entries[0].repository, 'new/visit');
 });

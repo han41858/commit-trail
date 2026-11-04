@@ -1,8 +1,8 @@
 import { lowercaseRepoInput, parseRepo } from './model';
 
 export const MONITOR_LIMIT = 32;
-export const MONITOR_REPOSITORIES_KEY = 'gitstream.monitor-repositories';
-export const MONITOR_PUBLIC_REPOSITORIES_KEY = 'gitstream.monitor-public-repositories';
+export const MONITOR_REPOSITORIES_KEY = 'commit-trail.monitor-repositories';
+export const MONITOR_PUBLIC_REPOSITORIES_KEY = 'commit-trail.monitor-public-repositories';
 type StorageAccess = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export function monitorRepository(value: string) {
   return parseRepo(lowercaseRepoInput(value));
