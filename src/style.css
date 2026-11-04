@@ -1466,19 +1466,13 @@ pre {
   box-shadow: 0 3px 18px #0003;
 }
 .pwa-update button {
+  appearance: none;
   font-size: 12px;
   padding: 6px 9px;
 }
 .pwa-update-apply {
-  display: grid;
-  place-items: center;
-}
-.pwa-update-apply > span {
-  grid-area: 1 / 1;
+  flex-shrink: 0;
   white-space: nowrap;
-}
-.pwa-update-apply > span[aria-hidden='true'] {
-  visibility: hidden;
 }
 @media (max-width: 800px) {
   .topbar {
