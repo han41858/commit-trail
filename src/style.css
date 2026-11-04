@@ -680,9 +680,6 @@ pre {
   width: 200px;
   min-width: 100px;
 }
-.base-prefix {
-  color: var(--muted);
-}
 .options {
   position: relative;
 }
@@ -917,8 +914,14 @@ pre {
   .view-controls > .direction-toggle {
     padding: 7px 8px;
   }
-  .view-controls .base-prefix {
-    display: none;
+}
+@media (max-width: 360px) {
+  .view-controls {
+    gap: 4px;
+  }
+  .base-picker > .branch-trigger {
+    gap: 4px;
+    padding-inline: 5px;
   }
 }
 
