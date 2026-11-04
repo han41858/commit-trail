@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import type { Commit, Branch } from './model';
 import { branchTracks, type BranchTrack } from './branchLabels';
 import { emptyGraphColors, graphColors } from './graphColors';
-import { graphHoverIndex, graphHoverAlpha, resolveGraphHover } from './graphHover';
+import {
+  graphHoverIndex,
+  graphHoverAlpha,
+  graphCommitFocus,
+  resolveGraphHover,
+} from './graphHover';
 
 const commit = (sha: string, ...parents: string[]): Commit => ({
   sha,
@@ -55,25 +60,33 @@ test('a branch focuses its first-parent segment and real incoming merge connecto
   assert.equal(tracks.find((track) => track.name === 'feature')!.points.length, 2);
 });
 
-test('a unique commit and its message resolve to the exact same cached branch focus', () => {
+test('a commit hover and selection resolve to the exact same cached ancestor focus', () => {
   const { index: paths } = index(merged());
   assert.equal(
     resolveGraphHover({ kind: 'commit', id: 'feature' }, paths),
-    resolveGraphHover({ kind: 'branch', id: 'feature' }, paths),
+    resolveGraphHover({ kind: 'commit', id: 'feature' }, paths),
   );
+  assert.deepEqual([...resolveGraphHover({ kind: 'commit', id: 'feature' }, paths)!.nodes].sort(), [
+    'base',
+    'feature',
+    'root',
+  ]);
 });
 
-test('shared join and merge commits are highlighted alone without guessing a branch', () => {
+test('shared join and merge commits follow actual ancestry without choosing one branch', () => {
   const { index: paths } = index(merged());
-  for (const sha of ['merge', 'base', 'root']) {
+  const expected: Record<string, string[]> = {
+    merge: ['base', 'feature', 'merge', 'root'],
+    base: ['base', 'root'],
+    root: ['root'],
+  };
+  for (const [sha, nodes] of Object.entries(expected)) {
     const focus = resolveGraphHover({ kind: 'commit', id: sha }, paths)!;
-    assert.deepEqual([...focus.nodes], [sha]);
-    assert.equal(focus.edges.size, 0);
-    assert.equal(focus.branches.size, 0);
+    assert.deepEqual([...focus.nodes].sort(), nodes);
   }
 });
 
-test('shared HEAD aliases retain separate badge focus and ambiguous commit focus', () => {
+test('shared HEAD aliases retain separate badge focus and common commit ancestry', () => {
   const { index: paths } = index(
     merged(),
     refs({ main: 'merge', alias: 'merge', feature: 'feature' }),
@@ -82,11 +95,12 @@ test('shared HEAD aliases retain separate badge focus and ambiguous commit focus
   assert.equal(graphHoverAlpha(alias, 'branches', 'alias'), 1);
   assert.equal(graphHoverAlpha(alias, 'branches', 'main'), 0.5);
   const node = resolveGraphHover({ kind: 'commit', id: 'merge' }, paths)!;
-  assert.equal(node.nodes.size, 1);
-  assert.equal(node.edges.size, 0);
+  assert.deepEqual([...node.nodes].sort(), ['base', 'feature', 'merge', 'root']);
+  assert.ok(node.edges.has('merge:feature'));
+  assert.ok(node.branches.has('main') && node.branches.has('alias'));
 });
 
-test('an older reference on the base spine keeps shared commits ambiguous while badges choose their paths', () => {
+test('older references on the base spine cannot change commit ancestry', () => {
   const commits = [commit('d4', 'd3'), commit('d3', 'd2'), commit('d2', 'd1'), commit('d1')];
   const branches = refs({ dev: 'd4', main: 'd2' });
   const spine = new Set(commits.map((c) => c.sha));
@@ -102,13 +116,15 @@ test('an older reference on the base spine keeps shared commits ambiguous while 
   assert.deepEqual([...main.edges], ['d2:d1']);
   assert.deepEqual([...main.branches], ['main']);
   for (const sha of ['d4', 'd3']) {
-    assert.equal(resolveGraphHover({ kind: 'commit', id: sha }, paths), dev);
+    assert.deepEqual(
+      resolveGraphHover({ kind: 'commit', id: sha }, paths)!.nodes,
+      new Set(sha === 'd4' ? ['d4', 'd3', 'd2', 'd1'] : ['d3', 'd2', 'd1']),
+    );
   }
   for (const sha of ['d2', 'd1']) {
     const shared = resolveGraphHover({ kind: 'commit', id: sha }, paths)!;
-    assert.deepEqual([...shared.nodes], [sha]);
-    assert.equal(shared.edges.size, 0);
-    assert.equal(shared.branches.size, 0);
+    assert.deepEqual([...shared.nodes], sha === 'd2' ? ['d2', 'd1'] : ['d1']);
+    assert.equal(shared.edges.size, sha === 'd2' ? 1 : 0);
   }
 });
 
@@ -121,8 +137,8 @@ test('identical lane coordinates and palette colors cannot join unrelated paths'
   const unknown = graphHoverIndex(merged(), [unclassified]);
   assert.equal(resolveGraphHover({ kind: 'branch', id: 'guess' }, unknown), null);
   assert.deepEqual(
-    [...resolveGraphHover({ kind: 'commit', id: 'feature' }, unknown)!.nodes],
-    ['feature'],
+    [...resolveGraphHover({ kind: 'commit', id: 'feature' }, unknown)!.nodes].sort(),
+    ['base', 'feature', 'root'],
   );
 });
 
@@ -184,4 +200,85 @@ test('only actual parent edges are accepted and relative alpha returns exactly t
   assert.equal(0.65 * graphHoverAlpha(focus, 'edges', 'a:c'), 0.325);
   assert.equal(0.35 * graphHoverAlpha(focus, 'branches', 'other'), 0.175);
   assert.equal(0.65 * graphHoverAlpha(resolveGraphHover(null, paths), 'edges', 'a:c'), 0.65);
+});
+
+test('commit selection follows every parent through joins without highlighting unrelated descendants', () => {
+  const commits = [commit('newer', 'merge'), ...merged()];
+  const { tracks } = index(commits);
+  const focus = graphCommitFocus('merge', commits, tracks)!;
+  assert.deepEqual([...focus.nodes].sort(), ['base', 'feature', 'merge', 'root']);
+  assert.deepEqual([...focus.edges].sort(), [
+    'base:root',
+    'feature:base',
+    'merge:base',
+    'merge:feature',
+  ]);
+  assert.deepEqual([...focus.branches].sort(), ['feature', 'main']);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.5);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'newer:merge'), 0.5);
+});
+
+test('a commit inside a branch keeps that branch badge but excludes its newer commits and merge connector', () => {
+  const commits = [commit('tip', 'feature'), ...merged()];
+  const { tracks } = index(commits, refs({ main: 'merge', feature: 'tip', older: 'base' }));
+  const focus = graphCommitFocus('feature', commits, tracks)!;
+  assert.deepEqual([...focus.nodes].sort(), ['base', 'feature', 'root']);
+  assert.deepEqual([...focus.edges].sort(), ['base:root', 'feature:base']);
+  assert.deepEqual([...focus.branches].sort(), ['feature', 'older']);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'tip'), 0.5);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:feature'), 0.5);
+});
+
+test('commit ancestry stays deterministic for shared commits and does not need surviving branch names', () => {
+  const commits = merged();
+  const { tracks } = index(commits, refs({ main: 'merge', alias: 'merge', feature: 'feature' }));
+  const focus = graphCommitFocus('merge', commits, tracks)!;
+  assert.deepEqual([...focus.branches].sort(), ['alias', 'feature', 'main']);
+  const unnamed = graphCommitFocus('merge', commits, [])!;
+  assert.deepEqual(unnamed.nodes, focus.nodes);
+  assert.deepEqual(unnamed.edges, focus.edges);
+  assert.equal(unnamed.branches.size, 0);
+});
+
+test('commit ancestry includes all octopus parents, keeps existing unloaded stubs and expands on loaded data', () => {
+  const commits = [commit('merge', 'base', 'feature', 'other'), ...merged().slice(1)];
+  const focus = graphCommitFocus('merge', commits, [])!;
+  assert.equal(focus.nodes.size, 5);
+  assert.ok(focus.edges.has('merge:other'));
+  const partial = graphCommitFocus('tip', [commit('tip', 'unloaded')], [])!;
+  assert.deepEqual([...partial.nodes], ['tip']);
+  assert.deepEqual([...partial.edges], ['tip:unloaded']);
+  const complete = graphCommitFocus('tip', [commit('tip', 'unloaded'), commit('unloaded')], [])!;
+  assert.deepEqual([...complete.nodes], ['tip', 'unloaded']);
+  assert.equal(graphCommitFocus('', commits, []), null);
+  assert.equal(graphCommitFocus('deleted', commits, []), null);
+});
+
+test('commit focus is identical for hover and selection regardless of display direction', () => {
+  const commits = merged();
+  const normal = index(commits);
+  const reverse = index(commits, undefined, true);
+  assert.deepEqual(
+    graphCommitFocus('feature', commits, normal.tracks),
+    graphCommitFocus('feature', commits, reverse.tracks),
+  );
+  const selection = graphCommitFocus('base', commits, normal.tracks)!;
+  const hover = resolveGraphHover({ kind: 'commit', id: 'base' }, normal.index)!;
+  assert.deepEqual([...selection.nodes].sort(), ['base', 'root']);
+  assert.deepEqual(hover, selection);
+});
+
+test('commit focus caching stays bounded while hover visits many ancestors', () => {
+  const commits = Array.from({ length: 50 }, (_, i) =>
+    commit(String(i), ...(i < 49 ? [String(i + 1)] : [])),
+  );
+  const paths = graphHoverIndex(commits, []);
+  for (let i = 0; i < commits.length; i++) {
+    const target = { kind: 'commit', id: String(i) } as const;
+    const focus = resolveGraphHover(target, paths)!;
+    assert.equal(focus.nodes.size, commits.length - i);
+    assert.equal(resolveGraphHover(target, paths), focus);
+    assert.ok(paths.commitFocus.size <= 2);
+  }
+  assert.equal(resolveGraphHover({ kind: 'commit', id: '0' }, paths)!.nodes.size, 50);
 });

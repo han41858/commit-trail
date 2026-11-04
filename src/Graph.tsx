@@ -148,8 +148,8 @@ export function Graph({
     maxLane,
     mobile,
   );
-  // Keep the existing origin unless a split column is narrower than that margin.
-  const origin = containerResponsive && view.width < GRAPH_ORIGIN ? view.width / 2 : GRAPH_ORIGIN;
+  // clientWidth rounds fractional columns; an origin on the edge can hit the next column.
+  const origin = containerResponsive && view.width <= GRAPH_ORIGIN ? view.width / 2 : GRAPH_ORIGIN;
   const positions = useMemo(
     () =>
       new Map(
@@ -188,10 +188,19 @@ export function Graph({
     [commits, branches, branch, data, positions, reverse, tones],
   );
   const hoverIndex = useMemo(() => graphHoverIndex(commits, tracks), [commits, tracks]);
-  const hoverFocus = useMemo(
-    () => (canHover && pageVisible ? resolveGraphHover(hoverTarget, hoverIndex) : null),
-    [canHover, pageVisible, hoverTarget, hoverIndex],
+  const selectionFocus = useMemo(
+    () =>
+      pageVisible && selected
+        ? resolveGraphHover({ kind: 'commit', id: selected }, hoverIndex)
+        : null,
+    [pageVisible, selected, hoverIndex],
   );
+  const hoverFocus = useMemo(() => {
+    if (!canHover || !pageVisible) return null;
+    if (hoverTarget?.kind === 'commit' && hoverTarget.id === selected) return selectionFocus;
+    return resolveGraphHover(hoverTarget, hoverIndex);
+  }, [canHover, pageVisible, hoverTarget, hoverIndex, selected, selectionFocus]);
+  const focus = hoverFocus || selectionFocus;
   useEffect(() => {
     const media = window.matchMedia('(any-hover: hover)');
     const update = () => setCanHover(media.matches);
@@ -494,8 +503,7 @@ export function Graph({
         if (Math.max(p.y, ey) < view.top - ROW || Math.min(p.y, ey) > view.top + view.height + ROW)
           continue;
         ctx.globalAlpha =
-          (spineEdge ? 0.95 : 0.65) *
-          graphHoverAlpha(hoverFocus, 'edges', `${c.sha}:${parent.sha}`);
+          (spineEdge ? 0.95 : 0.65) * graphHoverAlpha(focus, 'edges', `${c.sha}:${parent.sha}`);
         ctx.strokeStyle = colors[(tones.edges.get(`${c.sha}:${parent.sha}`) || 0) % colors.length];
         ctx.lineWidth = spineEdge ? 2.5 : 1.6;
         ctx.setLineDash(end ? [] : [4, 4]);
@@ -523,7 +531,7 @@ export function Graph({
         )
           visible++;
       }
-      ctx.globalAlpha = graphHoverAlpha(hoverFocus, 'nodes', c.sha);
+      ctx.globalAlpha = graphHoverAlpha(focus, 'nodes', c.sha);
       ctx.fillStyle = colors[(tones.nodes.get(c.sha) || 0) % colors.length];
       ctx.beginPath();
       ctx.arc(p.x, p.y, c.sha === selected ? 7 : 4.5, 0, Math.PI * 2);
@@ -563,7 +571,7 @@ export function Graph({
       for (const icon of icons(c.sha, p.x)) ctx.fillText(icon.text, icon.x, p.y + 4);
       ctx.textAlign = 'left';
       ctx.fillStyle = text;
-      ctx.globalAlpha = graphHoverAlpha(hoverFocus, 'nodes', c.sha);
+      ctx.globalAlpha = graphHoverAlpha(focus, 'nodes', c.sha);
       if (showMessages) {
         ctx.font = `${mobile ? 12 : 13}px system-ui`;
         const message = fitMessage(emojify(c.commit.message.split('\n')[0]));
@@ -571,7 +579,7 @@ export function Graph({
         messageWidths.set(c.sha, ctx.measureText(message).width);
       }
       if (!mobile) {
-        ctx.globalAlpha = 0.5 * graphHoverAlpha(hoverFocus, 'nodes', c.sha);
+        ctx.globalAlpha = 0.5 * graphHoverAlpha(focus, 'nodes', c.sha);
         ctx.font = '11px monospace';
         const meta = fitMessage(
           `${c.sha.slice(0, 7)}  ${c.commit.author?.name || 'Unknown author'}`,
@@ -629,9 +637,7 @@ export function Graph({
         ctx.strokeStyle = color;
         ctx.globalAlpha =
           0.4 *
-          (label.names.some((name) => graphHoverAlpha(hoverFocus, 'branches', name) === 1)
-            ? 1
-            : 0.5);
+          (label.names.some((name) => graphHoverAlpha(focus, 'branches', name) === 1) ? 1 : 0.5);
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x - 3, y + badgeHeight / 2);
@@ -642,7 +648,7 @@ export function Graph({
       label.names.forEach((ref, index) => {
         const { text: name, width: boxWidth } = badge(ref, label.x),
           rowY = y + index * (badgeHeight + badgeGap),
-          opacity = graphHoverAlpha(hoverFocus, 'branches', ref);
+          opacity = graphHoverAlpha(focus, 'branches', ref);
         ctx.globalAlpha = 0.35 * opacity;
         ctx.fillStyle = surface;
         ctx.beginPath();
@@ -702,7 +708,7 @@ export function Graph({
     info,
     displayNames,
     pageVisible,
-    hoverFocus,
+    focus,
   ]);
   function badgeAt(clientX: number, clientY: number) {
     const el = container.current!,
