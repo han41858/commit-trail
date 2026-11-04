@@ -30,7 +30,10 @@ export function MonitorSetup({
   const visits = useSyncExternalStore(recent.subscribe, recent.getSnapshot);
   const [selected, setSelected] = useState(() => {
     const names = initial ?? saved.getSnapshot();
-    return normalizeMonitorRepositories(names.includes(current) ? names : [current, ...names]);
+    // An existing selection can deliberately exclude the single-view repository.
+    return normalizeMonitorRepositories(
+      initial !== undefined || names.length > 0 ? names : [current],
+    );
   });
   const [input, setInput] = useState(''),
     [error, setError] = useState('');
