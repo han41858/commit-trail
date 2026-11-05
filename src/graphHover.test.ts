@@ -48,13 +48,14 @@ const merged = () => [
   commit('root'),
 ];
 
-test('a branch focuses its first-parent segment and real incoming merge connector, stopping at the join', () => {
+test('a branch badge follows all HEAD ancestors beyond joins and excludes newer merge descendants', () => {
   const { tracks, index: paths } = index(merged());
   const focus = resolveGraphHover({ kind: 'branch', id: 'feature' }, paths)!;
-  assert.deepEqual([...focus.nodes].sort(), ['base', 'feature', 'merge']);
-  assert.deepEqual([...focus.edges].sort(), ['feature:base', 'merge:feature']);
+  assert.deepEqual([...focus.nodes].sort(), ['base', 'feature', 'root']);
+  assert.deepEqual([...focus.edges].sort(), ['base:root', 'feature:base']);
   assert.deepEqual([...focus.branches], ['feature']);
-  assert.equal(graphHoverAlpha(focus, 'edges', 'base:root'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'base:root'), 1);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:feature'), 0.25);
   assert.equal(graphHoverAlpha(focus, 'edges', 'merge:base'), 0.25);
   assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.25);
   assert.equal(tracks.find((track) => track.name === 'feature')!.points.length, 2);
@@ -128,6 +129,39 @@ test('older references on the base spine cannot change commit ancestry', () => {
   }
 });
 
+test('dev badge includes merged PR commits through every parent and excludes unmerged and release siblings', () => {
+  const commits = [
+    commit('unmerged', 'dev'),
+    commit('dev', 'previous', 'pr-latest'),
+    commit('pr-latest', 'previous'),
+    commit('previous', 'older', 'pr-previous'),
+    commit('pr-previous', 'older'),
+    commit('older', 'root', 'pr-older', 'octopus'),
+    commit('pr-older', 'root'),
+    commit('octopus', 'root'),
+    commit('production', 'root'),
+    commit('root'),
+  ];
+  const { index: paths } = index(
+    commits,
+    refs({ main: 'unmerged', dev: 'dev', previous: 'previous', production: 'production' }),
+  );
+  const badge = resolveGraphHover({ kind: 'branch', id: 'dev' }, paths)!;
+  const node = resolveGraphHover({ kind: 'commit', id: 'dev' }, paths)!;
+  assert.deepEqual(badge.nodes, node.nodes);
+  assert.deepEqual(badge.edges, node.edges);
+  for (const sha of ['pr-latest', 'pr-previous', 'pr-older', 'octopus', 'root']) {
+    assert.equal(graphHoverAlpha(badge, 'nodes', sha), 1);
+  }
+  assert.ok(badge.edges.has('dev:pr-latest'));
+  assert.ok(badge.edges.has('previous:pr-previous'));
+  assert.ok(badge.edges.has('older:octopus'));
+  for (const sha of ['unmerged', 'production']) {
+    assert.equal(graphHoverAlpha(badge, 'nodes', sha), 0.25);
+  }
+  assert.deepEqual([...badge.branches].sort(), ['dev', 'previous']);
+});
+
 test('identical lane coordinates and palette colors cannot join unrelated paths', () => {
   const { index: paths } = index(merged(), undefined, false, true);
   const focus = resolveGraphHover({ kind: 'branch', id: 'feature' }, paths)!;
@@ -189,13 +223,13 @@ test('only actual parent edges are accepted and relative alpha returns exactly t
         name: 'feature',
         lane: 0,
         points: [],
-        commitShas: ['a', 'b'],
-        edgeKeys: ['a:b', 'a:c'],
+        commitShas: ['a', 'c'],
       },
     ],
   );
   const focus = resolveGraphHover({ kind: 'branch', id: 'feature' }, paths)!;
   assert.deepEqual([...focus.edges], ['a:b']);
+  assert.deepEqual([...focus.nodes], ['a', 'b']);
   assert.equal(graphHoverAlpha(focus, 'nodes', 'a'), 1);
   assert.equal(0.65 * graphHoverAlpha(focus, 'edges', 'a:c'), 0.1625);
   assert.equal(0.35 * graphHoverAlpha(focus, 'branches', 'other'), 0.0875);

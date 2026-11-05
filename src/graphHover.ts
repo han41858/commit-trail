@@ -9,30 +9,21 @@ export type GraphHoverFocus = {
 };
 type HoverIndex = {
   commits: ReadonlySet<string>;
-  paths: ReadonlyMap<string, GraphHoverFocus>;
+  heads: ReadonlyMap<string, string>;
   history: Commit[];
   tracks: readonly BranchTrack[];
   commitFocus: Map<string, GraphHoverFocus>;
 };
 
-// Membership comes from the existing visual traversal's real SHA edges, never
-// from a lane number, a coordinate or a palette color shared by unrelated paths.
+// Track metadata identifies branch HEADs; ancestry always comes from actual parents.
 export function graphHoverIndex(commits: Commit[], tracks: readonly BranchTrack[]): HoverIndex {
   const loaded = new Set(commits.map((commit) => commit.sha));
-  const realEdges = new Set(
-    commits.flatMap((commit) => commit.parents.map((parent) => `${commit.sha}:${parent.sha}`)),
-  );
-  const paths = new Map<string, GraphHoverFocus>();
+  const heads = new Map<string, string>();
   for (const track of tracks) {
-    const nodes = new Set((track.commitShas || []).filter((sha) => loaded.has(sha)));
-    if (!nodes.size) continue;
-    paths.set(track.name, {
-      nodes,
-      edges: new Set((track.edgeKeys || []).filter((key) => realEdges.has(key))),
-      branches: new Set([track.name]),
-    });
+    const head = track.commitShas?.[0];
+    if (head && loaded.has(head)) heads.set(track.name, head);
   }
-  return { commits: loaded, paths, history: commits, tracks, commitFocus: new Map() };
+  return { commits: loaded, heads, history: commits, tracks, commitFocus: new Map() };
 }
 
 export function resolveGraphHover(
@@ -40,7 +31,16 @@ export function resolveGraphHover(
   index: HoverIndex,
 ): GraphHoverFocus | null {
   if (!target) return null;
-  if (target.kind === 'branch') return index.paths.get(target.id) || null;
+  if (target.kind === 'branch') {
+    const head = index.heads.get(target.id);
+    if (!head) return null;
+    const focus = resolveGraphHover({ kind: 'commit', id: head }, index)!;
+    const branches = new Set<string>();
+    for (const [name, sha] of index.heads) {
+      if (name === target.id || (sha !== head && focus.nodes.has(sha))) branches.add(name);
+    }
+    return { ...focus, branches };
+  }
   if (!index.commits.has(target.id)) return null;
   const cached = index.commitFocus.get(target.id);
   if (cached) return cached;
