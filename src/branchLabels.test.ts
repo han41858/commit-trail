@@ -704,9 +704,7 @@ test('identical colors cannot extend a badge path beyond a non-base fork or coll
       data.lanes,
     ).find((track) => track.name === 'feature')!;
     assert.deepEqual(feature.points, [positions.get('feature'), positions.get('dev-base')]);
-    assert.deepEqual(feature.commitShas, ['feature', 'dev-tip', 'dev-base']);
+    assert.equal(feature.headSha, 'feature');
     assert.deepEqual(feature.connections, [[positions.get('dev-tip'), positions.get('feature')]]);
-    assert.equal(feature.commitShas!.includes('root'), false);
-    assert.equal(feature.commitShas!.includes('other-merge'), false);
   }
 });

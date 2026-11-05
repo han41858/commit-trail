@@ -37,7 +37,7 @@ type BranchBadge = {
   width: number;
   height: number;
   text: string;
-  names: string[];
+  name: string;
 };
 type Props = {
   active?: boolean;
@@ -52,7 +52,6 @@ type Props = {
   onSelect: (c: Commit) => void;
   selected: string;
   hasMore: boolean;
-  loading: boolean;
   onLoadMore: (sources?: string[]) => void;
   frontiers: HistoryFrontier[];
   pendingSources: string[];
@@ -76,7 +75,6 @@ export function Graph({
   onSelect,
   selected,
   hasMore,
-  loading,
   onLoadMore,
   frontiers,
   pendingSources,
@@ -555,16 +553,11 @@ export function Graph({
       }
       ctx.restore();
       for (const edge of edges) {
-        const { from, to } = edge;
-        const middle = (from.y + to.y) / 2;
         ctx.globalAlpha = (edge.primary ? 0.95 : 0.65) * alpha('edges', edge.id);
         ctx.strokeStyle = colors[(tones.edges.get(edge.id) || 0) % colors.length];
         ctx.lineWidth = edge.primary ? 2.5 : 1.6;
         ctx.setLineDash(edge.dashed ? [4, 4] : []);
-        ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.bezierCurveTo(from.x, middle, to.x, middle, to.x, to.y);
-        ctx.stroke();
+        ctx.stroke(edge.path);
       }
       ctx.setLineDash([]);
       const labelObstacles: BranchLabelObstacle[] = [],
@@ -723,7 +716,7 @@ export function Graph({
               width: boxWidth,
               height: hitBottom - hitTop,
               text: name,
-              names: [ref],
+              name: ref,
             });
         });
       }
@@ -917,12 +910,12 @@ export function Graph({
             }
             const badge = badgeAt(e.clientX, e.clientY);
             if (badge) {
-              updateHover(canHover ? { kind: 'branch', id: badge.names[0] } : null);
+              updateHover(canHover ? { kind: 'branch', id: badge.name } : null);
               e.currentTarget.title = '';
-              if (badge.text === badge.names.join(' · ')) setHoveredBadge(null);
+              if (badge.text === badge.name) setHoveredBadge(null);
               else
                 setHoveredBadge((previous) =>
-                  previous?.names[0] === badge.names[0] &&
+                  previous?.name === badge.name &&
                   previous.x === badge.x &&
                   previous.y === badge.y &&
                   previous.width === badge.width &&
@@ -993,7 +986,7 @@ export function Graph({
       </div>
       {hoveredBadge && (
         <div id={branchTooltipId} ref={branchTooltip} className="branch-tooltip" role="tooltip">
-          {hoveredBadge.names.join(' · ')}
+          {hoveredBadge.name}
         </div>
       )}
     </div>

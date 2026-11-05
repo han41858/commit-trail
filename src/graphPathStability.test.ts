@@ -31,7 +31,6 @@ function assertSameColors(expected: GraphColors, actual: GraphColors) {
       `${kind} path identities`,
     );
   }
-  assert.deepEqual(sortedEntries(actual.assignments), sortedEntries(expected.assignments));
 }
 
 const history = [

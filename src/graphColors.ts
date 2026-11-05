@@ -7,7 +7,6 @@ export type GraphColors = {
   branches: Map<string, number>;
   edges: Map<string, number>;
   paths: GraphPaths;
-  assignments: Map<string, number>;
 };
 
 function preferredColor(key: string) {
@@ -79,7 +78,6 @@ export function graphColors(
     branches: colors(paths.branches),
     edges: colors(paths.edges),
     paths,
-    assignments,
   };
 }
 

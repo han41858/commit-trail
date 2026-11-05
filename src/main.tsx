@@ -39,7 +39,6 @@ import { RecentRepositories, RECENT_REPOSITORIES_KEY } from './RecentRepositorie
 import { BranchSelections, BRANCH_SELECTIONS_KEY } from './BranchSelections';
 import type { RepositoryLocation } from './repositoryLocation';
 import logo from '../assets/logo-320.png';
-import { emojify } from './emoji';
 import { LoadingIndicator } from './LoadingIndicator';
 import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
 import { TokenPermissions } from './TokenPermissions';
@@ -629,7 +628,6 @@ function App() {
               selected={selected?.sha || ''}
               onSelect={select}
               hasMore={state.more && !state.error && !monitorLimited}
-              loading={state.busy}
               onLoadMore={(sources) => {
                 if (monitor.canRequest()) void history.loadMore(sources);
               }}

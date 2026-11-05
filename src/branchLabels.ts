@@ -7,7 +7,7 @@ export type BranchTrack = {
   color?: number;
   points: Point[];
   connections?: Point[][];
-  commitShas?: string[];
+  headSha?: string;
 };
 export type BranchLabel = Point & {
   names: string[];
@@ -47,8 +47,7 @@ export function branchTracks(
     const owner = colors?.paths.branches.get(ref.name);
     const sharesBase = spine.has(ref.commit.sha);
     const points: Point[] = [],
-      connections: Point[][] = [],
-      commitShas: string[] = [];
+      connections: Point[][] = [];
     const seen = new Set<string>();
     let sha: string | undefined = ref.commit.sha;
     while (sha && !seen.has(sha)) {
@@ -56,7 +55,6 @@ export function branchTracks(
       const point = positions.get(sha);
       if (!point) break;
       points.push(point);
-      commitShas.push(sha);
       const joined =
         owner !== undefined
           ? colors!.paths.nodes.get(sha) !== owner
@@ -66,7 +64,6 @@ export function branchTracks(
         const from = positions.get(child.sha);
         if (from) {
           connections.push([from, point]);
-          commitShas.push(child.sha);
         }
       }
       const parent: string | undefined = map.get(sha)?.parents[0]?.sha;
@@ -82,7 +79,7 @@ export function branchTracks(
       color,
       points,
       connections,
-      commitShas,
+      headSha: ref.commit.sha,
     });
   }
   return tracks;

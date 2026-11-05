@@ -25,10 +25,11 @@ export function graphPaths(
   const nodes = new Map<string, string>();
   const heads = new Map<string, string>();
   const claim = (head: string) => {
+    if (!head || nodes.has(head)) return;
+    heads.set(head, head);
     let sha: string | undefined = head;
     while (sha && !nodes.has(sha)) {
       nodes.set(sha, head);
-      heads.set(head, head);
       sha = commits.get(sha)?.parents[0]?.sha;
     }
   };

@@ -51,7 +51,7 @@ function graph(commits: Commit[], references = branches, defaultBranch?: string)
     colors,
     data.lanes,
   );
-  return { colors, index: graphHoverIndex(data.ordered, tracks, colors.paths), tracks };
+  return { colors, index: graphHoverIndex(data.ordered, tracks, colors.paths), tracks, positions };
 }
 
 function focus(target: GraphHoverTarget, value: ReturnType<typeof graph>) {
@@ -96,11 +96,12 @@ test('a newer feature from the middle of dev cannot take ownership of dev histor
   assert.deepEqual(focus({ kind: 'branch', id: 'topic' }, value).nodes, dev.nodes);
   assert.deepEqual(focus({ kind: 'edge', id: 'a3:a2' }, value).nodes, dev.nodes);
   assert.deepEqual(focus({ kind: 'edge', id: 'f1:a3' }, value).nodes, feature.nodes);
-  assert.deepEqual(value.tracks.find((track) => track.name === 'feature')!.commitShas, [
-    'f2',
-    'f1',
-    'a3',
-  ]);
+  const featureTrack = value.tracks.find((track) => track.name === 'feature')!;
+  assert.equal(featureTrack.headSha, 'f2');
+  assert.deepEqual(
+    featureTrack.points,
+    ['f2', 'f1', 'a3'].map((sha) => value.positions.get(sha)),
+  );
 });
 
 test('independent arrival orders give the same named owners and colors', () => {

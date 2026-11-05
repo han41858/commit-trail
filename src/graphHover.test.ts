@@ -449,14 +449,23 @@ test('reverse direction changes geometry without changing path or merge-scope me
   assert.deepEqual(edge('merge:feature', normal), edge('merge:feature', reverse));
 });
 
-test('track membership cannot extend a path into unrelated colored history', () => {
+test('track geometry cannot extend a path into unrelated colored history', () => {
   const commits = merged();
   const colors = graphColors(commits, refs({ main: 'merge', feature: 'feature' }), 'main');
   const paths = graphHoverIndex(
     commits,
     [
-      { name: 'main', lane: 0, points: [], commitShas: ['merge'] },
-      { name: 'feature', lane: 1, points: [], commitShas: ['feature', 'other', 'root'] },
+      { name: 'main', lane: 0, points: [], headSha: 'merge' },
+      {
+        name: 'feature',
+        lane: 1,
+        headSha: 'feature',
+        points: [
+          { x: 48, y: 0 },
+          { x: 82, y: 62 },
+          { x: 48, y: 124 },
+        ],
+      },
     ],
     colors.paths,
   );
@@ -513,7 +522,7 @@ test('an active base HEAD outside the refs still claims its entire colored path'
   const colors = graphColors(commits, refs({ main: 'base' }), 'main', 'active');
   const paths = graphHoverIndex(
     commits,
-    [{ name: 'main', lane: 0, points: [], commitShas: ['base'] }],
+    [{ name: 'main', lane: 0, points: [], headSha: 'base' }],
     colors.paths,
   );
   assert.deepEqual([...node('active', paths).nodes], ['active', 'base', 'root']);

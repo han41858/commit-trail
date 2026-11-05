@@ -4,7 +4,7 @@ type Kind = keyof GraphHoverFocus;
 type Fade = { from: number; to: number };
 type Fades = Record<Kind, Map<string, Fade>>;
 type Elements = Record<Kind, Pick<ReadonlySet<string>, 'has' | 'size'>>;
-export const GRAPH_OPACITY_DURATION = 140;
+const GRAPH_OPACITY_DURATION = 140;
 const kinds: Kind[] = ['nodes', 'edges', 'branches'];
 const emptyFades = (): Fades => ({ nodes: new Map(), edges: new Map(), branches: new Map() });
 const progress = (elapsed: number) => {

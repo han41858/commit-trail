@@ -25,7 +25,7 @@ export function graphHoverIndex(
   const commits = new Map(ordered.map((commit) => [commit.sha, commit]));
   const heads = new Map<string, string>();
   for (const track of tracks) {
-    const head = track.commitShas?.[0];
+    const head = track.headSha;
     if (head && commits.has(head)) heads.set(track.name, head);
   }
   const owners = paths.nodes;

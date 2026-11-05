@@ -116,7 +116,6 @@ export const MonitorPane = memo(function MonitorPane({
           selected={selected?.sha || ''}
           onSelect={select}
           hasMore={state.more && !state.error && !limited}
-          loading={state.busy}
           onLoadMore={loadMore}
           frontiers={state.frontiers}
           pendingSources={state.pendingSources}
