@@ -435,7 +435,7 @@ function App() {
         selection &&
         !(
           target instanceof Element &&
-          target.closest('.details,.monitor-exit,.monitor-reorder-handle')
+          target.closest('.details,.graph-scroll,.monitor-exit,.monitor-reorder-handle')
         )
       )
         setSelection(null);
@@ -627,6 +627,7 @@ function App() {
               reverse={reverse}
               selected={selected?.sha || ''}
               onSelect={select}
+              onClearSelection={clearSelection}
               hasMore={state.more && !state.error && !monitorLimited}
               onLoadMore={(sources) => {
                 if (monitor.canRequest()) void history.loadMore(sources);

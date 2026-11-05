@@ -130,7 +130,7 @@ input {
   scrollbar-color: var(--border) transparent;
 }
 .graph-scroll canvas {
-  cursor: pointer;
+  cursor: default;
 }
 .branch-tooltip {
   position: fixed;

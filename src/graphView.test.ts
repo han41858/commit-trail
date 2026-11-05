@@ -231,7 +231,7 @@ test('layout insertion admits only newly required ancestry before the current vi
   ]);
 });
 
-test('mobile frames reserve half the width only while message columns preserve 12px lane spacing', () => {
+test('narrow frames reserve half the width only while message columns preserve 12px lane spacing', () => {
   for (const width of [280, 320, 390, 430, 800])
     for (const maxLane of [0, 1, 8, 40, 500]) {
       const frame = graphFrame(width, maxLane, true);
@@ -253,7 +253,7 @@ test('mobile frames reserve half the width only while message columns preserve 1
   // Exceptionally dense graphs still fit the viewport after using all available width.
   assert.ok(graphFrame(320, 500, true).spacing < 1);
 });
-test('320px, 390px and 430px mobile screens switch messages off before lanes become too close', () => {
+test('320px, 390px and 430px narrow screens switch messages off before lanes become too close', () => {
   for (const [width, lastVisibleLane] of [
     [320, 7],
     [390, 10],
@@ -284,7 +284,7 @@ test('message visibility changes in both resize directions and accepts exactly 1
     [false, true, true, false],
   );
 });
-test('mobile message switching preserves a merge DAG and keeps adjacent node columns separated', () => {
+test('narrow message switching preserves a merge DAG and keeps adjacent node columns separated', () => {
   for (const maxLane of [1, 7, 8, 10, 11, 12, 13, 20]) {
     const commit = (sha: string, parents: string[], day: number): Commit => ({
       sha,
@@ -320,7 +320,7 @@ test('mobile message switching preserves a merge DAG and keeps adjacent node col
     assert.deepEqual([...dag.spine], ['merge', 'root']);
   }
 });
-test('sparse mobile and desktop graphs retain their usual spacing', () => {
+test('sparse narrow and wide graphs retain their usual spacing', () => {
   assert.equal(graphFrame(390, 3, true).spacing, 34);
   assert.equal(graphFrame(1440, 2, false).spacing, 34);
 });
@@ -358,7 +358,7 @@ test('split-column widths follow the same responsive message and lane-spacing po
     assert.ok(GRAPH_ORIGIN + maxLane * frame.spacing <= frame.branchWidth - 18 + 1e-9);
   }
 });
-test('desktop branch width grows with its content up to 50 percent and messages stay capped at 50 percent', () => {
+test('wide branch width grows with its content up to 50 percent and messages stay capped at 50 percent', () => {
   for (const width of [801, 900, 1440, 2560])
     for (const maxLane of [0, 1, 8, 40, 500]) {
       const frame = graphFrame(width, maxLane, false);
@@ -374,7 +374,7 @@ test('desktop branch width grows with its content up to 50 percent and messages 
     }
   assert.ok(graphFrame(900, 500, false).spacing < 1);
 });
-test('sparse desktop graphs leave no half-screen gap and only compress after reaching the width cap', () => {
+test('sparse wide graphs leave no half-screen gap and only compress after reaching the width cap', () => {
   for (const width of [900, 1440, 2560]) {
     const single = graphFrame(width, 0, false),
       few = graphFrame(width, 3, false),

@@ -115,6 +115,7 @@ export const MonitorPane = memo(function MonitorPane({
           reverse={state.reverse}
           selected={selected?.sha || ''}
           onSelect={select}
+          onClearSelection={onClose}
           hasMore={state.more && !state.error && !limited}
           onLoadMore={loadMore}
           frontiers={state.frontiers}

@@ -19,11 +19,11 @@
   · <a href="#development--documentation">Documentation</a>
 </p>
 
-![Commit Trail on desktop, showing the public Commit Trail repository and its commit graph](docs/images/desktop.png)
+![Commit Trail in a wide viewport, showing the public Commit Trail repository and its commit graph](docs/images/desktop.png)
 
 ## Features
 
-- **Follow branches and merges** in an interactive, vertical Git graph. Hover a branch badge, commit or connecting line, or click/tap a commit, to follow its branch flow between the starting fork and terminal merge in any screen size or Split view. Hover a merge connector to follow its incoming branch path back to the starting fork and see the selected merge point, excluding later work on that branch. Branches sharing a commit appear as separate, vertically stacked name badges.
+- **Follow branches and merges** in an interactive, vertical Git graph. Hover a branch badge, commit or connecting line to follow its branch flow between the starting fork and terminal merge in any screen size or Split view. Click/tap a branch name or line to retain its highlight and close commit details, or a commit to highlight and open details. Retained paths are independent per Split view column; truncated badge taps also reveal the full name. Hover a merge connector to follow its incoming branch path back to the starting fork and see the selected merge point, excluding later work on that branch. Branches sharing a commit appear as separate, vertically stacked name badges.
 - **Stay current** with automatic updates that preserve your place while reading.
 - **Split view** puts 1–32 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
 - **See the context** with tags, releases and GitHub Actions status beside commits.
@@ -37,7 +37,7 @@
 
 </details>
 
-![Commit Trail Split view showing Commit Trail, AI Template, Angular and VS Code in four desktop columns](docs/images/split-desktop.png)
+![Commit Trail Split view showing Commit Trail, AI Template, Angular and VS Code in four columns in a wide viewport](docs/images/split-desktop.png)
 
 Choose **Split view** to select repositories. Drag a header handle to reorder columns; on touch screens, press and hold the handle first. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
 
@@ -96,11 +96,12 @@ npm ci
 npm run dev
 ```
 
+- [Documentation map](docs/README.md) — document roles, implementation references and maintenance rules.
 - [Technical guide](docs/technical-guide.md) — usage, architecture, API behavior, tests, deployment and releases.
 - [Product specification](docs/specification.md) · [Refresh and metadata](docs/auto-refresh-and-metadata.md) — implementation specifications.
 - [PWA](docs/pwa.md) · [Developer diagnostics](docs/developer-debug-mode.md) — installation, updates, recovery and local measurements.
 - [Recent repositories](docs/recent-repositories.md) — local suggestions, deletion and PAT changes.
-- [Split view](docs/monitor-mode.md) — selection and ordering, shared URLs, refresh and mobile limits.
+- [Split view](docs/monitor-mode.md) — selection and ordering, shared URLs, refresh and responsive layout.
 
 Ideas and bug reports are welcome in [Issues](https://github.com/han41858/commit-trail/issues).
 

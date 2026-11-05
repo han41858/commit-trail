@@ -331,7 +331,7 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 - 적용 버튼을 누른 창만 새 controller가 준비된 후 새로고침한다. 다른 창에서 업데이트를 적용해도 현재 창을 강제 새로고침하지 않는다. 적용 실패·15초 이내 제어권 미전환 시 기존 화면과 오류 안내를 유지하고 재시도할 수 있다.
 - Workbox는 빌드된 HTML·JS·CSS·PNG와 Manifest만 precache한다. 런타임 캐시 경로는 없다. `/` 및 쿼리를 가진 `/` 탐색만 캐시된 `index.html`로 처리하고 쿼리·저장소별 HTML 캐시를 만들지 않는다. GitHub 응답·Authorization·PAT를 SW에 전달하거나 저장하는 코드는 없다. PAT는 새 제품명에 맞춘 localStorage 키를 사용하며, 이전 제품의 데이터는 이전하지 않는다. 복원·삭제 정책은 유지한다.
 - 새 worker 설치가 실패하면 기존 worker와 앱 셸을 유지한다. 활성화 때 현재 정적 자산을 보존하고 오래된 precache 항목을 정리한다. 이미 열린 다른 창의 앱 코드는 사용자 적용·재시작 전까지 유지될 수 있다.
-- `index.html`의 `viewport-fit=cover`, Chromium의 `interactive-widget=resizes-content`, iOS 홈 화면 메타데이터를 사용한다. 기존 동적 theme-color는 유지한다. Safe Area를 그래프 좌우·하단과 오버레이에 적용하고 그래프 상단은 기존 toolbar 측정값만 사용하여 여백을 이중 적용하지 않는다. 모바일 입력 글자 크기는 16px로 맞춘다.
+- `index.html`의 `viewport-fit=cover`, Chromium의 `interactive-widget=resizes-content`, iOS 홈 화면 메타데이터를 사용한다. 기존 동적 theme-color는 유지한다. Safe Area를 그래프 좌우·하단과 오버레이에 적용하고 그래프 상단은 기존 toolbar 측정값만 사용하여 여백을 이중 적용하지 않는다. 좁은 화면의 입력 글자 크기는 16px로 맞춘다.
 - CSP는 기존 제한에 정적 자산 접근용 `connect-src 'self'`, 명시적 `worker-src 'self'`, `manifest-src 'self'`만 추가한다. SW는 재검증하며 immutable 캐시를 쓰지 않고, 기존 해시 자산은 immutable 정책을 유지한다. Preview/Production은 같은 코드이며 SW·캐시·설치는 Origin별로 분리된다.
 
 ## 13. 검증 기록과 실기기 확인
