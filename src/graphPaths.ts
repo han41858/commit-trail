@@ -1,4 +1,4 @@
-import type { Branch, Commit } from './model';
+import { commitTime, type Branch, type Commit } from './model';
 
 export type GraphPaths = {
   nodes: Map<string, string>;
@@ -35,24 +35,20 @@ export function graphPaths(
   if (baseHead && commits.has(baseHead)) claim(baseHead);
   const refs = [...branches].sort((a, b) => compare(a.name, b.name));
   const defaultHead = refs.find((ref) => ref.name === defaultBranch)?.commit.sha;
-  if (defaultHead && commits.has(defaultHead) && !firstParentChildren.has(defaultHead))
-    claim(defaultHead);
+  if (defaultHead && commits.has(defaultHead)) claim(defaultHead);
   const protectedHistory = new Set(nodes.keys());
-  let protectedHead = defaultHead;
-  while (protectedHead && commits.has(protectedHead) && !protectedHistory.has(protectedHead)) {
-    protectedHistory.add(protectedHead);
-    protectedHead = commits.get(protectedHead)?.parents[0]?.sha;
-  }
   const firstParentAncestor = firstParentAncestry(ordered, commits);
-  const tips = new Map<string, boolean>();
+  const tips = new Map<string, { integration: boolean; startTime: number }>();
   for (const ref of refs) {
     const head = ref.commit.sha;
     if (!commits.has(head) || firstParentChildren.has(head) || nodes.has(head) || tips.has(head))
       continue;
     let integration = false;
     let sha = head;
+    let start = commits.get(head)!;
     while (true) {
       const commit = commits.get(sha)!;
+      start = commit;
       if (
         commit.parents
           .slice(1)
@@ -76,12 +72,17 @@ export function graphPaths(
         break;
       sha = parent;
     }
-    tips.set(head, integration);
+    const time = commitTime(start);
+    tips.set(head, { integration, startTime: Number.isFinite(time) ? time : Infinity });
   }
-  for (const [head] of [...tips].sort(([a, x], [b, y]) => Number(y) - Number(x) || compare(a, b)))
+  for (const [head] of [...tips].sort(([a, x], [b, y]) => {
+    const integrationOrder = Number(y.integration) - Number(x.integration);
+    const timeOrder = x.startTime === y.startTime ? 0 : x.startTime < y.startTime ? -1 : 1;
+    return integrationOrder || timeOrder || compare(a, b);
+  }))
     claim(head);
-  // Only actual first-parent tips may claim before unnamed history. Interior
-  // refs, including refs inside deleted paths, remain aliases of their owner.
+  // Beyond the explicit base/default anchors, only actual first-parent tips
+  // precede unnamed history. Ordinary interior refs remain owner aliases.
   for (const commit of ordered) claim(commit.sha);
   const edges = new Map<string, string>();
   for (const commit of ordered)
