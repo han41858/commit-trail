@@ -104,7 +104,7 @@ test('multiple terminal merges include only their endpoint and the exact connect
   assert.deepEqual([...focus.branches], ['feature']);
 });
 
-test('a cross-flow merge can end a first-parent flow but a simple fork cannot', () => {
+test('first-parent continuations never end the original flow, whether ordinary or merge commits', () => {
   const commits = [
     commit('merge', 'feature', 'other'),
     commit('continuation', 'feature'),
@@ -121,10 +121,65 @@ test('a cross-flow merge can end a first-parent flow but a simple fork cannot', 
     other: 'other',
   });
   const focus = branch('feature', paths);
-  assert.deepEqual([...focus.nodes], ['feature', 'base', 'merge']);
-  assert.deepEqual([...focus.edges], ['feature:base', 'merge:feature']);
+  assert.deepEqual([...focus.nodes], ['feature', 'base']);
+  assert.deepEqual([...focus.edges], ['feature:base']);
   assert.equal(graphHoverAlpha(focus, 'nodes', 'continuation'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'merge'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:feature'), 0.25);
   assert.equal(graphHoverAlpha(focus, 'edges', 'merge:other'), 0.25);
+  assert.ok(branch('other', paths).nodes.has('merge'));
+  assert.ok(branch('other', paths).edges.has('merge:other'));
+});
+
+test('importing the current reference HEAD into work is not an ending of the reference flow', () => {
+  const commits = [
+    commit('f3', 'f2', 'm2'),
+    commit('f2', 'f1'),
+    commit('f1', 'm1'),
+    commit('m2', 'm1'),
+    commit('m1'),
+  ];
+  for (const reference of ['main', 'release/custom']) {
+    const paths = index(commits, { [reference]: 'm2', feature: 'f3' }, reference);
+    const focus = branch(reference, paths);
+    assert.deepEqual([...focus.nodes], ['m2', 'm1']);
+    assert.deepEqual([...focus.edges], ['m2:m1']);
+    assert.equal(graphHoverAlpha(focus, 'edges', 'f3:m2'), 0.25);
+    assert.equal(node('m2', paths), focus);
+  }
+});
+
+test('several work branches syncing the same reference HEAD do not create several false endings', () => {
+  const commits = [
+    commit('f3', 'f2', 'm2'),
+    commit('g3', 'g2', 'm2'),
+    commit('f2', 'm1'),
+    commit('g2', 'm1'),
+    commit('m2', 'm1'),
+    commit('m1'),
+  ];
+  const paths = index(commits, { main: 'm2', feature: 'f3', other: 'g3' });
+  assert.deepEqual([...branch('main', paths).nodes], ['m2', 'm1']);
+  assert.deepEqual([...branch('main', paths).edges], ['m2:m1']);
+  assert.equal(paths.ends.has('m2'), false);
+});
+
+test('landing the synced work in the reference flow still marks the work ending', () => {
+  const commits = [
+    commit('m3', 'm2', 'f3'),
+    commit('f3', 'f2', 'm2'),
+    commit('f2', 'f1'),
+    commit('f1', 'm1'),
+    commit('m2', 'm1'),
+    commit('m1'),
+  ];
+  const paths = index(commits, { main: 'm3', feature: 'f3' });
+  const focus = branch('feature', paths);
+  assert.deepEqual([...focus.nodes], ['f3', 'f2', 'f1', 'm1', 'm3']);
+  assert.ok(focus.edges.has('m3:f3'));
+  assert.equal(graphHoverAlpha(focus, 'edges', 'f3:m2'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'm3:m2'), 0.25);
+  assert.deepEqual([...branch('main', paths).nodes], ['m3', 'm2', 'm1']);
 });
 
 test('loading a terminal merge rebuilds the endpoints without changing an older focus', () => {

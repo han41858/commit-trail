@@ -43,12 +43,19 @@ export function graphHoverIndex(
   for (const head of heads.values()) claim(head);
   // Merged/deleted branches still have an observable first-parent flow.
   for (const commit of ordered) claim(commit.sha);
+  const reference = baseHead ? owners.get(baseHead) : undefined;
   const ends = new Map<string, string[]>();
   for (const commit of ordered) {
-    if (commit.parents.length < 2) continue;
-    for (const parent of commit.parents) {
+    // First parents continue the destination; other parents bring work into it.
+    for (const parent of commit.parents.slice(1)) {
       // A merge of an older work commit does not end a flow that has continued.
-      if (owners.get(parent.sha) !== parent.sha || owners.get(commit.sha) === parent.sha) continue;
+      // Importing the reference into work also does not end the reference flow.
+      if (
+        parent.sha === reference ||
+        owners.get(parent.sha) !== parent.sha ||
+        owners.get(commit.sha) === parent.sha
+      )
+        continue;
       const merges = ends.get(parent.sha) || [];
       merges.push(commit.sha);
       ends.set(parent.sha, merges);
