@@ -103,7 +103,6 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
   const key = `edge:${child}:${parent}`;
   const cached = index.flows.get(key);
   if (cached) return cached;
-  const owner = index.owners.get(parent);
   const path = [parent];
   const offsets = new Map([[parent, 0]]);
   const destination = index.commits.get(child)?.parents[0]?.sha;
@@ -111,7 +110,8 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
   const visited = new Set<string>();
   let boundary: number | undefined;
 
-  // Explore the destination's already-merged history only to locate a boundary.
+  // Compare first-parent trunks to find the branch's original fork. Earlier
+  // promotions are secondary parents and must not shorten the incoming history.
   // Topological order lets us extend the incoming first-parent path lazily and
   // prune history older than the nearest common boundary found so far.
   while (pending.length) {
@@ -134,13 +134,12 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
       continue;
     }
     if (rank > index.order.get(path.at(-1)!)!) continue;
-    for (const ancestor of index.commits.get(sha)!.parents) pending.push(ancestor.sha);
+    const ancestor = index.commits.get(sha)!.parents[0];
+    if (ancestor) pending.push(ancestor.sha);
   }
   if (boundary !== undefined) path.length = boundary + 1;
   else {
-    const fallback = path.findIndex((sha) => index.owners.get(sha) !== owner);
-    if (fallback >= 0) path.length = fallback + 1;
-    while (index.owners.get(path.at(-1)!) === owner) {
+    while (true) {
       const next = index.commits.get(path.at(-1)!)?.parents[0]?.sha;
       if (!next || !index.commits.has(next) || offsets.has(next)) break;
       offsets.set(next, path.length);
@@ -152,12 +151,7 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
   for (let i = 0; i < path.length - 1; i++) edges.add(`${path[i]}:${path[i + 1]}`);
   const last = path.at(-1)!;
   const missing = index.commits.get(last)?.parents[0]?.sha;
-  if (
-    boundary === undefined &&
-    index.owners.get(last) === owner &&
-    missing &&
-    !index.commits.has(missing)
-  )
+  if (boundary === undefined && missing && !index.commits.has(missing))
     edges.add(`${last}:${missing}`);
   const branches = new Set(
     [...index.heads].filter(([, sha]) => sha === parent).map(([name]) => name),

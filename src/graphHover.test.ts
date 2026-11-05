@@ -118,14 +118,13 @@ const promotionHistory = () => [
 const edge = (id: string, paths: ReturnType<typeof index>) =>
   resolveGraphHover({ kind: 'edge', id }, paths)!;
 
-test('e1ac3b8 to a4304a2 stops at the previously integrated dev boundary', () => {
+test('e1ac3b8 to a4304a2 includes earlier promotions through the original fork', () => {
   const paths = index(promotionHistory(), { main: 'e1ac3b8', dev: 'new-dev' });
   const focus = edge('e1ac3b8:a4304a2', paths);
-  assert.deepEqual([...focus.nodes], ['e1ac3b8', 'a4304a2', '98b49e1']);
-  assert.deepEqual([...focus.edges], ['e1ac3b8:a4304a2', 'a4304a2:98b49e1']);
+  assert.deepEqual([...focus.nodes], ['e1ac3b8', 'a4304a2', '98b49e1', 'root']);
+  assert.deepEqual([...focus.edges], ['e1ac3b8:a4304a2', 'a4304a2:98b49e1', '98b49e1:root']);
   assert.equal(focus.branches.has('dev'), false);
-  for (const sha of ['new-dev', 'f2ec8d4', 'old-main', 'root'])
-    assert.equal(focus.nodes.has(sha), false);
+  for (const sha of ['new-dev', 'f2ec8d4', 'old-main']) assert.equal(focus.nodes.has(sha), false);
 });
 
 test('promotion intervals are independent of the selected reference and current incoming HEAD', () => {
@@ -137,7 +136,7 @@ test('promotion intervals are independent of the selected reference and current 
         base,
       );
       const focus = edge('e1ac3b8:a4304a2', paths);
-      assert.deepEqual([...focus.nodes], ['e1ac3b8', 'a4304a2', '98b49e1']);
+      assert.deepEqual([...focus.nodes], ['e1ac3b8', 'a4304a2', '98b49e1', 'root']);
       assert.deepEqual([...focus.branches], incoming === 'a4304a2' ? ['integration'] : []);
     }
   }
@@ -156,22 +155,21 @@ const intermediateRefHistory = () => [
   commit('b'),
 ];
 
-test('an intermediate ref cannot truncate a merge before the prior integration boundary', () => {
+test('an intermediate ref cannot truncate incoming history before the original fork', () => {
   for (const base of ['main', 'dev']) {
     for (const withTopic of [false, true]) {
       const refs: Record<string, string> = { main: 'M', dev: 'a6' };
       if (withTopic) refs.topic = 'a3';
       const focus = edge('M:a4', index(intermediateRefHistory(), refs, base));
-      assert.deepEqual([...focus.nodes], ['M', 'a4', 'a3', 'a2', 'a1']);
-      assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3', 'a3:a2', 'a2:a1']);
-      assert.equal(focus.nodes.has('b'), false);
+      assert.deepEqual([...focus.nodes], ['M', 'a4', 'a3', 'a2', 'a1', 'b']);
+      assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3', 'a3:a2', 'a2:a1', 'a1:b']);
       assert.equal(focus.nodes.has('a5'), false);
       assert.equal(focus.branches.size, 0);
     }
   }
 });
 
-test('an unknown destination keeps the first owned-flow fallback after boundary exploration', () => {
+test('an unknown fork keeps earlier loaded incoming history across intermediate refs', () => {
   const commits = [
     commit('M', 'P1', 'a4'),
     commit('a6', 'a5'),
@@ -186,13 +184,13 @@ test('an unknown destination keeps the first owned-flow fallback after boundary 
   ];
   const refs = { main: 'M', dev: 'a6', topic: 'a3' };
   const partial = edge('M:a4', index(commits, refs));
-  assert.deepEqual([...partial.nodes], ['M', 'a4', 'a3']);
-  assert.deepEqual([...partial.edges], ['M:a4', 'a4:a3']);
+  assert.deepEqual([...partial.nodes], ['M', 'a4', 'a3', 'a2', 'a1', 'b']);
+  assert.deepEqual([...partial.edges], ['M:a4', 'a4:a3', 'a3:a2', 'a2:a1', 'a1:b']);
   const complete = edge('M:a4', index([...commits, commit('missing-destination', 'a1')], refs));
   assert.deepEqual([...complete.nodes], ['M', 'a4', 'a3', 'a2', 'a1']);
 });
 
-test('a partial fallback does not follow an unloaded parent beyond another ref boundary', () => {
+test('an unknown fork keeps the incoming dashed stub even beyond another ref', () => {
   const commits = [
     commit('M', 'P1', 'a4'),
     commit('a6', 'a4'),
@@ -203,10 +201,10 @@ test('a partial fallback does not follow an unloaded parent beyond another ref b
   ];
   const focus = edge('M:a4', index(commits, { main: 'M', dev: 'a6', topic: 'a3' }));
   assert.deepEqual([...focus.nodes], ['M', 'a4', 'a3']);
-  assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3']);
+  assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3', 'a3:missing-incoming']);
 });
 
-test('each merge of the same parent gets its own destination and already-integrated boundary', () => {
+test('each merge keeps its own destination and the full earlier incoming history', () => {
   const commits = [
     commit('m2', 'm1', 'work'),
     commit('m1', 'base', 'work'),
@@ -215,11 +213,33 @@ test('each merge of the same parent gets its own destination and already-integra
   ];
   const paths = index(commits, { main: 'm2', work: 'work' });
   assert.deepEqual([...edge('m1:work', paths).nodes], ['m1', 'work', 'base']);
-  assert.deepEqual([...edge('m2:work', paths).nodes], ['m2', 'work']);
-  assert.deepEqual([...edge('m2:work', paths).edges], ['m2:work']);
+  assert.deepEqual([...edge('m2:work', paths).nodes], ['m2', 'work', 'base']);
+  assert.deepEqual([...edge('m2:work', paths).edges], ['m2:work', 'work:base']);
 });
 
-test('already-integrated boundaries can be reached through an earlier merge parent', () => {
+test('earlier incoming history stops at the branch fork rather than destination ancestors', () => {
+  const commits = [
+    commit('M', 'previous-main', 'incoming'),
+    commit('future-dev', 'incoming'),
+    commit('previous-main', 'old-main', 'prior-dev'),
+    commit('incoming', 'prior-dev'),
+    commit('prior-dev', 'fork'),
+    commit('old-main', 'fork'),
+    commit('fork', 'older'),
+    commit('older', 'root'),
+    commit('root'),
+  ];
+  const focus = edge(
+    'M:incoming',
+    index(commits, { main: 'M', dev: 'future-dev', topic: 'prior-dev' }),
+  );
+  assert.deepEqual([...focus.nodes], ['M', 'incoming', 'prior-dev', 'fork']);
+  assert.deepEqual([...focus.edges], ['M:incoming', 'incoming:prior-dev', 'prior-dev:fork']);
+  for (const excluded of ['future-dev', 'previous-main', 'old-main', 'older', 'root'])
+    assert.equal(focus.nodes.has(excluded), false);
+});
+
+test('earlier secondary merges cannot truncate the incoming branch history', () => {
   const commits = [
     commit('merge', 'destination', 'work'),
     commit('future', 'work'),
@@ -232,11 +252,11 @@ test('already-integrated boundaries can be reached through an earlier merge pare
   ];
   const paths = index(commits, { main: 'merge', work: 'future' });
   const focus = edge('merge:work', paths);
-  assert.deepEqual([...focus.nodes], ['merge', 'work', 'prior']);
-  assert.deepEqual([...focus.edges], ['merge:work', 'work:prior']);
+  assert.deepEqual([...focus.nodes], ['merge', 'work', 'prior', 'base']);
+  assert.deepEqual([...focus.edges], ['merge:work', 'work:prior', 'prior:base']);
 });
 
-test('multiple common ancestors choose the nearest boundary on the incoming first-parent path', () => {
+test('previous merge parents do not replace the common first-parent fork', () => {
   const commits = [
     commit('merge', 'destination', 'work'),
     commit('future', 'work'),
@@ -247,8 +267,7 @@ test('multiple common ancestors choose the nearest boundary on the incoming firs
     commit('base'),
   ];
   const focus = edge('merge:work', index(commits, { main: 'merge', work: 'future' }));
-  assert.deepEqual([...focus.nodes], ['merge', 'work', 'prior']);
-  assert.equal(focus.nodes.has('older'), false);
+  assert.deepEqual([...focus.nodes], ['merge', 'work', 'prior', 'older', 'base']);
 });
 
 test('partial merge intervals use loaded history and rebuild after the boundary arrives', () => {
@@ -291,7 +310,7 @@ test('a short promotion does not traverse thousands of unrelated loaded commits'
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
-  assert.equal(edge('e1ac3b8:a4304a2', paths).nodes.size, 3);
+  assert.equal(edge('e1ac3b8:a4304a2', paths).nodes.size, 4);
   assert.ok(lookups < 30, `${lookups} unrelated lookups`);
 });
 
