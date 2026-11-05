@@ -24,13 +24,14 @@ export function graphColors(
   branches: Branch[],
   base: string,
   baseHead = branches.find((ref) => ref.name === base)?.commit.sha,
+  defaultBranch?: string,
 ): GraphColors {
   const canonical = layout(
     [...commits].sort((a, b) => compare(a.sha, b.sha)),
     new Map(),
     baseHead,
   );
-  const paths = graphPaths(canonical.ordered, branches, baseHead);
+  const paths = graphPaths(canonical.ordered, branches, baseHead, defaultBranch);
   const neighbors = pathNeighbors(canonical.ordered, canonical.lanes, paths);
   const names = new Map<string, string>();
   for (const ref of [...branches].sort((a, b) => compare(a.name, b.name))) {

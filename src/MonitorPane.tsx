@@ -123,6 +123,7 @@ export const MonitorPane = memo(function MonitorPane({
           topInset={34}
           refreshVersion={state.refreshVersion}
           baseHead={state.baseHead}
+          defaultBranch={state.meta?.default_branch}
           info={extras.bySha}
           onVisible={watch}
           label={`Commit graph for ${entry.repository}`}

@@ -23,7 +23,7 @@
 
 ## Features
 
-- **Follow branches and merges** in an interactive, vertical Git graph. Hover a branch badge, commit or connecting line, or click/tap a commit, to follow its branch flow between the starting fork and terminal merge in any screen size or Split view. Hover a merge connector to see only that merge's newly introduced segment and merge point. Branches sharing a commit appear as separate, vertically stacked name badges.
+- **Follow branches and merges** in an interactive, vertical Git graph. Hover a branch badge, commit or connecting line, or click/tap a commit, to follow its branch flow between the starting fork and terminal merge in any screen size or Split view. Hover a merge connector to follow its incoming branch path back to the starting fork and see the selected merge point, excluding later work on that branch. Branches sharing a commit appear as separate, vertically stacked name badges.
 - **Stay current** with automatic updates that preserve your place while reading.
 - **Split view** puts 1–32 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
 - **See the context** with tags, releases and GitHub Actions status beside commits.

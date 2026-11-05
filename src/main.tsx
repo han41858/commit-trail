@@ -638,6 +638,7 @@ function App() {
               topInset={monitorState.active ? 34 : topInset}
               refreshVersion={state.refreshVersion}
               baseHead={state.baseHead}
+              defaultBranch={state.meta?.default_branch}
               info={extras.bySha}
               onVisible={(shas) => {
                 if (primaryActive && monitor.canRequest()) info.watch(shas);

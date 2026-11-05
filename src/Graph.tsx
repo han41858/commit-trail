@@ -58,6 +58,7 @@ type Props = {
   pendingSources: string[];
   topInset: number;
   baseHead?: string;
+  defaultBranch?: string;
   refreshVersion?: number;
   info?: ReadonlyMap<string, CommitInfo>;
   onVisible?: (shas: string[]) => void;
@@ -81,6 +82,7 @@ export function Graph({
   pendingSources,
   topInset,
   baseHead,
+  defaultBranch,
   refreshVersion = 0,
   info,
   onVisible,
@@ -149,8 +151,8 @@ export function Graph({
     prior.current = data.lanes;
   }, [data]);
   const tones = useMemo(
-    () => graphColors(commits, branches, branch, head),
-    [commits, branches, branch, head],
+    () => graphColors(commits, branches, branch, head, defaultBranch),
+    [commits, branches, branch, head, defaultBranch],
   );
   const ordered = useMemo(
     () => (reverse ? [...data.ordered].reverse() : data.ordered),
