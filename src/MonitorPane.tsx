@@ -108,6 +108,7 @@ export const MonitorPane = memo(function MonitorPane({
         <Graph
           theme={theme}
           containerResponsive
+          columnOrder={order}
           commits={state.commits}
           branches={state.branches}
           branch={state.base}
@@ -115,13 +116,13 @@ export const MonitorPane = memo(function MonitorPane({
           selected={selected?.sha || ''}
           onSelect={select}
           hasMore={state.more && !state.error && !limited}
-          loading={state.busy}
           onLoadMore={loadMore}
           frontiers={state.frontiers}
           pendingSources={state.pendingSources}
           topInset={34}
           refreshVersion={state.refreshVersion}
           baseHead={state.baseHead}
+          defaultBranch={state.meta?.default_branch}
           info={extras.bySha}
           onVisible={watch}
           label={`Commit graph for ${entry.repository}`}

@@ -84,6 +84,8 @@ input {
   --graph-3: #f49855;
   --graph-4: #ba98f5;
   --graph-5: #5edde0;
+  --graph-6: #f28dbf;
+  --graph-7: #b5cf71;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
@@ -112,6 +114,8 @@ input {
   --graph-3: #ae511c;
   --graph-4: #7b4eba;
   --graph-5: #087f86;
+  --graph-6: #a02a6e;
+  --graph-7: #5d6d16;
   color-scheme: light;
 }
 .graph-stage {

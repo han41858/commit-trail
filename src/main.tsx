@@ -39,7 +39,6 @@ import { RecentRepositories, RECENT_REPOSITORIES_KEY } from './RecentRepositorie
 import { BranchSelections, BRANCH_SELECTIONS_KEY } from './BranchSelections';
 import type { RepositoryLocation } from './repositoryLocation';
 import logo from '../assets/logo-320.png';
-import { emojify } from './emoji';
 import { LoadingIndicator } from './LoadingIndicator';
 import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
 import { TokenPermissions } from './TokenPermissions';
@@ -618,6 +617,7 @@ function App() {
             <Graph
               active={primaryActive}
               containerResponsive={monitorState.active}
+              columnOrder={primaryOrder}
               label={monitorState.active ? `Commit graph for ${state.repo}` : undefined}
               key={`${state.repo}:${state.base}:${reverse}`}
               theme={resolvedTheme}
@@ -628,7 +628,6 @@ function App() {
               selected={selected?.sha || ''}
               onSelect={select}
               hasMore={state.more && !state.error && !monitorLimited}
-              loading={state.busy}
               onLoadMore={(sources) => {
                 if (monitor.canRequest()) void history.loadMore(sources);
               }}
@@ -637,6 +636,7 @@ function App() {
               topInset={monitorState.active ? 34 : topInset}
               refreshVersion={state.refreshVersion}
               baseHead={state.baseHead}
+              defaultBranch={state.meta?.default_branch}
               info={extras.bySha}
               onVisible={(shas) => {
                 if (primaryActive && monitor.canRequest()) info.watch(shas);
