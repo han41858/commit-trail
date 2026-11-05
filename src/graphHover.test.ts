@@ -61,8 +61,8 @@ test('first-parent line hover reuses its child flow including the fork boundary'
 test('merge line hover follows the incoming parent instead of the integration flow', () => {
   const paths = index(merged());
   const focus = resolveGraphHover({ kind: 'edge', id: 'merge:feature' }, paths);
-  assert.equal(focus, branch('feature', paths));
-  assert.equal(graphHoverOwner({ kind: 'edge', id: 'merge:feature' }, paths), 'feature');
+  assert.deepEqual(focus, branch('feature', paths));
+  assert.equal(graphHoverOwner({ kind: 'edge', id: 'merge:feature' }, paths), 'edge:merge:feature');
   assert.notEqual(focus, node('merge', paths));
 });
 
@@ -80,14 +80,17 @@ test('each octopus connector resolves its own parent flow even with identical co
     false,
     true,
   );
-  assert.equal(resolveGraphHover({ kind: 'edge', id: 'merge:work' }, paths), branch('work', paths));
-  assert.equal(
+  assert.deepEqual(
+    resolveGraphHover({ kind: 'edge', id: 'merge:work' }, paths),
+    branch('work', paths),
+  );
+  assert.deepEqual(
     resolveGraphHover({ kind: 'edge', id: 'merge:other' }, paths),
     branch('other', paths),
   );
 });
 
-test('hovering a historical merge connector does not invent a new terminal boundary', () => {
+test('a historical merge connector focuses its incoming interval instead of the current HEAD', () => {
   const commits = [
     commit('new-work', 'old-work'),
     commit('merge', 'base', 'old-work'),
@@ -96,9 +99,153 @@ test('hovering a historical merge connector does not invent a new terminal bound
   ];
   const paths = index(commits, { main: 'merge', work: 'new-work' });
   const focus = resolveGraphHover({ kind: 'edge', id: 'merge:old-work' }, paths)!;
-  assert.equal(focus, branch('work', paths));
-  assert.equal(focus.nodes.has('merge'), false);
-  assert.equal(focus.edges.has('merge:old-work'), false);
+  assert.deepEqual([...focus.nodes], ['merge', 'old-work', 'base']);
+  assert.deepEqual([...focus.edges], ['merge:old-work', 'old-work:base']);
+  assert.equal(focus.nodes.has('new-work'), false);
+  assert.equal(focus.branches.size, 0);
+  assert.equal(branch('work', paths).nodes.has('merge'), false);
+});
+
+const promotionHistory = () => [
+  commit('e1ac3b8', 'f2ec8d4', 'a4304a2'),
+  commit('new-dev', 'a4304a2'),
+  commit('f2ec8d4', 'old-main', '98b49e1'),
+  commit('a4304a2', '98b49e1'),
+  commit('98b49e1', 'root'),
+  commit('old-main', 'root'),
+  commit('root'),
+];
+const edge = (id: string, paths: ReturnType<typeof index>) =>
+  resolveGraphHover({ kind: 'edge', id }, paths)!;
+
+test('e1ac3b8 to a4304a2 stops at the previously integrated dev boundary', () => {
+  const paths = index(promotionHistory(), { main: 'e1ac3b8', dev: 'new-dev' });
+  const focus = edge('e1ac3b8:a4304a2', paths);
+  assert.deepEqual([...focus.nodes], ['e1ac3b8', 'a4304a2', '98b49e1']);
+  assert.deepEqual([...focus.edges], ['e1ac3b8:a4304a2', 'a4304a2:98b49e1']);
+  assert.equal(focus.branches.has('dev'), false);
+  for (const sha of ['new-dev', 'f2ec8d4', 'old-main', 'root'])
+    assert.equal(focus.nodes.has(sha), false);
+});
+
+test('promotion intervals are independent of the selected reference and current incoming HEAD', () => {
+  for (const incoming of ['new-dev', 'a4304a2']) {
+    for (const base of ['production', 'integration']) {
+      const paths = index(
+        promotionHistory(),
+        { production: 'e1ac3b8', integration: incoming },
+        base,
+      );
+      const focus = edge('e1ac3b8:a4304a2', paths);
+      assert.deepEqual([...focus.nodes], ['e1ac3b8', 'a4304a2', '98b49e1']);
+      assert.deepEqual([...focus.branches], incoming === 'a4304a2' ? ['integration'] : []);
+    }
+  }
+});
+
+test('each merge of the same parent gets its own destination and already-integrated boundary', () => {
+  const commits = [
+    commit('m2', 'm1', 'work'),
+    commit('m1', 'base', 'work'),
+    commit('work', 'base'),
+    commit('base'),
+  ];
+  const paths = index(commits, { main: 'm2', work: 'work' });
+  assert.deepEqual([...edge('m1:work', paths).nodes], ['m1', 'work', 'base']);
+  assert.deepEqual([...edge('m2:work', paths).nodes], ['m2', 'work']);
+  assert.deepEqual([...edge('m2:work', paths).edges], ['m2:work']);
+});
+
+test('already-integrated boundaries can be reached through an earlier merge parent', () => {
+  const commits = [
+    commit('merge', 'destination', 'work'),
+    commit('future', 'work'),
+    commit('destination', 'base', 'carrier'),
+    commit('carrier', 'side', 'prior'),
+    commit('work', 'prior'),
+    commit('side', 'base'),
+    commit('prior', 'base'),
+    commit('base'),
+  ];
+  const paths = index(commits, { main: 'merge', work: 'future' });
+  const focus = edge('merge:work', paths);
+  assert.deepEqual([...focus.nodes], ['merge', 'work', 'prior']);
+  assert.deepEqual([...focus.edges], ['merge:work', 'work:prior']);
+});
+
+test('multiple common ancestors choose the nearest boundary on the incoming first-parent path', () => {
+  const commits = [
+    commit('merge', 'destination', 'work'),
+    commit('future', 'work'),
+    commit('destination', 'base', 'prior', 'older'),
+    commit('work', 'prior'),
+    commit('prior', 'older'),
+    commit('older', 'base'),
+    commit('base'),
+  ];
+  const focus = edge('merge:work', index(commits, { main: 'merge', work: 'future' }));
+  assert.deepEqual([...focus.nodes], ['merge', 'work', 'prior']);
+  assert.equal(focus.nodes.has('older'), false);
+});
+
+test('partial merge intervals use loaded history and rebuild after the boundary arrives', () => {
+  const commits = [
+    commit('merge', 'destination', 'work'),
+    commit('future', 'work'),
+    commit('work', 'prior'),
+  ];
+  const refs = { main: 'merge', work: 'future' };
+  const partial = edge('merge:work', index(commits, refs));
+  assert.deepEqual([...partial.nodes], ['merge', 'work']);
+  assert.deepEqual([...partial.edges], ['merge:work', 'work:prior']);
+  const complete = edge(
+    'merge:work',
+    index(
+      [...commits, commit('destination', 'prior'), commit('prior', 'root'), commit('root')],
+      refs,
+    ),
+  );
+  assert.deepEqual([...complete.nodes], ['merge', 'work', 'prior']);
+  assert.deepEqual([...complete.edges], ['merge:work', 'work:prior']);
+});
+
+test('a short promotion does not traverse thousands of unrelated loaded commits', () => {
+  const commits = [
+    ...promotionHistory(),
+    ...Array.from({ length: 10000 }, (_, i) => commit(`unrelated-${i}`, 'root')),
+  ];
+  const paths = index(commits, { main: 'e1ac3b8', dev: 'new-dev' });
+  const original = paths.commits;
+  let lookups = 0;
+  paths.commits = new Proxy(original, {
+    get(target, property) {
+      if (property === 'get')
+        return (sha: string) => {
+          lookups++;
+          return original.get(sha);
+        };
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  assert.equal(edge('e1ac3b8:a4304a2', paths).nodes.size, 3);
+  assert.ok(lookups < 30, `${lookups} unrelated lookups`);
+});
+
+test('merge intervals and ordinary flows share the two-entry cache limit', () => {
+  const commits = [
+    ...Array.from({ length: 20 }, (_, i) => commit(`merge-${i}`, 'base', `work-${i}`)),
+    ...Array.from({ length: 20 }, (_, i) => commit(`work-${i}`, 'base')),
+    commit('base'),
+  ];
+  const paths = index(commits, { main: 'merge-0' });
+  for (let i = 0; i < 20; i++) {
+    const id = `merge-${i}:work-${i}`;
+    const focus = edge(id, paths);
+    assert.equal(edge(id, paths), focus);
+    node(`work-${i}`, paths);
+    assert.ok(paths.flows.size <= 2);
+  }
 });
 
 test('edge hover never invents a connection or fetches an unknown parent flow', () => {

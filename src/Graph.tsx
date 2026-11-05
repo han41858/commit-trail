@@ -815,10 +815,17 @@ export function Graph({
     const nearest = hits.filter((hit) => hit.distance <= distance + 0.5);
     const current =
       graphHoverOwner(hoverRef.current, hoverIndex) || hoverIndex.owners.get(selected);
-    const preferred = nearest.filter((hit) => hit.edge.owner === current);
+    const inMerge = current?.startsWith('edge:');
+    const retainedFocus = hoverRef.current
+      ? resolveGraphHover(hoverRef.current, hoverIndex)
+      : selectionFocus;
+    const identity = (hit: (typeof hits)[number]) =>
+      retainedFocus?.edges.has(hit.edge.id) ? current : hit.edge.owner;
+    const preferred = nearest.filter((hit) => identity(hit) === current);
     const candidates = preferred.length ? preferred : nearest;
     // At an indistinguishable crossing, keep an existing flow or wait for clarity.
-    if (new Set(candidates.map((hit) => hit.edge.owner)).size !== 1) return;
+    if (new Set(candidates.map(identity)).size !== 1) return;
+    if (inMerge && identity(candidates[0]) === current) return hoverRef.current!;
     return { kind: 'edge', id: candidates[0].edge.id } as const;
   }
   function badgeAt(clientX: number, clientY: number) {

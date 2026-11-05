@@ -9,6 +9,7 @@ export type GraphHoverFocus = {
 };
 type HoverIndex = {
   commits: ReadonlyMap<string, Commit>;
+  order: ReadonlyMap<string, number>;
   heads: ReadonlyMap<string, string>;
   owners: ReadonlyMap<string, string>;
   ends: ReadonlyMap<string, readonly string[]>;
@@ -23,6 +24,7 @@ export function graphHoverIndex(
   baseHead?: string,
 ): HoverIndex {
   const commits = new Map(ordered.map((commit) => [commit.sha, commit]));
+  const order = new Map(ordered.map((commit, index) => [commit.sha, index]));
   const heads = new Map<string, string>();
   for (const track of tracks) {
     const head = track.commitShas?.[0];
@@ -61,7 +63,13 @@ export function graphHoverIndex(
       ends.set(parent.sha, merges);
     }
   }
-  return { commits, heads, owners, ends, flows: new Map() };
+  return { commits, order, heads, owners, ends, flows: new Map() };
+}
+
+function rememberFocus(key: string, focus: GraphHoverFocus, index: HoverIndex) {
+  if (index.flows.size === 2) index.flows.delete(index.flows.keys().next().value!);
+  index.flows.set(key, focus);
+  return focus;
 }
 
 function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
@@ -88,9 +96,66 @@ function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
   );
   const focus = { nodes, edges, branches };
   // Keep two recent flows; moving among commits in one flow reuses one result.
-  if (index.flows.size === 2) index.flows.delete(index.flows.keys().next().value!);
-  index.flows.set(head, focus);
-  return focus;
+  return rememberFocus(head, focus, index);
+}
+
+function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHoverFocus {
+  const key = `edge:${child}:${parent}`;
+  const cached = index.flows.get(key);
+  if (cached) return cached;
+  const owner = index.owners.get(parent);
+  const path = [parent];
+  const offsets = new Map([[parent, 0]]);
+  const destination = index.commits.get(child)?.parents[0]?.sha;
+  const pending = destination ? [destination] : [];
+  const visited = new Set<string>();
+  let boundary: number | undefined;
+
+  // Explore the destination's already-merged history only to locate a boundary.
+  // Topological order lets us extend the incoming first-parent path lazily and
+  // prune history older than the nearest common boundary found so far.
+  while (pending.length) {
+    const sha = pending.pop()!;
+    const rank = index.order.get(sha);
+    if (rank === undefined || visited.has(sha)) continue;
+    if (boundary !== undefined && rank >= index.order.get(path[boundary])!) continue;
+    visited.add(sha);
+    while (index.order.get(path.at(-1)!)! < rank) {
+      const last = path.at(-1)!;
+      if (index.owners.get(last) !== owner) break;
+      const next = index.commits.get(last)?.parents[0]?.sha;
+      if (!next || !index.commits.has(next) || offsets.has(next)) break;
+      offsets.set(next, path.length);
+      path.push(next);
+    }
+    const common = offsets.get(sha);
+    if (common !== undefined) {
+      boundary = common;
+      continue;
+    }
+    if (rank > index.order.get(path.at(-1)!)!) continue;
+    for (const ancestor of index.commits.get(sha)!.parents) pending.push(ancestor.sha);
+  }
+  if (boundary !== undefined) path.length = boundary + 1;
+  else {
+    while (index.owners.get(path.at(-1)!) === owner) {
+      const next = index.commits.get(path.at(-1)!)?.parents[0]?.sha;
+      if (!next || !index.commits.has(next) || offsets.has(next)) break;
+      offsets.set(next, path.length);
+      path.push(next);
+    }
+  }
+  const nodes = new Set([child, ...path]);
+  const edges = new Set([`${child}:${parent}`]);
+  for (let i = 0; i < path.length - 1; i++) edges.add(`${path[i]}:${path[i + 1]}`);
+  const last = path.at(-1)!;
+  const missing = index.commits.get(last)?.parents[0]?.sha;
+  if (boundary === undefined && missing && !index.commits.has(missing))
+    edges.add(`${last}:${missing}`);
+  const branches = new Set(
+    [...index.heads].filter(([, sha]) => sha === parent).map(([name]) => name),
+  );
+  return rememberFocus(key, { nodes, edges, branches }, index);
 }
 
 export function graphHoverOwner(target: GraphHoverTarget | null, index: HoverIndex) {
@@ -102,8 +167,9 @@ export function graphHoverOwner(target: GraphHoverTarget | null, index: HoverInd
     const commit = index.commits.get(child);
     const position = commit?.parents.findIndex((value) => value.sha === parent) ?? -1;
     if (position < 0) return;
-    // First-parent edges continue the child; merge connectors carry the parent flow.
-    sha = position === 0 ? child : parent;
+    // Merge connectors describe that merge interval, not today's parent HEAD.
+    if (position > 0) return index.owners.has(parent) ? `edge:${target.id}` : undefined;
+    sha = child;
   }
   return sha ? index.owners.get(sha) : undefined;
 }
@@ -114,6 +180,10 @@ export function resolveGraphHover(
 ): GraphHoverFocus | null {
   const owner = graphHoverOwner(target, index);
   if (!owner) return null;
+  if (target?.kind === 'edge' && owner.startsWith('edge:')) {
+    const [child, parent] = target.id.split(':');
+    return mergeFocus(child, parent, index);
+  }
   const focus = flowFocus(owner, index);
   if (target?.kind === 'branch' && focus.branches.size > 1)
     return { ...focus, branches: new Set([target.id]) };
