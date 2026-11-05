@@ -182,6 +182,24 @@ test('landing the synced work in the reference flow still marks the work ending'
   assert.deepEqual([...branch('main', paths).nodes], ['m3', 'm2', 'm1']);
 });
 
+test('ending detection only exempts the selected reference, including promotions out of it', () => {
+  const commits = [
+    commit('promotion', 'm1', 'd2'),
+    commit('sync', 'f1', 'd2'),
+    commit('f1', 'd1'),
+    commit('m1', 'd1'),
+    commit('d2', 'd1'),
+    commit('d1'),
+  ];
+  const names = { main: 'promotion', dev: 'd2', feature: 'sync' };
+  const fromMain = branch('dev', index(commits, names, 'main'));
+  assert.deepEqual([...fromMain.nodes].sort(), ['d1', 'd2', 'promotion', 'sync']);
+  assert.deepEqual([...fromMain.edges].sort(), ['d2:d1', 'promotion:d2', 'sync:d2']);
+  const fromDev = branch('dev', index(commits, names, 'dev'));
+  assert.deepEqual([...fromDev.nodes], ['d2', 'd1']);
+  assert.deepEqual([...fromDev.edges], ['d2:d1']);
+});
+
 test('loading a terminal merge rebuilds the endpoints without changing an older focus', () => {
   const commits = [commit('feature', 'base'), commit('base', 'root'), commit('root')];
   const original = branch('feature', index(commits, { main: 'base', feature: 'feature' }));

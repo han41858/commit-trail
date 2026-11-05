@@ -226,15 +226,13 @@ export function Graph({
     return resolveGraphHover(hoverTarget, hoverIndex);
   }, [canHover, pageVisible, hoverTarget, hoverIndex, selected, selectionFocus]);
   const focus = hoverFocus || selectionFocus;
-  const opacityElements = useMemo<GraphHoverFocus>(
+  const opacityIndex = useMemo(
     () => ({
-      nodes: new Set(commits.map((commit) => commit.sha)),
-      edges: new Set(
-        commits.flatMap((commit) => commit.parents.map((parent) => `${commit.sha}:${parent.sha}`)),
-      ),
-      branches: new Set(branches.map((branch) => branch.name)),
+      nodes: hoverIndex.commits,
+      edges: tones.edges,
+      branches: hoverIndex.heads,
     }),
-    [commits, branches],
+    [hoverIndex, tones.edges],
   );
   useEffect(() => {
     const media = window.matchMedia('(any-hover: hover)');
@@ -480,7 +478,7 @@ export function Graph({
       pixelHeight = Math.floor(view.height * dpr);
     if (canvas.current!.width !== pixelWidth) canvas.current!.width = pixelWidth;
     if (canvas.current!.height !== pixelHeight) canvas.current!.height = pixelHeight;
-    opacity.setTarget(focus, opacityElements, performance.now());
+    opacity.setTarget(focus, opacityIndex, performance.now());
     const rings = container.current!.querySelectorAll<HTMLElement>('.actions-pending-ring');
     let frame: number | undefined;
     const draw = (now: number) => {
@@ -765,7 +763,7 @@ export function Graph({
     pageVisible,
     focus,
     opacity,
-    opacityElements,
+    opacityIndex,
   ]);
   function badgeAt(clientX: number, clientY: number) {
     const el = container.current!,
