@@ -30,7 +30,7 @@ function repository(t) {
   return { cwd, git, write, commit, base };
 }
 
-test('audited prose and documentation images can skip validation', (t) => {
+test('root prose and new documentation assets can skip validation', (t) => {
   const repo = repository(t);
   for (const path of [
     'README.md',
@@ -38,6 +38,10 @@ test('audited prose and documentation images can skip validation', (t) => {
     'LICENSE.md',
     'docs/specification.md',
     'docs/images/desktop.png',
+    'docs/new-guide.md',
+    'docs/nested/reference.json',
+    'docs/images/new.png',
+    'docs/examples/code.js',
   ]) {
     repo.write(path);
   }
@@ -59,15 +63,22 @@ test('source, public documents, templates, settings and unknown paths run all ch
     '.github/workflows/ci.yml',
     '.github/rulesets/dev.json',
     '.github/scripts/release.mjs',
-    'docs/build-template.md',
-    'docs/example.json',
-    'docs/images/new.png',
+    'templates/build-template.md',
+    'docs-config.json',
+    'docs-build/template.md',
     'NEW.md',
   ]) {
     repo.git('reset', '--hard', repo.base);
     repo.write(path);
     assert.equal(changeImpact({ ...repo, head: repo.commit() }).docsOnly, false, path);
   }
+});
+
+test('documentation mixed with build inputs still runs all checks', (t) => {
+  const repo = repository(t);
+  repo.write('docs/new-guide.md');
+  repo.write('templates/page.md');
+  assert.equal(changeImpact({ ...repo, head: repo.commit() }).docsOnly, false);
 });
 
 test('the complete push range retains a source change before the final docs commit', (t) => {
@@ -120,7 +131,10 @@ test('renames consider both original and destination paths', (t) => {
   const base = repo.commit();
   mkdirSync(join(repo.cwd, 'docs'));
   repo.git('mv', 'src/template.md', 'docs/specification.md');
-  assert.equal(changeImpact({ ...repo, base, head: repo.commit() }).docsOnly, false);
+  const moved = repo.commit();
+  assert.equal(changeImpact({ ...repo, base, head: moved }).docsOnly, false);
+  repo.git('mv', 'docs/specification.md', 'src/template.md');
+  assert.equal(changeImpact({ ...repo, base: moved, head: repo.commit() }).docsOnly, false);
 });
 
 test('symlinks under an audited documentation name cannot skip checks', (t) => {

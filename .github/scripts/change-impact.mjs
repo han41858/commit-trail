@@ -2,29 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-// Audited prose and documentation-only images, never Vite/TypeScript/public inputs.
-// New files are intentionally not inferred from their directory or extension.
-const documentation = new Set([
-  'AGENTS.md',
-  'README.md',
-  'LICENSE.md',
-  'docs/README.md',
-  'docs/auto-refresh-and-metadata.md',
-  'docs/dag-hover-highlight.md',
-  'docs/developer-debug-mode.md',
-  'docs/monitor-mode.md',
-  'docs/pwa.md',
-  'docs/recent-repositories.md',
-  'docs/specification.md',
-  'docs/technical-guide.md',
-  'docs/images/README.md',
-  'docs/images/auto-refresh.gif',
-  'docs/images/desktop.png',
-  'docs/images/mobile.png',
-  'docs/images/split-desktop.png',
-  'docs/images/split-mobile-landscape.png',
-  'docs/images/split-mobile-portrait.png',
-]);
+// docs/ is reserved for non-build documentation and its assets.
+// Build-consumed documents/templates belong outside it, regardless of extension.
+const rootDocumentation = new Set(['AGENTS.md', 'README.md', 'LICENSE.md']);
+const isDocumentation = (path) => path.startsWith('docs/') || rootDocumentation.has(path);
 const commitSHA = /^[0-9a-f]{40}$/i;
 
 export function changeImpact({ base, head, cwd = process.cwd() }) {
@@ -41,7 +22,7 @@ export function changeImpact({ base, head, cwd = process.cwd() }) {
       .split('\0')
       .filter(Boolean);
     if (!paths.length) return full('No changed paths; preserve rebuild/revalidation behavior.');
-    if (paths.some((path) => !documentation.has(path))) {
+    if (paths.some((path) => !isDocumentation(path))) {
       return full('Source, build inputs, automation or unclassified files changed.');
     }
     // A document path becoming a symlink/submodule is not a prose-only change.
