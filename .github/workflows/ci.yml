@@ -24,27 +24,43 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      # Keep this required job running even for documentation-only changes.
+      - name: Enforce dev to main promotion
+        env:
+          PROMOTION_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: node .github/scripts/check-promotion.mjs
+
+      - name: Classify changed files
+        id: impact
+        continue-on-error: true
+        run: node .github/scripts/change-impact.mjs --ci
 
       - name: Set up Node.js
+        if: steps.impact.outputs.docs_only != 'true'
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Enforce dev to main promotion
-        env:
-          PROMOTION_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-        run: node .github/scripts/check-promotion.mjs
-
       - name: Install dependencies
+        if: steps.impact.outputs.docs_only != 'true'
         run: npm ci --no-audit --no-fund
 
       - name: Run tests
+        if: steps.impact.outputs.docs_only != 'true'
         run: npm test
 
       - name: Test release automation
+        if: steps.impact.outputs.docs_only != 'true'
         run: node --test --test-isolation=none .github/scripts/*.test.mjs
 
       - name: Build
+        if: steps.impact.outputs.docs_only != 'true'
         run: npm run build
+
+      - name: Documentation-only result
+        if: steps.impact.outputs.docs_only == 'true'
+        run: echo 'Documentation only; dependency installation, tests and build are unnecessary.'
