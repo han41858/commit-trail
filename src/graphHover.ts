@@ -122,7 +122,7 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
     visited.add(sha);
     while (index.order.get(path.at(-1)!)! < rank) {
       const last = path.at(-1)!;
-      if (index.owners.get(last) !== owner) break;
+      // Present-day refs may split this path, but cannot shorten a past merge.
       const next = index.commits.get(last)?.parents[0]?.sha;
       if (!next || !index.commits.has(next) || offsets.has(next)) break;
       offsets.set(next, path.length);
@@ -138,6 +138,8 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
   }
   if (boundary !== undefined) path.length = boundary + 1;
   else {
+    const fallback = path.findIndex((sha) => index.owners.get(sha) !== owner);
+    if (fallback >= 0) path.length = fallback + 1;
     while (index.owners.get(path.at(-1)!) === owner) {
       const next = index.commits.get(path.at(-1)!)?.parents[0]?.sha;
       if (!next || !index.commits.has(next) || offsets.has(next)) break;
@@ -150,7 +152,12 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
   for (let i = 0; i < path.length - 1; i++) edges.add(`${path[i]}:${path[i + 1]}`);
   const last = path.at(-1)!;
   const missing = index.commits.get(last)?.parents[0]?.sha;
-  if (boundary === undefined && missing && !index.commits.has(missing))
+  if (
+    boundary === undefined &&
+    index.owners.get(last) === owner &&
+    missing &&
+    !index.commits.has(missing)
+  )
     edges.add(`${last}:${missing}`);
   const branches = new Set(
     [...index.heads].filter(([, sha]) => sha === parent).map(([name]) => name),

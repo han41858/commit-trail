@@ -143,6 +143,69 @@ test('promotion intervals are independent of the selected reference and current 
   }
 });
 
+const intermediateRefHistory = () => [
+  commit('M', 'P1', 'a4'),
+  commit('a6', 'a5'),
+  commit('a5', 'a4'),
+  commit('P1', 'm0', 'a1'),
+  commit('a4', 'a3'),
+  commit('a3', 'a2'),
+  commit('a2', 'a1'),
+  commit('a1', 'b'),
+  commit('m0', 'b'),
+  commit('b'),
+];
+
+test('an intermediate ref cannot truncate a merge before the prior integration boundary', () => {
+  for (const base of ['main', 'dev']) {
+    for (const withTopic of [false, true]) {
+      const refs: Record<string, string> = { main: 'M', dev: 'a6' };
+      if (withTopic) refs.topic = 'a3';
+      const focus = edge('M:a4', index(intermediateRefHistory(), refs, base));
+      assert.deepEqual([...focus.nodes], ['M', 'a4', 'a3', 'a2', 'a1']);
+      assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3', 'a3:a2', 'a2:a1']);
+      assert.equal(focus.nodes.has('b'), false);
+      assert.equal(focus.nodes.has('a5'), false);
+      assert.equal(focus.branches.size, 0);
+    }
+  }
+});
+
+test('an unknown destination keeps the first owned-flow fallback after boundary exploration', () => {
+  const commits = [
+    commit('M', 'P1', 'a4'),
+    commit('a6', 'a5'),
+    commit('a5', 'a4'),
+    commit('P1', 'destination'),
+    commit('a4', 'a3'),
+    commit('a3', 'a2'),
+    commit('a2', 'a1'),
+    commit('a1', 'b'),
+    commit('destination', 'missing-destination'),
+    commit('b'),
+  ];
+  const refs = { main: 'M', dev: 'a6', topic: 'a3' };
+  const partial = edge('M:a4', index(commits, refs));
+  assert.deepEqual([...partial.nodes], ['M', 'a4', 'a3']);
+  assert.deepEqual([...partial.edges], ['M:a4', 'a4:a3']);
+  const complete = edge('M:a4', index([...commits, commit('missing-destination', 'a1')], refs));
+  assert.deepEqual([...complete.nodes], ['M', 'a4', 'a3', 'a2', 'a1']);
+});
+
+test('a partial fallback does not follow an unloaded parent beyond another ref boundary', () => {
+  const commits = [
+    commit('M', 'P1', 'a4'),
+    commit('a6', 'a4'),
+    commit('P1', 'destination'),
+    commit('a4', 'a3'),
+    commit('a3', 'missing-incoming'),
+    commit('destination'),
+  ];
+  const focus = edge('M:a4', index(commits, { main: 'M', dev: 'a6', topic: 'a3' }));
+  assert.deepEqual([...focus.nodes], ['M', 'a4', 'a3']);
+  assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3']);
+});
+
 test('each merge of the same parent gets its own destination and already-integrated boundary', () => {
   const commits = [
     commit('m2', 'm1', 'work'),
