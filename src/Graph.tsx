@@ -2,6 +2,7 @@ import { debug } from './debug';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   graphHoverIndex,
+  graphHoverOwner,
   resolveGraphHover,
   type GraphHoverFocus,
   type GraphHoverTarget,
@@ -26,6 +27,7 @@ import {
   branchLabelText,
   commitVersionIcons,
   visibleHistorySources,
+  visibleGraphEdges,
   GRAPH_ORIGIN,
 } from './graphView';
 type BranchBadge = {
@@ -208,6 +210,25 @@ export function Graph({
     () => graphHoverIndex(data.ordered, tracks, head),
     [data.ordered, tracks, head],
   );
+  const edges = useMemo(
+    () =>
+      visibleGraphEdges(
+        ordered,
+        positions,
+        data.spine,
+        origin,
+        reverse,
+        view.top,
+        view.top + view.height,
+      ).map((edge) => {
+        const path = new Path2D();
+        const middle = (edge.from.y + edge.to.y) / 2;
+        path.moveTo(edge.from.x, edge.from.y);
+        path.bezierCurveTo(edge.from.x, middle, edge.to.x, middle, edge.to.x, edge.to.y);
+        return { ...edge, path, owner: graphHoverOwner({ kind: 'edge', id: edge.id }, hoverIndex) };
+      }),
+    [ordered, positions, data.spine, origin, reverse, view.top, view.height, hoverIndex],
+  );
   const selectionFocus = useMemo(
     () =>
       pageVisible && selected
@@ -219,8 +240,9 @@ export function Graph({
     if (!canHover || !pageVisible) return null;
     if (
       selectionFocus &&
-      hoverTarget?.kind === 'commit' &&
-      hoverIndex.owners.get(hoverTarget.id) === hoverIndex.owners.get(selected)
+      hoverTarget &&
+      hoverTarget.kind !== 'branch' &&
+      graphHoverOwner(hoverTarget, hoverIndex) === hoverIndex.owners.get(selected)
     )
       return selectionFocus;
     return resolveGraphHover(hoverTarget, hoverIndex);
@@ -533,28 +555,17 @@ export function Graph({
         ctx.fillText(marker.label, right - labelWidth, y - 4);
       }
       ctx.restore();
-      for (const c of ordered) {
-        const p = positions.get(c.sha)!;
-        for (const parent of c.parents) {
-          const end = positions.get(parent.sha);
-          const spineEdge = data.spine.has(c.sha) && c.parents[0]?.sha === parent.sha;
-          const ex = end?.x ?? (spineEdge ? origin : p.x);
-          const ey = end?.y ?? p.y + (reverse ? -ROW / 2 : ROW / 2);
-          if (
-            Math.max(p.y, ey) < view.top - ROW ||
-            Math.min(p.y, ey) > view.top + view.height + ROW
-          )
-            continue;
-          ctx.globalAlpha = (spineEdge ? 0.95 : 0.65) * alpha('edges', `${c.sha}:${parent.sha}`);
-          ctx.strokeStyle =
-            colors[(tones.edges.get(`${c.sha}:${parent.sha}`) || 0) % colors.length];
-          ctx.lineWidth = spineEdge ? 2.5 : 1.6;
-          ctx.setLineDash(end ? [] : [4, 4]);
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.bezierCurveTo(p.x, (p.y + ey) / 2, ex, (p.y + ey) / 2, ex, ey);
-          ctx.stroke();
-        }
+      for (const edge of edges) {
+        const { from, to } = edge;
+        const middle = (from.y + to.y) / 2;
+        ctx.globalAlpha = (edge.primary ? 0.95 : 0.65) * alpha('edges', edge.id);
+        ctx.strokeStyle = colors[(tones.edges.get(edge.id) || 0) % colors.length];
+        ctx.lineWidth = edge.primary ? 2.5 : 1.6;
+        ctx.setLineDash(edge.dashed ? [4, 4] : []);
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.bezierCurveTo(from.x, middle, to.x, middle, to.x, to.y);
+        ctx.stroke();
       }
       ctx.setLineDash([]);
       const labelObstacles: BranchLabelObstacle[] = [],
@@ -764,7 +775,52 @@ export function Graph({
     focus,
     opacity,
     opacityIndex,
+    edges,
   ]);
+  function edgeAt(clientX: number, clientY: number) {
+    const el = container.current!,
+      rect = el.getBoundingClientRect(),
+      x = clientX - rect.left + el.scrollLeft,
+      y = clientY - rect.top + el.scrollTop;
+    const ctx = canvas.current!.getContext('2d')!;
+    const hits: { edge: (typeof edges)[number]; distance: number }[] = [];
+    ctx.save();
+    // Paths and pointer coordinates are in graph CSS pixels, independent of DPR.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.setLineDash([]);
+    ctx.lineCap = 'round';
+    for (const edge of edges) {
+      if (
+        !edge.owner ||
+        x < Math.min(edge.from.x, edge.to.x) - 5 ||
+        x > Math.max(edge.from.x, edge.to.x) + 5 ||
+        y < Math.min(edge.from.y, edge.to.y) - 5 ||
+        y > Math.max(edge.from.y, edge.to.y) + 5
+      )
+        continue;
+      ctx.lineWidth = 10;
+      if (!ctx.isPointInStroke(edge.path, x, y)) continue;
+      let low = 0,
+        high = 10;
+      for (let i = 0; i < 5; i++) {
+        ctx.lineWidth = (low + high) / 2;
+        if (ctx.isPointInStroke(edge.path, x, y)) high = ctx.lineWidth;
+        else low = ctx.lineWidth;
+      }
+      hits.push({ edge, distance: high / 2 });
+    }
+    ctx.restore();
+    if (!hits.length) return;
+    const distance = Math.min(...hits.map((hit) => hit.distance));
+    const nearest = hits.filter((hit) => hit.distance <= distance + 0.5);
+    const current =
+      graphHoverOwner(hoverRef.current, hoverIndex) || hoverIndex.owners.get(selected);
+    const preferred = nearest.filter((hit) => hit.edge.owner === current);
+    const candidates = preferred.length ? preferred : nearest;
+    // At an indistinguishable crossing, keep an existing flow or wait for clarity.
+    if (new Set(candidates.map((hit) => hit.edge.owner)).size !== 1) return;
+    return { kind: 'edge', id: candidates[0].edge.id } as const;
+  }
   function badgeAt(clientX: number, clientY: number) {
     const el = container.current!,
       rect = el.getBoundingClientRect(),
@@ -874,7 +930,15 @@ export function Graph({
             setHoveredBadge(null);
             const hoverCommit = canHover && pick(e.clientX, e.clientY, true);
             if (hoverCommit) updateHover({ kind: 'commit', id: hoverCommit.sha });
-            else deferHoverExit();
+            else {
+              const edge = canHover && edgeAt(e.clientX, e.clientY);
+              if (edge) {
+                updateHover(edge);
+                e.currentTarget.title = '';
+                return;
+              }
+              deferHoverExit();
+            }
             const c = pick(e.clientX, e.clientY);
             if (!c) {
               e.currentTarget.title = '';

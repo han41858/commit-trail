@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { layout, type Commit, type Branch } from './model';
 import { branchTracks, type BranchTrack } from './branchLabels';
 import { emptyGraphColors, graphColors } from './graphColors';
-import { graphHoverIndex, graphHoverAlpha, resolveGraphHover } from './graphHover';
+import { graphHoverIndex, graphHoverOwner, graphHoverAlpha, resolveGraphHover } from './graphHover';
 
 const commit = (sha: string, ...parents: string[]): Commit => ({
   sha,
@@ -49,6 +49,64 @@ const branch = (id: string, paths: ReturnType<typeof index>) =>
   resolveGraphHover({ kind: 'branch', id }, paths)!;
 const node = (id: string, paths: ReturnType<typeof index>) =>
   resolveGraphHover({ kind: 'commit', id }, paths)!;
+
+test('first-parent line hover reuses its child flow including the fork boundary', () => {
+  const paths = index(merged());
+  const focus = resolveGraphHover({ kind: 'edge', id: 'feature:base' }, paths);
+  assert.equal(focus, node('feature', paths));
+  assert.notEqual(focus, node('base', paths));
+  assert.equal(resolveGraphHover({ kind: 'edge', id: 'merge:base' }, paths), node('merge', paths));
+});
+
+test('merge line hover follows the incoming parent instead of the integration flow', () => {
+  const paths = index(merged());
+  const focus = resolveGraphHover({ kind: 'edge', id: 'merge:feature' }, paths);
+  assert.equal(focus, branch('feature', paths));
+  assert.equal(graphHoverOwner({ kind: 'edge', id: 'merge:feature' }, paths), 'feature');
+  assert.notEqual(focus, node('merge', paths));
+});
+
+test('each octopus connector resolves its own parent flow even with identical colors', () => {
+  const commits = [
+    commit('merge', 'base', 'work', 'other'),
+    commit('work', 'base'),
+    commit('other', 'base'),
+    commit('base'),
+  ];
+  const paths = index(
+    commits,
+    { main: 'merge', work: 'work', other: 'other' },
+    'main',
+    false,
+    true,
+  );
+  assert.equal(resolveGraphHover({ kind: 'edge', id: 'merge:work' }, paths), branch('work', paths));
+  assert.equal(
+    resolveGraphHover({ kind: 'edge', id: 'merge:other' }, paths),
+    branch('other', paths),
+  );
+});
+
+test('hovering a historical merge connector does not invent a new terminal boundary', () => {
+  const commits = [
+    commit('new-work', 'old-work'),
+    commit('merge', 'base', 'old-work'),
+    commit('old-work', 'base'),
+    commit('base'),
+  ];
+  const paths = index(commits, { main: 'merge', work: 'new-work' });
+  const focus = resolveGraphHover({ kind: 'edge', id: 'merge:old-work' }, paths)!;
+  assert.equal(focus, branch('work', paths));
+  assert.equal(focus.nodes.has('merge'), false);
+  assert.equal(focus.edges.has('merge:old-work'), false);
+});
+
+test('edge hover never invents a connection or fetches an unknown parent flow', () => {
+  const paths = index([commit('tip', 'missing', 'other-missing')], { main: 'tip' });
+  assert.equal(resolveGraphHover({ kind: 'edge', id: 'tip:missing' }, paths), node('tip', paths));
+  for (const id of ['tip:other-missing', 'tip:fake', 'missing:tip', 'tip', 'tip:missing:extra'])
+    assert.equal(resolveGraphHover({ kind: 'edge', id }, paths), null);
+});
 
 test('a branch includes its start and terminal merge without traversing either neighboring flow', () => {
   const focus = branch('feature', index(merged()));

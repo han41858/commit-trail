@@ -1,7 +1,7 @@
 import type { Commit } from './model';
 import type { BranchTrack } from './branchLabels';
 
-export type GraphHoverTarget = { kind: 'branch' | 'commit'; id: string };
+export type GraphHoverTarget = { kind: 'branch' | 'commit' | 'edge'; id: string };
 export type GraphHoverFocus = {
   nodes: ReadonlySet<string>;
   edges: ReadonlySet<string>;
@@ -93,17 +93,29 @@ function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
   return focus;
 }
 
+export function graphHoverOwner(target: GraphHoverTarget | null, index: HoverIndex) {
+  if (!target) return;
+  let sha = target.kind === 'branch' ? index.heads.get(target.id) : target.id;
+  if (target.kind === 'edge') {
+    const [child, parent, extra] = target.id.split(':');
+    if (!child || !parent || extra !== undefined) return;
+    const commit = index.commits.get(child);
+    const position = commit?.parents.findIndex((value) => value.sha === parent) ?? -1;
+    if (position < 0) return;
+    // First-parent edges continue the child; merge connectors carry the parent flow.
+    sha = position === 0 ? child : parent;
+  }
+  return sha ? index.owners.get(sha) : undefined;
+}
+
 export function resolveGraphHover(
   target: GraphHoverTarget | null,
   index: HoverIndex,
 ): GraphHoverFocus | null {
-  if (!target) return null;
-  const sha = target.kind === 'branch' ? index.heads.get(target.id) : target.id;
-  if (!sha) return null;
-  const owner = index.owners.get(sha);
+  const owner = graphHoverOwner(target, index);
   if (!owner) return null;
   const focus = flowFocus(owner, index);
-  if (target.kind === 'branch' && focus.branches.size > 1)
+  if (target?.kind === 'branch' && focus.branches.size > 1)
     return { ...focus, branches: new Set([target.id]) };
   return focus;
 }
