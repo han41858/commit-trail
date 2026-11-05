@@ -50,15 +50,93 @@ const branch = (id: string, paths: ReturnType<typeof index>) =>
 const node = (id: string, paths: ReturnType<typeof index>) =>
   resolveGraphHover({ kind: 'commit', id }, paths)!;
 
-test('a branch stops at its first-parent join and includes the visible start node', () => {
+test('a branch includes its start and terminal merge without traversing either neighboring flow', () => {
   const focus = branch('feature', index(merged()));
-  assert.deepEqual([...focus.nodes], ['feature', 'base']);
-  assert.deepEqual([...focus.edges], ['feature:base']);
+  assert.deepEqual([...focus.nodes], ['feature', 'base', 'merge']);
+  assert.deepEqual([...focus.edges], ['feature:base', 'merge:feature']);
   assert.deepEqual([...focus.branches], ['feature']);
   assert.equal(graphHoverAlpha(focus, 'nodes', 'base'), 1);
   assert.equal(graphHoverAlpha(focus, 'edges', 'base:root'), 0.25);
-  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:feature'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:feature'), 1);
   assert.equal(graphHoverAlpha(focus, 'nodes', 'root'), 0.25);
+});
+
+test('merging an intermediate commit does not terminate a branch that has continued', () => {
+  const commits = [
+    commit('new-work', 'old-work'),
+    commit('old-merge', 'base', 'old-work'),
+    commit('old-work', 'base'),
+    commit('base', 'root'),
+    commit('root'),
+  ];
+  const paths = index(commits, { main: 'old-merge', feature: 'new-work' });
+  const focus = branch('feature', paths);
+  assert.deepEqual([...focus.nodes], ['new-work', 'old-work', 'base']);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'old-merge'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'old-merge:old-work'), 0.25);
+});
+
+test('multiple terminal merges include only their endpoint and the exact connector', () => {
+  const commits = [
+    commit('after-merge', 'merge'),
+    commit('merge', 'base', 'feature', 'other'),
+    commit('release', 'root', 'feature'),
+    commit('feature', 'base'),
+    commit('other', 'root'),
+    commit('base', 'root'),
+    commit('root'),
+  ];
+  const paths = index(commits, {
+    main: 'after-merge',
+    feature: 'feature',
+    release: 'release',
+    other: 'other',
+  });
+  const focus = branch('feature', paths);
+  assert.deepEqual([...focus.nodes].sort(), ['base', 'feature', 'merge', 'release']);
+  assert.deepEqual([...focus.edges].sort(), ['feature:base', 'merge:feature', 'release:feature']);
+  for (const sha of ['other', 'root', 'after-merge']) {
+    assert.equal(graphHoverAlpha(focus, 'nodes', sha), 0.25);
+  }
+  for (const key of ['merge:base', 'merge:other', 'release:root', 'after-merge:merge']) {
+    assert.equal(graphHoverAlpha(focus, 'edges', key), 0.25);
+  }
+  assert.deepEqual([...focus.branches], ['feature']);
+});
+
+test('a cross-flow merge can end a first-parent flow but a simple fork cannot', () => {
+  const commits = [
+    commit('merge', 'feature', 'other'),
+    commit('continuation', 'feature'),
+    commit('feature', 'base'),
+    commit('other', 'root'),
+    commit('base', 'root'),
+    commit('root'),
+  ];
+  const paths = index(commits, {
+    main: 'merge',
+    feature: 'feature',
+    baseline: 'base',
+    continuation: 'continuation',
+    other: 'other',
+  });
+  const focus = branch('feature', paths);
+  assert.deepEqual([...focus.nodes], ['feature', 'base', 'merge']);
+  assert.deepEqual([...focus.edges], ['feature:base', 'merge:feature']);
+  assert.equal(graphHoverAlpha(focus, 'nodes', 'continuation'), 0.25);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'merge:other'), 0.25);
+});
+
+test('loading a terminal merge rebuilds the endpoints without changing an older focus', () => {
+  const commits = [commit('feature', 'base'), commit('base', 'root'), commit('root')];
+  const original = branch('feature', index(commits, { main: 'base', feature: 'feature' }));
+  const refreshed = index([commit('merge', 'base', 'feature'), ...commits], {
+    main: 'merge',
+    feature: 'feature',
+  });
+  assert.deepEqual([...original.nodes], ['feature', 'base']);
+  assert.deepEqual([...branch('feature', refreshed).nodes], ['feature', 'base', 'merge']);
+  assert.ok(branch('feature', refreshed).edges.has('merge:feature'));
 });
 
 test('hovering or selecting a middle commit highlights its whole flow through the branch start', () => {
@@ -71,8 +149,8 @@ test('hovering or selecting a middle commit highlights its whole flow through th
   ];
   const paths = index(commits, { main: 'merge', feature: 'feature2' });
   const focus = node('feature1', paths);
-  assert.deepEqual([...focus.nodes], ['feature2', 'feature1', 'base']);
-  assert.deepEqual([...focus.edges], ['feature2:feature1', 'feature1:base']);
+  assert.deepEqual([...focus.nodes], ['feature2', 'feature1', 'base', 'merge']);
+  assert.deepEqual([...focus.edges], ['feature2:feature1', 'feature1:base', 'merge:feature2']);
   assert.equal(node('feature2', paths), focus);
   assert.equal(branch('feature', paths), focus);
   assert.equal(branch('feature', paths).nodes, focus.nodes);
@@ -98,10 +176,10 @@ test('deleted or unnamed branches retain their own first-parent flow', () => {
     commit('root'),
   ];
   const paths = index(commits, { main: 'merge' });
-  assert.deepEqual([...node('work', paths).nodes], ['tip', 'work', 'base']);
+  assert.deepEqual([...node('work', paths).nodes], ['tip', 'work', 'base', 'merge']);
   assert.equal(node('work', paths), node('tip', paths));
   assert.equal(node('work', paths).branches.size, 0);
-  assert.equal(graphHoverAlpha(node('work', paths), 'nodes', 'merge'), 0.25);
+  assert.equal(graphHoverAlpha(node('work', paths), 'nodes', 'merge'), 1);
 });
 
 test('same-HEAD aliases share a flow while an explicit badge keeps only its own name bright', () => {
@@ -133,15 +211,15 @@ test('octopus parents remain separate flows instead of highlighting every merged
   const paths = index(commits);
   assert.deepEqual([...branch('main', paths).nodes], ['merge', 'base', 'root']);
   assert.equal(graphHoverAlpha(branch('main', paths), 'edges', 'merge:other'), 0.25);
-  assert.deepEqual([...branch('feature', paths).nodes], ['feature', 'base']);
-  assert.deepEqual([...branch('other', paths).nodes], ['other', 'root']);
+  assert.deepEqual([...branch('feature', paths).nodes], ['feature', 'base', 'merge']);
+  assert.deepEqual([...branch('other', paths).nodes], ['other', 'root', 'merge']);
   assert.equal(graphHoverAlpha(branch('feature', paths), 'nodes', 'other'), 0.25);
 });
 
 test('identical palette colors and coordinates cannot combine different flows', () => {
   const paths = index(merged(), undefined, 'main', false, true);
   const focus = branch('feature', paths);
-  assert.deepEqual([...focus.nodes], ['feature', 'base']);
+  assert.deepEqual([...focus.nodes], ['feature', 'base', 'merge']);
   assert.equal(graphHoverAlpha(focus, 'nodes', 'other'), 0.25);
   assert.equal(graphHoverAlpha(focus, 'edges', 'other:root'), 0.25);
   assert.notEqual(paths.owners.get('feature'), paths.owners.get('other'));
@@ -151,7 +229,7 @@ test('label-only tracks do not invent branch names from geometry', () => {
   const unclassified: BranchTrack = { name: 'guess', lane: 0, color: 0, points: [{ x: 48, y: 0 }] };
   const paths = graphHoverIndex(merged(), [unclassified], 'merge');
   assert.equal(resolveGraphHover({ kind: 'branch', id: 'guess' }, paths), null);
-  assert.deepEqual([...node('feature', paths).nodes], ['feature', 'base']);
+  assert.deepEqual([...node('feature', paths).nodes], ['feature', 'base', 'merge']);
   assert.equal(node('feature', paths).branches.size, 0);
 });
 
@@ -174,10 +252,11 @@ test('a changed HEAD extends only its own flow and deleted references cannot rev
   const original = branch('feature', index(commits));
   const next = index([commit('new', 'feature'), ...commits], { main: 'merge', feature: 'new' });
   assert.deepEqual([...branch('feature', next).nodes], ['new', 'feature', 'base']);
+  assert.equal(graphHoverAlpha(branch('feature', next), 'nodes', 'merge'), 0.25);
   assert.ok(!original.nodes.has('new'));
   const deleted = index(commits, { main: 'merge' });
   assert.equal(resolveGraphHover({ kind: 'branch', id: 'feature' }, deleted), null);
-  assert.deepEqual([...node('feature', deleted).nodes], ['feature', 'base']);
+  assert.deepEqual([...node('feature', deleted).nodes], ['feature', 'base', 'merge']);
 });
 
 test('direction reversal changes geometry without changing flow membership', () => {
@@ -197,8 +276,8 @@ test('parent edges define flows even if track membership extends into unrelated 
     ],
     'merge',
   );
-  assert.deepEqual([...branch('feature', paths).edges], ['feature:base']);
-  assert.deepEqual([...branch('feature', paths).nodes], ['feature', 'base']);
+  assert.deepEqual([...branch('feature', paths).edges], ['feature:base', 'merge:feature']);
+  assert.deepEqual([...branch('feature', paths).nodes], ['feature', 'base', 'merge']);
 });
 
 test('moving among commits in one flow shares one cached focus across hover and selection', () => {

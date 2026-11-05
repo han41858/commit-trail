@@ -11,6 +11,7 @@ type HoverIndex = {
   commits: ReadonlyMap<string, Commit>;
   heads: ReadonlyMap<string, string>;
   owners: ReadonlyMap<string, string>;
+  ends: ReadonlyMap<string, readonly string[]>;
   flows: Map<string, GraphHoverFocus>;
 };
 
@@ -42,7 +43,18 @@ export function graphHoverIndex(
   for (const head of heads.values()) claim(head);
   // Merged/deleted branches still have an observable first-parent flow.
   for (const commit of ordered) claim(commit.sha);
-  return { commits, heads, owners, flows: new Map() };
+  const ends = new Map<string, string[]>();
+  for (const commit of ordered) {
+    if (commit.parents.length < 2) continue;
+    for (const parent of commit.parents) {
+      // A merge of an older work commit does not end a flow that has continued.
+      if (owners.get(parent.sha) !== parent.sha || owners.get(commit.sha) === parent.sha) continue;
+      const merges = ends.get(parent.sha) || [];
+      merges.push(commit.sha);
+      ends.set(parent.sha, merges);
+    }
+  }
+  return { commits, heads, owners, ends, flows: new Map() };
 }
 
 function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
@@ -58,6 +70,11 @@ function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
     const parent: string | undefined = index.commits.get(sha)?.parents[0]?.sha;
     if (parent) edges.add(`${sha}:${parent}`);
     sha = parent;
+  }
+  // Show the terminal merge and its connector, without traversing that flow.
+  for (const merge of index.ends.get(head) || []) {
+    nodes.add(merge);
+    edges.add(`${merge}:${head}`);
   }
   const branches = new Set(
     [...index.heads].filter(([, sha]) => sha === head).map(([name]) => name),
