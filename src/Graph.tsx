@@ -613,7 +613,7 @@ export function Graph({
             ctx.stroke();
           }
         }
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = opacity;
         ctx.font = '13px system-ui';
         ctx.textAlign = 'center';
         for (const icon of icons(c.sha, p.x)) ctx.fillText(icon.text, icon.x, p.y + 4);
