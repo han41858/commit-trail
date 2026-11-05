@@ -77,10 +77,7 @@ export function BranchPicker({
         disabled={!state.branches.length}
         onClick={() => setOpen(!open)}
       >
-        <span>
-          <span className="base-prefix">Branch: </span>
-          {state.base || 'Choose a branch'}
-        </span>
+        <span>{state.base || 'Branch'}</span>
         <span aria-hidden="true">⌄</span>
       </button>
       {open && (

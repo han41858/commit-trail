@@ -6,10 +6,101 @@ import {
   branchLabelText,
   commitVersionIcons,
   visibleHistorySources,
+  visibleGraphEdges,
   GRAPH_ORIGIN,
 } from './graphView';
 import type { CommitInfo, TagInfo, ReleaseInfo } from './CommitInfo';
 import { layout, type Commit } from './model';
+
+const edgeCommit = (sha: string, ...parents: string[]): Commit => ({
+  sha,
+  parents: parents.map((sha) => ({ sha })),
+  commit: { message: sha, author: null, committer: null },
+  html_url: '',
+});
+
+test('visible edge geometry preserves first-parent spines and secondary merge curves', () => {
+  const positions = new Map([
+    ['merge', { x: 48, y: 20 }],
+    ['base', { x: 48, y: 82 }],
+    ['work', { x: 82, y: 51 }],
+  ]);
+  const edges = visibleGraphEdges(
+    [edgeCommit('merge', 'base', 'work')],
+    positions,
+    new Set(['merge']),
+    48,
+    false,
+    0,
+    200,
+  );
+  assert.deepEqual(edges, [
+    {
+      id: 'merge:base',
+      from: positions.get('merge'),
+      to: positions.get('base'),
+      primary: true,
+      dashed: false,
+    },
+    {
+      id: 'merge:work',
+      from: positions.get('merge'),
+      to: positions.get('work'),
+      primary: false,
+      dashed: false,
+    },
+  ]);
+});
+
+test('edge visibility includes crossing segments with both endpoints outside the viewport', () => {
+  const positions = new Map([
+    ['above', { x: 48, y: 0 }],
+    ['above-parent', { x: 48, y: 50 }],
+    ['crossing', { x: 82, y: 40 }],
+    ['far-parent', { x: 116, y: 600 }],
+    ['below', { x: 48, y: 700 }],
+  ]);
+  const commits = [
+    edgeCommit('above', 'above-parent'),
+    edgeCommit('crossing', 'far-parent'),
+    edgeCommit('below', 'far-parent'),
+  ];
+  const edges = visibleGraphEdges(commits, positions, new Set(), 48, false, 200, 400);
+  assert.deepEqual(
+    edges.map((edge) => edge.id),
+    ['crossing:far-parent'],
+  );
+});
+
+test('unloaded parents keep the same half-row dashed stub in both directions', () => {
+  const positions = new Map([['tip', { x: 82, y: 100 }]]);
+  for (const reverse of [false, true]) {
+    const edges = visibleGraphEdges(
+      [edgeCommit('tip', 'missing', 'other')],
+      positions,
+      new Set(['tip']),
+      48,
+      reverse,
+      0,
+      200,
+    );
+    assert.deepEqual(
+      edges.map((edge) => edge.to),
+      [
+        { x: 48, y: 100 + (reverse ? -15.5 : 15.5) },
+        { x: 82, y: 100 + (reverse ? -15.5 : 15.5) },
+      ],
+    );
+    assert.ok(edges.every((edge) => edge.dashed));
+  }
+});
+
+test('edges without a source position are ignored rather than inferred from geometry', () => {
+  assert.deepEqual(
+    visibleGraphEdges([edgeCommit('missing', 'parent')], new Map(), new Set(), 48, false, 0, 200),
+    [],
+  );
+});
 
 test('commits show at most one version icon, preferring releases and preserving tooltip names and position', () => {
   const tag = (name: string): TagInfo => ({

@@ -163,11 +163,22 @@ for (const [zone, monthStart, yearStart, offsetMonth] of [
       c('fallback', 'invalid', undefined, '2026-01-15T12:00:00Z'),
       c('missing'),
     ];
-    const script = `import {monthMarkers} from ${JSON.stringify(new URL('./monthMarkers.ts', import.meta.url).href)};
- const [month,year,offset]=${JSON.stringify([month, year, offset])};
- const run=commits=>monthMarkers(commits,new Set(commits.map(c=>c.sha)));
- const before=JSON.stringify(month);
- console.log(JSON.stringify({month:run(month),reverse:run([...month].reverse()),year:run(year),offset:run(offset),partial:run(month.slice(0,2)),unchanged:JSON.stringify(month)===before}));`;
+    const script = `
+      import { monthMarkers } from ${JSON.stringify(new URL('./monthMarkers.ts', import.meta.url).href)};
+
+      const [month, year, offset] = ${JSON.stringify([month, year, offset])};
+      const run = (commits) => monthMarkers(commits, new Set(commits.map((c) => c.sha)));
+      const before = JSON.stringify(month);
+
+      console.log(JSON.stringify({
+        month: run(month),
+        reverse: run([...month].reverse()),
+        year: run(year),
+        offset: run(offset),
+        partial: run(month.slice(0, 2)),
+        unchanged: JSON.stringify(month) === before,
+      }));
+    `;
     const result = JSON.parse(
       execFileSync(
         process.execPath,

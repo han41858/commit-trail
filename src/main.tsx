@@ -39,8 +39,7 @@ import { RecentRepositories, RECENT_REPOSITORIES_KEY } from './RecentRepositorie
 import { BranchSelections, BRANCH_SELECTIONS_KEY } from './BranchSelections';
 import type { RepositoryLocation } from './repositoryLocation';
 import logo from '../assets/logo-320.png';
-import { emojify } from './emoji';
-import { requestActivity } from './requestActivity';
+import { LoadingIndicator } from './LoadingIndicator';
 import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
 import { TokenPermissions } from './TokenPermissions';
 import { Analytics } from '@vercel/analytics/react';
@@ -172,11 +171,6 @@ function App() {
   const measured = useMeasuredOpen(history, info);
   const refreshState = useSyncExternalStore(loop.subscribe, loop.getSnapshot);
   const state = useSyncExternalStore(history.subscribe, history.getSnapshot);
-  const activeRequests = useSyncExternalStore(
-    requestActivity.subscribe,
-    requestActivity.getSnapshot,
-  );
-  const loadingSpeed = activeRequests > 8 ? 'fast' : activeRequests > 4 ? 'medium' : 'slow';
   const retrySeconds = useRetryCountdown(state.retryAt);
   const discoverySeconds = useRetryCountdown(state.discoveryRetryAt);
   const [input, setInput] = useState(configuration.repositories[0] || '');
@@ -623,6 +617,7 @@ function App() {
             <Graph
               active={primaryActive}
               containerResponsive={monitorState.active}
+              columnOrder={primaryOrder}
               label={monitorState.active ? `Commit graph for ${state.repo}` : undefined}
               key={`${state.repo}:${state.base}:${reverse}`}
               theme={resolvedTheme}
@@ -633,7 +628,6 @@ function App() {
               selected={selected?.sha || ''}
               onSelect={select}
               hasMore={state.more && !state.error && !monitorLimited}
-              loading={state.busy}
               onLoadMore={(sources) => {
                 if (monitor.canRequest()) void history.loadMore(sources);
               }}
@@ -642,6 +636,7 @@ function App() {
               topInset={monitorState.active ? 34 : topInset}
               refreshVersion={state.refreshVersion}
               baseHead={state.baseHead}
+              defaultBranch={state.meta?.default_branch}
               info={extras.bySha}
               onVisible={(shas) => {
                 if (primaryActive && monitor.canRequest()) info.watch(shas);
@@ -980,25 +975,7 @@ function App() {
       </div>
       <footer className="graph-status" aria-live="polite">
         <span>{state.commits.length.toLocaleString()} commits</span>
-        {state.busy || activeRequests > 0 || refreshState.running ? (
-          <span
-            className="history-loading"
-            role="status"
-            aria-label={
-              activeRequests
-                ? `Loading history, ${activeRequests} active requests`
-                : 'Loading history'
-            }
-            aria-live="off"
-          >
-            <span className="loading-spinner" data-speed={loadingSpeed} aria-hidden="true" />
-            {activeRequests > 0 && (
-              <span className="request-count" aria-hidden="true">
-                x{activeRequests}
-              </span>
-            )}
-          </span>
-        ) : null}
+        <LoadingIndicator busy={state.busy || extras.busy || refreshState.running} />
         {state.discoveryError && (
           <button
             className="discovery-retry"

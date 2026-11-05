@@ -6,6 +6,7 @@ import { Graph } from './Graph';
 import { CommitDetails } from './CommitDetails';
 import type { MonitorEntry, MonitorSession } from './MonitorSession';
 import { useMonitorDetailsPosition } from './useMonitorDetailsPosition';
+import { LoadingIndicator } from './LoadingIndicator';
 
 export function MonitorStatus({
   state,
@@ -26,9 +27,11 @@ export function MonitorStatus({
   return (
     <div className="monitor-status">
       <span>{state.commits.length.toLocaleString()} commits</span>
-      {(state.busy || extras.busy || refreshing) && (
-        <span className="loading-spinner" role="status" aria-label="Loading repository" />
-      )}
+      <LoadingIndicator
+        busy={state.busy || extras.busy || refreshing}
+        repository={state.repo}
+        label="Loading repository"
+      />
       {limited ? (
         <p role="status">GitHub rate limit · waiting to retry</p>
       ) : error ? (
@@ -105,6 +108,7 @@ export const MonitorPane = memo(function MonitorPane({
         <Graph
           theme={theme}
           containerResponsive
+          columnOrder={order}
           commits={state.commits}
           branches={state.branches}
           branch={state.base}
@@ -112,13 +116,13 @@ export const MonitorPane = memo(function MonitorPane({
           selected={selected?.sha || ''}
           onSelect={select}
           hasMore={state.more && !state.error && !limited}
-          loading={state.busy}
           onLoadMore={loadMore}
           frontiers={state.frontiers}
           pendingSources={state.pendingSources}
           topInset={34}
           refreshVersion={state.refreshVersion}
           baseHead={state.baseHead}
+          defaultBranch={state.meta?.default_branch}
           info={extras.bySha}
           onVisible={watch}
           label={`Commit graph for ${entry.repository}`}

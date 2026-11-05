@@ -33,7 +33,8 @@ export async function github<T>(
     cycle ?? debug.forSignal(signal),
     signal?.aborted,
   );
-  const finish = requestActivity.begin(signal);
+  const repository = path.match(/^\/repos\/([^/?]+\/[^/?]+)(?:[/?]|$)/)?.[1];
+  const finish = requestActivity.begin(signal, repository);
   try {
     let r: Response;
     try {

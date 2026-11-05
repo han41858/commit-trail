@@ -1,7 +1,41 @@
-import type { HistoryFrontier } from './model';
+import { ROW, type Commit, type HistoryFrontier } from './model';
 import type { CommitInfo } from './CommitInfo';
 export const GRAPH_ORIGIN = 48,
   LANE_SPACING = 34;
+
+export function visibleGraphEdges(
+  commits: readonly Commit[],
+  positions: ReadonlyMap<string, { x: number; y: number }>,
+  spine: ReadonlySet<string>,
+  origin: number,
+  reverse: boolean,
+  top: number,
+  bottom: number,
+) {
+  const edges = [];
+  for (const commit of commits) {
+    const from = positions.get(commit.sha);
+    if (!from) continue;
+    for (const [index, parent] of commit.parents.entries()) {
+      const loaded = positions.get(parent.sha);
+      const primary = spine.has(commit.sha) && index === 0;
+      const to = loaded || {
+        x: primary ? origin : from.x,
+        y: from.y + (reverse ? -ROW / 2 : ROW / 2),
+      };
+      if (Math.max(from.y, to.y) < top - ROW || Math.min(from.y, to.y) > bottom + ROW) continue;
+      edges.push({
+        id: `${commit.sha}:${parent.sha}`,
+        from,
+        to,
+        primary,
+        dashed: !loaded,
+      });
+    }
+  }
+  return edges;
+}
+
 export function commitVersionIcons(
   info: Pick<CommitInfo, 'tags' | 'releases'> | undefined,
   x: number,
