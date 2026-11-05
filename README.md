@@ -19,7 +19,7 @@
   · <a href="#development--documentation">Documentation</a>
 </p>
 
-![Commit Trail on desktop, showing the public Commit Trail repository and its commit graph](docs/images/desktop.png)
+![Commit Trail in a wide viewport, showing the public Commit Trail repository and its commit graph](docs/images/desktop.png)
 
 ## Features
 
@@ -37,7 +37,7 @@
 
 </details>
 
-![Commit Trail Split view showing Commit Trail, AI Template, Angular and VS Code in four desktop columns](docs/images/split-desktop.png)
+![Commit Trail Split view showing Commit Trail, AI Template, Angular and VS Code in four columns in a wide viewport](docs/images/split-desktop.png)
 
 Choose **Split view** to select repositories. Drag a header handle to reorder columns; on touch screens, press and hold the handle first. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
 
@@ -101,7 +101,7 @@ npm run dev
 - [Product specification](docs/specification.md) · [Refresh and metadata](docs/auto-refresh-and-metadata.md) — implementation specifications.
 - [PWA](docs/pwa.md) · [Developer diagnostics](docs/developer-debug-mode.md) — installation, updates, recovery and local measurements.
 - [Recent repositories](docs/recent-repositories.md) — local suggestions, deletion and PAT changes.
-- [Split view](docs/monitor-mode.md) — selection and ordering, shared URLs, refresh and mobile limits.
+- [Split view](docs/monitor-mode.md) — selection and ordering, shared URLs, refresh and responsive layout.
 
 Ideas and bug reports are welcome in [Issues](https://github.com/han41858/commit-trail/issues).
 

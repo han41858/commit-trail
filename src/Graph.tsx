@@ -137,18 +137,18 @@ export function Graph({
     document.addEventListener('visibilitychange', update);
     return () => document.removeEventListener('visibilitychange', update);
   }, []);
-  const [screenMobile, setScreenMobile] = useState(
+  const [screenNarrow, setScreenNarrow] = useState(
     () => window.matchMedia('(max-width:800px)').matches,
   );
   useEffect(() => {
     const media = window.matchMedia('(max-width:800px)');
-    const update = () => setScreenMobile(media.matches);
+    const update = () => setScreenNarrow(media.matches);
     update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, []);
   // Split columns use their measured width with the existing responsive rules.
-  const mobile = containerResponsive ? view.width <= 800 : screenMobile;
+  const narrow = containerResponsive ? view.width <= 800 : screenNarrow;
   const head = baseHead || branches.find((b) => b.name === branch)?.commit.sha;
   const data = useMemo(() => measuredLayout(commits, prior.current, head), [commits, head]);
   useEffect(() => {
@@ -168,7 +168,7 @@ export function Graph({
   const { spacing, width, branchWidth, showMessages, messageX, messageWidth } = graphFrame(
     view.width,
     maxLane,
-    mobile,
+    narrow,
   );
   // clientWidth rounds fractional columns; an origin on the edge can hit the next column.
   const origin = containerResponsive && view.width <= GRAPH_ORIGIN ? view.width / 2 : GRAPH_ORIGIN;
@@ -347,7 +347,7 @@ export function Graph({
       window.visualViewport?.removeEventListener('scroll', hide);
     };
   }, [showingBranchTooltip]);
-  const badgeHeight = mobile ? 18 : 20,
+  const badgeHeight = narrow ? 18 : 20,
     badgeGap = 2;
   const height = Math.max(
     view.height,
@@ -465,7 +465,7 @@ export function Graph({
   }, [containerResponsive]);
   useLayoutEffect(() => {
     container.current!.scrollLeft = 0;
-  }, [width, mobile]);
+  }, [width, narrow]);
   useEffect(() => {
     if (!onVisible || !pageVisible) return;
     const first = Math.max(0, Math.ceil((view.top - 20) / ROW)),
@@ -649,12 +649,12 @@ export function Graph({
         ctx.fillStyle = text;
         ctx.globalAlpha = alpha('nodes', c.sha);
         if (showMessages) {
-          ctx.font = `${mobile ? 12 : 13}px system-ui`;
+          ctx.font = `${narrow ? 12 : 13}px system-ui`;
           const message = fitMessage(emojify(c.commit.message.split('\n')[0]));
-          ctx.fillText(message, messageX, p.y + (mobile ? 4 : -3));
+          ctx.fillText(message, messageX, p.y + (narrow ? 4 : -3));
           messageWidths.set(c.sha, ctx.measureText(message).width);
         }
-        if (!mobile) {
+        if (!narrow) {
           ctx.globalAlpha = 0.5 * alpha('nodes', c.sha);
           ctx.font = '11px monospace';
           const meta = fitMessage(
@@ -668,11 +668,11 @@ export function Graph({
         }
       }
       ctx.globalAlpha = 1;
-      ctx.font = `${mobile ? 10 : 11}px system-ui`;
+      ctx.font = `${narrow ? 10 : 11}px system-ui`;
       const labelRight = left + (showMessages ? messageX : branchWidth),
         nodeClearance = 15,
         maxTextWidth =
-          Math.min(mobile ? Math.min(116, view.width * 0.36) : 190, branchWidth - 16) - 12,
+          Math.min(narrow ? Math.min(116, view.width * 0.36) : 190, branchWidth - 16) - 12,
         cache = new Map<string, { text: string; width: number }>();
       const badge = (name: string, x: number) => {
         // Match the 12px selected-ring obstacle plus its 3px gap and 8px left inset.
@@ -683,7 +683,7 @@ export function Graph({
           old = cache.get(key);
         if (old) return old;
         let text = '…';
-        for (let limit = mobile ? 18 : 28; limit >= 1; limit--) {
+        for (let limit = narrow ? 18 : 28; limit >= 1; limit--) {
           text = branchLabelText(name, displayNames, limit);
           if (ctx.measureText(text).width <= limitWidth) break;
         }
@@ -734,7 +734,7 @@ export function Graph({
           ctx.fill();
           ctx.globalAlpha = opacity;
           ctx.fillStyle = color;
-          ctx.fillText(name, x + 6, rowY + (mobile ? 12 : 14));
+          ctx.fillText(name, x + 6, rowY + (narrow ? 12 : 14));
           const hitTop = Math.max(rowY, view.top + padding - 20),
             hitBottom = Math.min(rowY + badgeHeight, view.top + view.height - 48);
           if (hitBottom > hitTop)
@@ -782,7 +782,7 @@ export function Graph({
     width,
     view,
     selected,
-    mobile,
+    narrow,
     badgeHeight,
     branchWidth,
     showMessages,

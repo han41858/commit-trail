@@ -11,7 +11,7 @@
 | File | Viewport | Content |
 | --- | --- | --- |
 | `desktop.png` | 1280 × 800 | Commit Trail graph with commit, release, tag and workflow details |
-| `mobile.png` | 390 × 844 | The same selected real commit in the single-repository mobile layout |
+| `mobile.png` | 390 × 844 | The same selected real commit in the single-repository narrow layout |
 | `split-desktop.png` | 1600 × 900 | Four columns with independent graphs, commit messages, refs and Actions rings |
 | `split-mobile-portrait.png` | 390 × 844 | The same four repositories in narrow, DAG-focused columns |
 | `split-mobile-landscape.png` | 844 × 390 | The same layout after rotation, with messages where column width and lane spacing allow |
