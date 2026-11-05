@@ -44,6 +44,7 @@ export function branchTracks(
     const head = positions.get(ref.commit.sha);
     if (!head) continue;
     const color = colors?.branches.get(ref.name) ?? colors?.nodes.get(ref.commit.sha);
+    const owner = colors?.paths.branches.get(ref.name);
     const sharesBase = spine.has(ref.commit.sha);
     const points: Point[] = [],
       connections: Point[][] = [],
@@ -57,8 +58,9 @@ export function branchTracks(
       points.push(point);
       commitShas.push(sha);
       const joined =
-        (ref.name !== base && !sharesBase && spine.has(sha)) ||
-        (color !== undefined && colors?.nodes.get(sha) !== color);
+        owner !== undefined
+          ? colors!.paths.nodes.get(sha) !== owner
+          : ref.name !== base && !sharesBase && spine.has(sha);
       if (joined) break;
       for (const child of incoming.get(sha) || []) {
         const from = positions.get(child.sha);

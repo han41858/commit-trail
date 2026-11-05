@@ -8,7 +8,8 @@ import {
   type BranchLabel,
   type BranchLabelObstacle,
 } from './branchLabels';
-import type { Commit } from './model';
+import { layout, type Commit } from './model';
+import { graphColors } from './graphColors';
 const commit = (sha: string, parent?: string): Commit => ({
   sha,
   parents: parent ? [{ sha: parent }] : [],
@@ -655,4 +656,57 @@ test('compressed drawing coordinates retain the real lane identity and compact b
         label.boxY! + 18 <= 500,
     ),
   );
+});
+
+test('identical colors cannot extend a badge path beyond a non-base fork or collect its merge connectors', () => {
+  const merge = (sha: string, first: string, incoming: string): Commit => ({
+    ...commit(sha, first),
+    parents: [{ sha: first }, { sha: incoming }],
+  });
+  const commits = [
+    merge('main-merge', 'main-base', 'dev-tip'),
+    merge('dev-tip', 'dev-base', 'feature'),
+    merge('other-merge', 'other-base', 'dev-base'),
+    commit('feature', 'dev-base'),
+    commit('dev-base', 'root'),
+    commit('other-base', 'root'),
+    commit('main-base', 'root'),
+    commit('root', 'older'),
+    commit('older'),
+  ];
+  const branches = [
+    { name: 'main', commit: { sha: 'main-merge' } },
+    { name: 'dev', commit: { sha: 'dev-tip' } },
+    { name: 'feature', commit: { sha: 'feature' } },
+  ];
+  const data = layout(commits, new Map(), 'main-merge');
+  const colors = graphColors(commits, branches, 'main');
+  for (const map of [colors.nodes, colors.edges, colors.branches])
+    for (const id of map.keys()) map.set(id, 0);
+  assert.notEqual(colors.paths.nodes.get('feature'), colors.paths.nodes.get('dev-base'));
+  assert.equal(data.spine.has('dev-base'), false);
+
+  for (const reverse of [false, true]) {
+    const positions = new Map(
+      data.ordered.map((c, index) => [
+        c.sha,
+        { x: 48 + data.lanes.get(c.sha)! * 34, y: (reverse ? commits.length - index : index) * 31 },
+      ]),
+    );
+    const feature = branchTracks(
+      commits,
+      branches,
+      'main',
+      data.spine,
+      positions,
+      reverse,
+      colors,
+      data.lanes,
+    ).find((track) => track.name === 'feature')!;
+    assert.deepEqual(feature.points, [positions.get('feature'), positions.get('dev-base')]);
+    assert.deepEqual(feature.commitShas, ['feature', 'dev-tip', 'dev-base']);
+    assert.deepEqual(feature.connections, [[positions.get('dev-tip'), positions.get('feature')]]);
+    assert.equal(feature.commitShas!.includes('root'), false);
+    assert.equal(feature.commitShas!.includes('other-merge'), false);
+  }
 });

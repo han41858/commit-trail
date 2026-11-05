@@ -1,5 +1,6 @@
 import type { Commit } from './model';
 import type { BranchTrack } from './branchLabels';
+import type { GraphPaths } from './graphPaths';
 
 export type GraphHoverTarget = { kind: 'branch' | 'commit' | 'edge'; id: string };
 export type GraphHoverFocus = {
@@ -9,61 +10,41 @@ export type GraphHoverFocus = {
 };
 type HoverIndex = {
   commits: ReadonlyMap<string, Commit>;
-  order: ReadonlyMap<string, number>;
   heads: ReadonlyMap<string, string>;
   owners: ReadonlyMap<string, string>;
   ends: ReadonlyMap<string, readonly string[]>;
   flows: Map<string, GraphHoverFocus>;
 };
 
-// Claim first-parent paths in render order. SHA ownership distinguishes flows
-// even when their coordinates or the finite palette happen to be identical.
+// Rendering, badge placement and focus share path ownership, never palette values.
 export function graphHoverIndex(
   ordered: Commit[],
   tracks: readonly BranchTrack[],
-  baseHead?: string,
+  paths: GraphPaths,
 ): HoverIndex {
   const commits = new Map(ordered.map((commit) => [commit.sha, commit]));
-  const order = new Map(ordered.map((commit, index) => [commit.sha, index]));
   const heads = new Map<string, string>();
   for (const track of tracks) {
     const head = track.commitShas?.[0];
     if (head && commits.has(head)) heads.set(track.name, head);
   }
-  const boundaries = new Set(heads.values());
-  if (baseHead && commits.has(baseHead)) boundaries.add(baseHead);
-  const owners = new Map<string, string>();
-  const claim = (head: string) => {
-    let sha: string | undefined = head;
-    while (sha && commits.has(sha) && !owners.has(sha)) {
-      if (sha !== head && boundaries.has(sha)) break;
-      owners.set(sha, head);
-      sha = commits.get(sha)?.parents[0]?.sha;
-    }
-  };
-  if (baseHead) claim(baseHead);
-  for (const head of heads.values()) claim(head);
-  // Merged/deleted branches still have an observable first-parent flow.
-  for (const commit of ordered) claim(commit.sha);
-  const reference = baseHead ? owners.get(baseHead) : undefined;
+  const owners = paths.nodes;
   const ends = new Map<string, string[]>();
-  for (const commit of ordered) {
-    // First parents continue the destination; other parents bring work into it.
+  for (const commit of ordered)
     for (const parent of commit.parents.slice(1)) {
-      // A merge of an older work commit does not end a flow that has continued.
-      // Importing the reference into work also does not end the reference flow.
+      const owner = owners.get(parent.sha);
       if (
-        parent.sha === reference ||
-        owners.get(parent.sha) !== parent.sha ||
-        owners.get(commit.sha) === parent.sha
+        !owner ||
+        owner === paths.reference ||
+        paths.heads.get(owner) !== parent.sha ||
+        owners.get(commit.sha) === owner
       )
         continue;
-      const merges = ends.get(parent.sha) || [];
+      const merges = ends.get(owner) ?? [];
       merges.push(commit.sha);
-      ends.set(parent.sha, merges);
+      ends.set(owner, merges);
     }
-  }
-  return { commits, order, heads, owners, ends, flows: new Map() };
+  return { commits, heads, owners, ends, flows: new Map() };
 }
 
 function rememberFocus(key: string, focus: GraphHoverFocus, index: HoverIndex) {
@@ -92,7 +73,7 @@ function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
     edges.add(`${merge}:${head}`);
   }
   const branches = new Set(
-    [...index.heads].filter(([, sha]) => sha === head).map(([name]) => name),
+    [...index.heads].filter(([, sha]) => index.owners.get(sha) === head).map(([name]) => name),
   );
   const focus = { nodes, edges, branches };
   // Keep two recent flows; moving among commits in one flow reuses one result.
@@ -104,63 +85,22 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
   const cached = index.flows.get(key);
   if (cached) return cached;
   const owner = index.owners.get(parent);
-  const path = [parent];
-  const offsets = new Map([[parent, 0]]);
-  const destination = index.commits.get(child)?.parents[0]?.sha;
-  const pending = destination ? [destination] : [];
-  const visited = new Set<string>();
-  let boundary: number | undefined;
-
-  // Explore the destination's already-merged history only to locate a boundary.
-  // Topological order lets us extend the incoming first-parent path lazily and
-  // prune history older than the nearest common boundary found so far.
-  while (pending.length) {
-    const sha = pending.pop()!;
-    const rank = index.order.get(sha);
-    if (rank === undefined || visited.has(sha)) continue;
-    if (boundary !== undefined && rank >= index.order.get(path[boundary])!) continue;
-    visited.add(sha);
-    while (index.order.get(path.at(-1)!)! < rank) {
-      const last = path.at(-1)!;
-      // Present-day refs may split this path, but cannot shorten a past merge.
-      const next = index.commits.get(last)?.parents[0]?.sha;
-      if (!next || !index.commits.has(next) || offsets.has(next)) break;
-      offsets.set(next, path.length);
-      path.push(next);
-    }
-    const common = offsets.get(sha);
-    if (common !== undefined) {
-      boundary = common;
-      continue;
-    }
-    if (rank > index.order.get(path.at(-1)!)!) continue;
-    for (const ancestor of index.commits.get(sha)!.parents) pending.push(ancestor.sha);
-  }
-  if (boundary !== undefined) path.length = boundary + 1;
-  else {
-    const fallback = path.findIndex((sha) => index.owners.get(sha) !== owner);
-    if (fallback >= 0) path.length = fallback + 1;
-    while (index.owners.get(path.at(-1)!) === owner) {
-      const next = index.commits.get(path.at(-1)!)?.parents[0]?.sha;
-      if (!next || !index.commits.has(next) || offsets.has(next)) break;
-      offsets.set(next, path.length);
-      path.push(next);
-    }
-  }
-  const nodes = new Set([child, ...path]);
+  const nodes = new Set([child]);
   const edges = new Set([`${child}:${parent}`]);
-  for (let i = 0; i < path.length - 1; i++) edges.add(`${path[i]}:${path[i + 1]}`);
-  const last = path.at(-1)!;
-  const missing = index.commits.get(last)?.parents[0]?.sha;
-  if (
-    boundary === undefined &&
-    index.owners.get(last) === owner &&
-    missing &&
-    !index.commits.has(missing)
-  )
-    edges.add(`${last}:${missing}`);
+  let sha: string | undefined = parent;
+  while (sha && index.commits.has(sha) && !nodes.has(sha)) {
+    nodes.add(sha);
+    // Include one differently owned fork node, then stop. A merge cap excludes
+    // later commits in this same path, without searching destination ancestry.
+    if (index.owners.get(sha) !== owner) break;
+    const next: string | undefined = index.commits.get(sha)?.parents[0]?.sha;
+    if (next) edges.add(`${sha}:${next}`);
+    sha = next;
+  }
   const branches = new Set(
-    [...index.heads].filter(([, sha]) => sha === parent).map(([name]) => name),
+    [...index.heads]
+      .filter(([, sha]) => nodes.has(sha) && index.owners.get(sha) === owner)
+      .map(([name]) => name),
   );
   return rememberFocus(key, { nodes, edges, branches }, index);
 }
@@ -174,11 +114,11 @@ export function graphHoverOwner(target: GraphHoverTarget | null, index: HoverInd
     const commit = index.commits.get(child);
     const position = commit?.parents.findIndex((value) => value.sha === parent) ?? -1;
     if (position < 0) return;
-    // Merge connectors describe that merge interval, not today's parent HEAD.
-    if (position > 0) return index.owners.has(parent) ? `edge:${target.id}` : undefined;
+    // A merge connector caps the incoming colored path at this historical SHA.
+    if (position > 0) return index.commits.has(parent) ? `edge:${target.id}` : undefined;
     sha = child;
   }
-  return sha ? index.owners.get(sha) : undefined;
+  return sha && index.commits.has(sha) ? index.owners.get(sha) : undefined;
 }
 
 export function resolveGraphHover(

@@ -16,7 +16,8 @@ import {
   visibleBranchLabels,
   type BranchLabelObstacle,
 } from './branchLabels';
-import { emptyGraphColors, graphColors } from './graphColors';
+import { graphColors } from './graphColors';
+import { GRAPH_COLOR_COUNT } from './graphPalette';
 import { monthMarkers } from './monthMarkers';
 import { emojify } from './emoji';
 import { scrollPosition, scrollAnchor } from './scrollPosition';
@@ -88,7 +89,6 @@ export function Graph({
     canvas = useRef<HTMLCanvasElement>(null),
     branchTooltip = useRef<HTMLDivElement>(null),
     prior = useRef(new Map<string, number>());
-  const priorColors = useRef(emptyGraphColors());
   const captureFrontiers = useRef<() => void>(() => {});
   const badgeHits = useRef<BranchBadge[]>([]);
   const [hoveredBadge, setHoveredBadge] = useState<BranchBadge | null>(null);
@@ -149,12 +149,9 @@ export function Graph({
     prior.current = data.lanes;
   }, [data]);
   const tones = useMemo(
-    () => graphColors(commits, data.ordered, branches, branch, data.spine, priorColors.current),
-    [commits, data, branches, branch],
+    () => graphColors(commits, branches, branch, head),
+    [commits, branches, branch, head],
   );
-  useLayoutEffect(() => {
-    priorColors.current = tones;
-  }, [tones]);
   const ordered = useMemo(
     () => (reverse ? [...data.ordered].reverse() : data.ordered),
     [data, reverse],
@@ -207,8 +204,8 @@ export function Graph({
     [commits, branches, branch, data, positions, reverse, tones],
   );
   const hoverIndex = useMemo(
-    () => graphHoverIndex(data.ordered, tracks, head),
-    [data.ordered, tracks, head],
+    () => graphHoverIndex(data.ordered, tracks, tones.paths),
+    [data.ordered, tracks, tones.paths],
   );
   const edges = useMemo(
     () =>
@@ -514,7 +511,7 @@ export function Graph({
       const style = getComputedStyle(container.current!);
       const text = style.getPropertyValue('--text'),
         surface = style.getPropertyValue('--surface');
-      const colors = Array.from({ length: 6 }, (_, i) =>
+      const colors = Array.from({ length: GRAPH_COLOR_COUNT }, (_, i) =>
         style.getPropertyValue(`--graph-${i}`).trim(),
       );
       const left = container.current!.scrollLeft,
