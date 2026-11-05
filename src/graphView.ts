@@ -72,16 +72,16 @@ export function visibleHistorySources(
   }
   return [...sources];
 }
-export function graphFrame(viewWidth: number, maxLane: number, mobile: boolean) {
+export function graphFrame(viewWidth: number, maxLane: number, narrow: boolean) {
   const naturalWidth = GRAPH_ORIGIN + maxLane * LANE_SPACING + 76;
   const laneSpacing = (available: number) =>
     maxLane > 0
       ? Math.min(LANE_SPACING, Math.max(0, available - GRAPH_ORIGIN - 18) / maxLane)
       : LANE_SPACING;
-  const gap = mobile ? 12 : 16,
+  const gap = narrow ? 12 : 16,
     compactWidth = Math.min(viewWidth / 2, naturalWidth);
-  // Keep mobile lanes at least 12px apart before reserving space for messages.
-  const showMessages = !mobile || laneSpacing(compactWidth) >= 12;
+  // Keep narrow lanes at least 12px apart before reserving space for messages.
+  const showMessages = !narrow || laneSpacing(compactWidth) >= 12;
   const branchWidth = showMessages ? compactWidth : viewWidth,
     messageX = showMessages ? branchWidth + gap : viewWidth;
   return {

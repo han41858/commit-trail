@@ -19,7 +19,7 @@ test('edge columns clamp the wider panel within the monitor area', () => {
   assert.equal(last.left, 792);
   assert.equal(last.left + last.width, 1272);
 });
-test('mobile widths keep the full panel visible regardless of the selected column', () => {
+test('narrow widths keep the full panel visible regardless of the selected column', () => {
   for (const left of [0, 195]) {
     const frame = monitorDetailsFrame(
       { left, width: 195 },
