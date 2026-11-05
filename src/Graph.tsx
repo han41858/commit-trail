@@ -90,14 +90,29 @@ export function Graph({
   const badgeHits = useRef<BranchBadge[]>([]);
   const [hoveredBadge, setHoveredBadge] = useState<BranchBadge | null>(null);
   const hoverRef = useRef<GraphHoverTarget | null>(null);
+  const hoverExit = useRef<number | undefined>(undefined);
   const [hoverTarget, setHoverTarget] = useState<GraphHoverTarget | null>(null);
   const [canHover, setCanHover] = useState(() => window.matchMedia('(any-hover: hover)').matches);
-  const updateHover = useCallback((target: GraphHoverTarget | null) => {
-    const previous = hoverRef.current;
-    if (previous?.kind === target?.kind && previous?.id === target?.id) return;
-    hoverRef.current = target;
-    setHoverTarget(target);
+  const cancelHoverExit = useCallback(() => {
+    window.clearTimeout(hoverExit.current);
+    hoverExit.current = undefined;
   }, []);
+  const updateHover = useCallback(
+    (target: GraphHoverTarget | null) => {
+      cancelHoverExit();
+      const previous = hoverRef.current;
+      if (previous?.kind === target?.kind && previous?.id === target?.id) return;
+      hoverRef.current = target;
+      setHoverTarget(target);
+    },
+    [cancelHoverExit],
+  );
+  const deferHoverExit = useCallback(() => {
+    if (!hoverRef.current || hoverExit.current !== undefined) return;
+    // Bridge the small gaps between targets without flashing the default graph.
+    hoverExit.current = window.setTimeout(() => updateHover(null), 100);
+  }, [updateHover]);
+  useEffect(() => cancelHoverExit, [cancelHoverExit]);
   const branchTooltipId = useId();
   const messageHits = useRef(new Map<string, number>());
   const [view, setView] = useState({
@@ -531,7 +546,8 @@ export function Graph({
         )
           visible++;
       }
-      ctx.globalAlpha = graphHoverAlpha(focus, 'nodes', c.sha);
+      const opacity = graphHoverAlpha(focus, 'nodes', c.sha);
+      ctx.globalAlpha = opacity;
       ctx.fillStyle = colors[(tones.nodes.get(c.sha) || 0) % colors.length];
       ctx.beginPath();
       ctx.arc(p.x, p.y, c.sha === selected ? 7 : 4.5, 0, Math.PI * 2);
@@ -541,7 +557,6 @@ export function Graph({
         ctx.lineWidth = 1;
         ctx.stroke();
       }
-      ctx.globalAlpha = 1;
       const extra = info?.get(c.sha);
       if (extra?.actions) {
         const summary = extra.actions,
@@ -551,21 +566,23 @@ export function Graph({
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.globalAlpha =
-          summary.state === 'running'
+          opacity *
+          (summary.state === 'running'
             ? 0.25
             : summary.state === 'queued' ||
                 summary.state === 'cancelled' ||
                 summary.state === 'skipped'
               ? 0.4
-              : 1;
+              : 1);
         ctx.stroke();
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = opacity;
         if (summary.state === 'running' && summary.ratio !== null) {
           ctx.beginPath();
           ctx.arc(p.x, p.y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * summary.ratio);
           ctx.stroke();
         }
       }
+      ctx.globalAlpha = 1;
       ctx.font = '13px system-ui';
       ctx.textAlign = 'center';
       for (const icon of icons(c.sha, p.x)) ctx.fillText(icon.text, icon.x, p.y + 4);
@@ -747,6 +764,7 @@ export function Graph({
       onWheelCapture={stopFollowing}
       onTouchStartCapture={stopFollowing}
       onPointerDownCapture={(event) => {
+        cancelHoverExit();
         setHoveredBadge(null);
         if (event.pointerType === 'touch') updateHover(null);
         stopFollowing();
@@ -782,6 +800,7 @@ export function Graph({
           onClick={(e) => {
             if (badgeAt(e.clientX, e.clientY)) return;
             const c = pick(e.clientX, e.clientY);
+            updateHover(null);
             if (c) onSelect(c);
           }}
           onPointerLeave={(e) => {
@@ -816,7 +835,8 @@ export function Graph({
             }
             setHoveredBadge(null);
             const hoverCommit = canHover && pick(e.clientX, e.clientY, true);
-            updateHover(hoverCommit ? { kind: 'commit', id: hoverCommit.sha } : null);
+            if (hoverCommit) updateHover({ kind: 'commit', id: hoverCommit.sha });
+            else deferHoverExit();
             const c = pick(e.clientX, e.clientY);
             if (!c) {
               e.currentTarget.title = '';
@@ -852,6 +872,7 @@ export function Graph({
               role="img"
               aria-label="GitHub Actions in progress; job counts not confirmed"
               style={{
+                opacity: graphHoverAlpha(focus, 'nodes', commit.sha),
                 left: point.x - radius - 1,
                 top: point.y - radius - 1,
                 width: radius * 2 + 2,
