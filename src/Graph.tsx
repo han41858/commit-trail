@@ -202,7 +202,10 @@ export function Graph({
       branchTracks(commits, branches, branch, data.spine, positions, reverse, tones, data.lanes),
     [commits, branches, branch, data, positions, reverse, tones],
   );
-  const hoverIndex = useMemo(() => graphHoverIndex(commits, tracks), [commits, tracks]);
+  const hoverIndex = useMemo(
+    () => graphHoverIndex(data.ordered, tracks, head),
+    [data.ordered, tracks, head],
+  );
   const selectionFocus = useMemo(
     () =>
       pageVisible && selected
@@ -212,7 +215,12 @@ export function Graph({
   );
   const hoverFocus = useMemo(() => {
     if (!canHover || !pageVisible) return null;
-    if (hoverTarget?.kind === 'commit' && hoverTarget.id === selected) return selectionFocus;
+    if (
+      selectionFocus &&
+      hoverTarget?.kind === 'commit' &&
+      hoverIndex.owners.get(hoverTarget.id) === hoverIndex.owners.get(selected)
+    )
+      return selectionFocus;
     return resolveGraphHover(hoverTarget, hoverIndex);
   }, [canHover, pageVisible, hoverTarget, hoverIndex, selected, selectionFocus]);
   const focus = hoverFocus || selectionFocus;

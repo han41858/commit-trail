@@ -1,4 +1,4 @@
-import { ancestors, type Commit } from './model';
+import type { Commit } from './model';
 import type { BranchTrack } from './branchLabels';
 
 export type GraphHoverTarget = { kind: 'branch' | 'commit'; id: string };
@@ -8,22 +8,65 @@ export type GraphHoverFocus = {
   branches: ReadonlySet<string>;
 };
 type HoverIndex = {
-  commits: ReadonlySet<string>;
+  commits: ReadonlyMap<string, Commit>;
   heads: ReadonlyMap<string, string>;
-  history: Commit[];
-  tracks: readonly BranchTrack[];
-  commitFocus: Map<string, GraphHoverFocus>;
+  owners: ReadonlyMap<string, string>;
+  flows: Map<string, GraphHoverFocus>;
 };
 
-// Track metadata identifies branch HEADs; ancestry always comes from actual parents.
-export function graphHoverIndex(commits: Commit[], tracks: readonly BranchTrack[]): HoverIndex {
-  const loaded = new Set(commits.map((commit) => commit.sha));
+// Claim first-parent paths in render order. SHA ownership distinguishes flows
+// even when their coordinates or the finite palette happen to be identical.
+export function graphHoverIndex(
+  ordered: Commit[],
+  tracks: readonly BranchTrack[],
+  baseHead?: string,
+): HoverIndex {
+  const commits = new Map(ordered.map((commit) => [commit.sha, commit]));
   const heads = new Map<string, string>();
   for (const track of tracks) {
     const head = track.commitShas?.[0];
-    if (head && loaded.has(head)) heads.set(track.name, head);
+    if (head && commits.has(head)) heads.set(track.name, head);
   }
-  return { commits: loaded, heads, history: commits, tracks, commitFocus: new Map() };
+  const boundaries = new Set(heads.values());
+  if (baseHead && commits.has(baseHead)) boundaries.add(baseHead);
+  const owners = new Map<string, string>();
+  const claim = (head: string) => {
+    let sha: string | undefined = head;
+    while (sha && commits.has(sha) && !owners.has(sha)) {
+      if (sha !== head && boundaries.has(sha)) break;
+      owners.set(sha, head);
+      sha = commits.get(sha)?.parents[0]?.sha;
+    }
+  };
+  if (baseHead) claim(baseHead);
+  for (const head of heads.values()) claim(head);
+  // Merged/deleted branches still have an observable first-parent flow.
+  for (const commit of ordered) claim(commit.sha);
+  return { commits, heads, owners, flows: new Map() };
+}
+
+function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
+  const cached = index.flows.get(head);
+  if (cached) return cached;
+  const nodes = new Set<string>();
+  const edges = new Set<string>();
+  let sha: string | undefined = head;
+  while (sha && index.commits.has(sha) && !nodes.has(sha)) {
+    nodes.add(sha);
+    // Include the fork/join node so the branch's start is visible, then stop.
+    if (index.owners.get(sha) !== head) break;
+    const parent: string | undefined = index.commits.get(sha)?.parents[0]?.sha;
+    if (parent) edges.add(`${sha}:${parent}`);
+    sha = parent;
+  }
+  const branches = new Set(
+    [...index.heads].filter(([, sha]) => sha === head).map(([name]) => name),
+  );
+  const focus = { nodes, edges, branches };
+  // Keep two recent flows; moving among commits in one flow reuses one result.
+  if (index.flows.size === 2) index.flows.delete(index.flows.keys().next().value!);
+  index.flows.set(head, focus);
+  return focus;
 }
 
 export function resolveGraphHover(
@@ -31,50 +74,14 @@ export function resolveGraphHover(
   index: HoverIndex,
 ): GraphHoverFocus | null {
   if (!target) return null;
-  if (target.kind === 'branch') {
-    const head = index.heads.get(target.id);
-    if (!head) return null;
-    const focus = resolveGraphHover({ kind: 'commit', id: head }, index)!;
-    const branches = new Set<string>();
-    for (const [name, sha] of index.heads) {
-      if (name === target.id || (sha !== head && focus.nodes.has(sha))) branches.add(name);
-    }
-    return { ...focus, branches };
-  }
-  if (!index.commits.has(target.id)) return null;
-  const cached = index.commitFocus.get(target.id);
-  if (cached) return cached;
-  const focus = graphCommitFocus(target.id, index.history, index.tracks)!;
-  // Keep only two recent results rather than accumulating every commit's ancestry.
-  if (index.commitFocus.size === 2)
-    index.commitFocus.delete(index.commitFocus.keys().next().value!);
-  index.commitFocus.set(target.id, focus);
+  const sha = target.kind === 'branch' ? index.heads.get(target.id) : target.id;
+  if (!sha) return null;
+  const owner = index.owners.get(sha);
+  if (!owner) return null;
+  const focus = flowFocus(owner, index);
+  if (target.kind === 'branch' && focus.branches.size > 1)
+    return { ...focus, branches: new Set([target.id]) };
   return focus;
-}
-
-export function graphCommitFocus(
-  sha: string,
-  commits: Commit[],
-  tracks: readonly BranchTrack[],
-): GraphHoverFocus | null {
-  if (!sha || !commits.some((commit) => commit.sha === sha)) return null;
-  const history = ancestors(sha, commits);
-  const nodes = new Set<string>();
-  const edges = new Set<string>();
-  for (const commit of commits) {
-    if (!history.has(commit.sha)) continue;
-    nodes.add(commit.sha);
-    for (const parent of commit.parents) edges.add(`${commit.sha}:${parent.sha}`);
-  }
-  const branches = new Set(
-    tracks
-      .filter((track) => {
-        const path = track.commitShas;
-        return path && (path.includes(sha) || history.has(path[0]));
-      })
-      .map((track) => track.name),
-  );
-  return { nodes, edges, branches };
 }
 
 export function graphHoverAlpha(
