@@ -21,10 +21,21 @@
 }
 .owner-picker-inline {
   position: relative;
+  z-index: auto;
   top: auto;
-  width: 100%;
-  margin-top: 8px;
+  width: calc(100% + 8px);
+  margin: 8px -4px 0;
+  padding: 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
+}
+.owner-picker-inline .owner-picker-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .owner-picker-heading {
   display: flex;

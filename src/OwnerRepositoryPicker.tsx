@@ -116,8 +116,9 @@ export function OwnerRepositoryPicker({
       id={id}
       ref={panel}
       className={`owner-picker${inline ? ' owner-picker-inline' : ''}`}
-      role="dialog"
-      aria-labelledby={headingId}
+      role={inline ? 'region' : 'dialog'}
+      aria-label={inline ? `Repositories for ${snapshot.owner}` : undefined}
+      aria-labelledby={inline ? undefined : headingId}
       aria-busy={snapshot.busy}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;
@@ -128,18 +129,20 @@ export function OwnerRepositoryPicker({
         }
       }}
     >
-      <div className="owner-picker-heading">
-        <strong id={headingId}>Repositories for {snapshot.owner}</strong>
-        {snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
-        <button
-          type="button"
-          className="owner-picker-close"
-          aria-label="Close repositories"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </div>
+      {!inline && (
+        <div className="owner-picker-heading">
+          <strong id={headingId}>Repositories for {snapshot.owner}</strong>
+          {snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
+          <button
+            type="button"
+            className="owner-picker-close"
+            aria-label="Close repositories"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <input
         ref={field}
         data-owner-filter=""
@@ -183,6 +186,7 @@ export function OwnerRepositoryPicker({
       <small id={hintId} className="owner-picker-hint">
         {snapshot.repositories.length.toLocaleString()} loaded · Recent push first
         {more ? ' · More pages available' : ''}
+        {inline && snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
       </small>
       <div
         className="owner-repository-list"
