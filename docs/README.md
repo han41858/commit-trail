@@ -28,8 +28,9 @@ PR 제목·본문 또는 대상 브랜치 변경에도 고정 이름의 필수 `
 | 검사 영역 | 주요 구현 | 확인할 계약 |
 | --- | --- | --- |
 | 경로·색상 | `src/graphPaths.ts`, `src/graphColors.ts` | 기준/기본 HEAD 보호, 통합 근거·첫 고유 커밋 시각·SHA 순서, 결정적 8색 |
-| 강조·아이콘 | `src/Graph.tsx`, `src/graphHover.ts`, `src/graphOpacity.ts` | 시작/종료 경계, 병합선의 시점 제한, 25%·140ms, 태그/릴리즈도 노드와 같은 불투명도 |
-| 레이아웃·추가 조회 | `src/model.ts`, `src/graphView.ts`, `src/history.ts` | 위상 순서, 미조회 부모, 화면 위쪽 경계를 포함한 현재 하단 기준 탐색 |
+| 강조·아이콘 | `src/Graph.tsx`, `src/graphCanvas.ts`, `src/graphHover.ts`, `src/graphOpacity.ts` | 입력·전환 수명은 Graph, 프레임 그리기와 실제 표시 범위는 graphCanvas, 공통 시작/종료 경계·25%·140ms, 태그/릴리즈도 노드와 같은 불투명도 |
+| 레이아웃·추가 조회 | `src/model.ts`, `src/graphView.ts`, `src/history.ts`, `src/HistoryCommitPages.ts`, `src/historyTraversal.ts` | 위상 순서, 미조회 부모, 화면 위쪽 경계를 포함한 현재 하단 기준 탐색, 세션별 페이지 캐시·요청 공유·취소 수명 |
+| 앱 화면 구성 | `src/main.tsx`, `src/ViewOptions.tsx`, `src/AccessTokenPanel.tsx`, `src/AppStatus.tsx`, `src/MonitorControls.tsx` | 앱 상태·인증·갱신 수명은 main, 옵션·토큰·상태·Split 제어 표시는 상태를 전달받는 컴포넌트 |
 | 기준 브랜치·공유 | `src/recommendations.ts`, `src/BranchSelections.ts`, `src/repositoryLocation.ts` | 초기 선택 우선순위와 경로 소유권 우선순위의 구분, 직접 선택 저장, 반복 URL 값 |
 | 갱신·Actions | `src/RefreshLoop.ts`, `src/MonitorSession.ts`, `src/CommitInfo.ts` | 성공과 완료 시각의 구분, 이번 주기에 시작한 작업만 대기, success+skipped 집계 |
 | 요청 수·최근 저장소 | `src/LoadingIndicator.tsx`, `src/requestActivity.ts`, `src/RecentRepositories.ts` | 실제 진행 요청만 계수, Split 열별 범위, 최근 10개·비공개 이력 정리 |
