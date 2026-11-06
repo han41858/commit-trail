@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { assertMainPromotion } from './check-promotion.mjs';
+
+test('CI preserves a static required check and runs the job for PR edits', () => {
+  const workflow = readFileSync(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+  const jobs = workflow.split('  test-build:\n');
+  assert.equal(jobs.length, 2);
+  const header = jobs[1].split('    steps:\n')[0];
+  // A skipped job with a dynamic name did not satisfy GitHub's required check,
+  // even after an older successful run was retried. Keep a real, stable job.
+  assert.match(header, /^    name: Test and build$/m);
+  assert.doesNotMatch(header, /^    if:/m);
+  assert.match(workflow, /^    types: \[opened, synchronize, reopened, edited\]$/m);
+});
 
 const promotion = {
   eventName: 'pull_request',
