@@ -11,12 +11,31 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Editing PR prose must not cancel an in-flight code validation.
+  group: >-
+    ci-${{ github.event.pull_request.number || github.ref }}-${{
+      github.event_name == 'pull_request' &&
+      github.event.action == 'edited' &&
+      !github.event.changes.base &&
+      (github.event.changes.title || github.event.changes.body) &&
+      'metadata' || 'validation' }}
   cancel-in-progress: true
 
 jobs:
   test-build:
-    name: Test and build
+    # A skipped required check counts as success. Give metadata-only edits a
+    # separate name so they cannot replace a failed or pending code check.
+    name: >-
+      ${{ github.event_name == 'pull_request' &&
+          github.event.action == 'edited' &&
+          !github.event.changes.base &&
+          (github.event.changes.title || github.event.changes.body) &&
+          'PR metadata only' || 'Test and build' }}
+    if: >-
+      ${{ !(github.event_name == 'pull_request' &&
+            github.event.action == 'edited' &&
+            !github.event.changes.base &&
+            (github.event.changes.title || github.event.changes.body)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
