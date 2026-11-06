@@ -19,7 +19,7 @@ import { useRetryCountdown, retryLabel } from './useRetryCountdown';
 import { History } from './history';
 import { CommitInfoStore } from './CommitInfoStore';
 import { RefreshLoop } from './RefreshLoop';
-import { RefreshButton, RefreshTimer } from './RefreshButton';
+import { RefreshButton } from './RefreshButton';
 import { MonitorSession } from './MonitorSession';
 import {
   MonitorRepositories,
@@ -28,7 +28,7 @@ import {
   moveMonitorRepository,
 } from './MonitorRepositories';
 import { MonitorSetup } from './MonitorSetup';
-import { MonitorReorder } from './MonitorReorder';
+import { MonitorControls } from './MonitorControls';
 import { MonitorPane, MonitorStatus } from './MonitorPane';
 import { useMonitorDetailsPosition } from './useMonitorDetailsPosition';
 import { useRepositoryLocation } from './useRepositoryLocation';
@@ -39,27 +39,16 @@ import { RecentRepositories, RECENT_REPOSITORIES_KEY } from './RecentRepositorie
 import { BranchSelections, BRANCH_SELECTIONS_KEY } from './BranchSelections';
 import type { RepositoryLocation } from './repositoryLocation';
 import logo from '../assets/logo-320.png';
-import { LoadingIndicator } from './LoadingIndicator';
 import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
-import { TokenPermissions } from './TokenPermissions';
+import { AccessTokenPanel } from './AccessTokenPanel';
+import { ViewOptions } from './ViewOptions';
+import { AppStatus } from './AppStatus';
 import { Analytics } from '@vercel/analytics/react';
 import { analyticsBeforeSend } from './analytics';
 import './style.css';
 import './monitor.css';
 
 const DEMO_REPO = 'han41858/commit-trail';
-const BUILD_DATE = import.meta.env.DEV
-  ? ''
-  : (() => {
-      const builtAt = new Date(__BUILD_TIME__);
-      const date = new Intl.DateTimeFormat(undefined, {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(builtAt);
-      const time = `${String(builtAt.getHours()).padStart(2, '0')}:${String(builtAt.getMinutes()).padStart(2, '0')}`;
-      return `${date} ${time}`;
-    })();
 
 function App() {
   const { configuration, navigate } = useRepositoryLocation();
@@ -570,37 +559,16 @@ function App() {
       style={{ '--toolbar-bottom': `${topInset - 20}px` } as React.CSSProperties}
     >
       {monitorState.active && (
-        <header className="monitor-controls" aria-label="Repository monitor controls">
-          <RefreshTimer
-            nextAt={Math.max(refreshState.nextAt, monitorState.retryAt)}
-            interval={seconds * 1000}
-            sweeping={autoRefresh && !refreshState.waitingForInitialLoad && !monitorLimited}
-            running={monitorState.running.size > 0}
-            paused={!autoRefresh || monitorLimited}
-            disabled={refreshState.waitingForInitialLoad || monitorLimited || refreshState.running}
-            onRefresh={() => void loop.refresh()}
-          />
-          <MonitorReorder entries={monitorState.entries} onReorder={reorderMonitor} />
-          <button
-            type="button"
-            className="monitor-exit"
-            aria-label="Return to single view"
-            title="Return to single view"
-            onClick={leaveMonitor}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              aria-hidden="true"
-            >
-              <path d="m12 5-7 7 7 7M5 12h14" />
-            </svg>
-          </button>
-        </header>
+        <MonitorControls
+          monitorState={monitorState}
+          refreshState={refreshState}
+          seconds={seconds}
+          autoRefresh={autoRefresh}
+          limited={monitorLimited}
+          onRefresh={() => void loop.refresh()}
+          onReorder={reorderMonitor}
+          onExit={leaveMonitor}
+        />
       )}
       <main
         className={`graph-stage${monitorState.active ? ' monitor-stage' : ''}`}
@@ -805,135 +773,37 @@ function App() {
               <path d="M12 4v16" />
             </svg>
           </button>
-          <div className="options" ref={optionsRef}>
-            <button
-              className="options-trigger"
-              aria-label="Options"
-              aria-expanded={options}
-              aria-controls="options-menu"
-              onClick={() => setOptions(!options)}
-            >
-              •••
-            </button>
-            {options && (
-              <section
-                className="options-menu floating-panel"
-                id="options-menu"
-                aria-label="View options"
-              >
-                <label>
-                  Theme
-                  <select
-                    aria-label="Color theme"
-                    value={theme}
-                    onChange={(e) => setTheme(e.target.value)}
-                  >
-                    <option value="system">System</option>
-                    <option value="dark">Dark</option>
-                    <option value="light">Light</option>
-                  </select>
-                </label>
-                <label>
-                  Auto refresh
-                  <input
-                    type="checkbox"
-                    aria-label="Auto refresh"
-                    checked={autoRefresh}
-                    onChange={(e) => setAutoRefresh(e.target.checked)}
-                  />
-                </label>
-                <label>
-                  Interval
-                  <select
-                    aria-label="Refresh interval"
-                    value={seconds}
-                    onChange={(e) => setIntervalChoice(Number(e.target.value))}
-                  >
-                    {appliedToken && <option value={30}>30 seconds</option>}
-                    <option value={60}>1 minute</option>
-                    <option value={300}>5 minutes</option>
-                  </select>
-                </label>
-                <small className="build-info">
-                  {import.meta.env.DEV ? (
-                    'Development'
-                  ) : (
-                    <>
-                      {'Built at '}
-                      <time dateTime={__BUILD_TIME__} dir="auto" title={BUILD_DATE}>
-                        {BUILD_DATE}
-                      </time>
-                    </>
-                  )}
-                </small>
-              </section>
-            )}
-          </div>
+          <ViewOptions
+            panelRef={optionsRef}
+            open={options}
+            theme={theme}
+            autoRefresh={autoRefresh}
+            seconds={seconds}
+            hasToken={!!appliedToken}
+            onOpenChange={setOptions}
+            onThemeChange={setTheme}
+            onAutoRefreshChange={setAutoRefresh}
+            onIntervalChange={setIntervalChoice}
+          />
         </div>
       </header>
       {auth && (
-        <section className="auth floating-panel" ref={authRef} aria-label="GitHub access token">
-          <button className="close" aria-label="Close access token" onClick={() => setAuth(false)}>
-            ×
-          </button>
-          <h2>GitHub access token</h2>
-          <p>60 requests/hour · 5,000 with a token</p>
-          <TokenPermissions
-            repo={state.repo}
-            token={appliedToken}
-            pending={token.trim() !== appliedToken}
-            revision={authRevision}
-          />
-          <a
-            className="create-token primary"
-            aria-label="Create a fine-grained GitHub token"
-            onClick={() => {
-              setErrorDismissed(true);
-              setAuth(false);
-            }}
-            href="https://github.com/settings/personal-access-tokens/new?name=Commit%20Trail&amp;contents=read&amp;pull_requests=read&amp;actions=read"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Create token
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              aria-hidden="true"
-            >
-              <path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
-            </svg>
-          </a>
-          <form
-            className="token-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              e.currentTarget.querySelector('input')?.blur();
-              applyToken();
-            }}
-          >
-            <input
-              aria-label="Access token"
-              type="password"
-              autoComplete="off"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Paste your token"
-            />
-            <button className="primary" type="submit">
-              Apply token
-            </button>
-          </form>
-          <small>Saved in this browser until you remove it.</small>
-          {tokenStorageError && <p role="alert">{tokenStorageError}</p>}
-          <button className="remove-token" onClick={removeToken}>
-            Remove token & clear history
-          </button>
-        </section>
+        <AccessTokenPanel
+          panelRef={authRef}
+          repository={state.repo}
+          appliedToken={appliedToken}
+          token={token}
+          revision={authRevision}
+          storageError={tokenStorageError}
+          onTokenChange={setToken}
+          onApply={applyToken}
+          onRemove={removeToken}
+          onClose={() => setAuth(false)}
+          onCreate={() => {
+            setErrorDismissed(true);
+            setAuth(false);
+          }}
+        />
       )}
       {state.error && !errorDismissed && !auth && !monitorState.active && (
         <div className="error floating-panel" role="alert">
@@ -974,41 +844,14 @@ function App() {
         <DebugRoot developer={import.meta.env.DEV} />
         <PwaUpdatePrompt />
       </div>
-      <footer className="graph-status" aria-live="polite">
-        <span>{state.commits.length.toLocaleString()} commits</span>
-        <LoadingIndicator busy={state.busy || extras.busy || refreshState.running} />
-        {state.discoveryError && (
-          <button
-            className="discovery-retry"
-            title={state.discoveryError}
-            aria-label="Retry recent branch discovery"
-            disabled={state.busy || !!state.error || discoverySeconds > 0}
-            onClick={() => void history.retryDiscovery()}
-          >
-            {discoverySeconds ? retryLabel(discoverySeconds) : 'Retry branches'}
-          </button>
-        )}
-        {state.meta &&
-          !refreshState.running &&
-          (refreshRetrySeconds > 0 ||
-            !!refreshState.error ||
-            refreshState.lastCompletedAt !== null) && (
-            <span className="refresh-status" role="status" title={refreshState.error || undefined}>
-              {refreshRetrySeconds
-                ? `Retry in ${refreshRetrySeconds}s`
-                : refreshState.error
-                  ? 'Refresh failed'
-                  : refreshState.lastCompletedAt !== null
-                    ? `Updated ${new Date(refreshState.lastCompletedAt).toLocaleTimeString()}`
-                    : ''}
-            </span>
-          )}
-        {Object.keys(extras.errors).length > 0 && (
-          <span className="metadata-error" title={Object.values(extras.errors).join(' · ')}>
-            Metadata unavailable
-          </span>
-        )}
-      </footer>
+      <AppStatus
+        state={state}
+        extras={extras}
+        refreshState={refreshState}
+        discoverySeconds={discoverySeconds}
+        refreshRetrySeconds={refreshRetrySeconds}
+        onRetryDiscovery={() => void history.retryDiscovery()}
+      />
       <Analytics beforeSend={analyticsBeforeSend} />
     </div>
   );
