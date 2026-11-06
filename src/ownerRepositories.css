@@ -1,0 +1,151 @@
+.owner-picker {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: min(440px, calc(100vw - 16px));
+  max-height: min(380px, 60dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 24px #0003;
+  font-size: 12px;
+  text-align: left;
+}
+.owner-picker-inline {
+  position: relative;
+  top: auto;
+  width: 100%;
+  margin-top: 8px;
+  box-shadow: none;
+}
+.owner-picker-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.owner-picker-heading > strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.owner-picker .owner-picker-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 18px;
+  border: 0;
+  background: transparent;
+}
+.owner-picker input.owner-repository-filter,
+.repo-input .owner-picker input.owner-repository-filter {
+  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.owner-picker-hint {
+  flex-shrink: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.owner-repository-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  margin: -4px;
+  scroll-padding: 4px;
+}
+.owner-picker .owner-repository-option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.owner-picker .owner-repository-option[aria-selected='true'],
+.owner-picker .owner-repository-option:not(:disabled):hover {
+  background: var(--bg);
+}
+.owner-repository-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.owner-repository-title strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.owner-repository-title small {
+  flex-shrink: 0;
+}
+.owner-repository-option small,
+.owner-repository-description {
+  color: var(--muted);
+  font-size: 11px;
+}
+.owner-repository-description {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.owner-picker .owner-picker-empty,
+.owner-picker-actions p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.owner-picker-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid var(--border);
+  padding-top: 7px;
+}
+.owner-picker-actions p {
+  color: var(--warning);
+  overflow-wrap: anywhere;
+}
+.owner-picker-actions > div {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 800px) {
+  .owner-picker input.owner-repository-filter,
+  .repo-input .owner-picker input.owner-repository-filter {
+    font-size: 16px;
+  }
+}

@@ -27,7 +27,7 @@
 - **Stay current** with automatic updates that preserve your place while reading.
 - **Split view** puts 1–32 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
 - **See the context** with tags, releases and GitHub Actions status beside commits.
-- **Explore public and private repositories**, with optional GitHub token access.
+- **Find repositories by owner**: enter a GitHub user or organization name to browse repositories, or keep using `owner/repo` and repository URLs directly. Public repositories and those accessible with your applied token appear together.
 - **Use it anywhere** on desktop or mobile, or install it as a PWA.
 
 <details>
@@ -56,8 +56,10 @@ Portrait Split view emphasizes the DAG. Landscape can show one-line commit messa
 ## Getting started
 
 1. Open the [Live Demo](https://commit-trail-view.vercel.app/?repo=han41858%2Fcommit-trail).
-2. Enter `owner/repo` or a GitHub repository URL and press Enter.
+2. Enter `owner/repo` or a GitHub repository URL and press Enter. Or enter just an owner, such as `han41858`, then choose a repository from the list.
 3. Choose a branch, scroll through history and select a commit for details.
+
+Owner lists appear after you submit the input; typing makes no requests. Filter the loaded names locally and use **Load more** for additional pages. The same picker adds repositories in Split view. See the [owner selection guide](docs/owner-repositories.md) for access and pagination details.
 
 Commit Trail remembers the last branch you choose for each repository in this browser. An explicit `branch` in a shared URL takes priority for that visit without changing your saved choice; otherwise it restores your choice, then falls back to `main`, `master`, or the repository default.
 
@@ -100,6 +102,7 @@ npm run dev
 - [Technical guide](docs/technical-guide.md) — usage, architecture, API behavior, tests, deployment and releases.
 - [Product specification](docs/specification.md) · [Refresh and metadata](docs/auto-refresh-and-metadata.md) — implementation specifications.
 - [PWA](docs/pwa.md) · [Developer diagnostics](docs/developer-debug-mode.md) — installation, updates, recovery and local measurements.
+- [Owner selection](docs/owner-repositories.md) — repository lookup, access, filtering and pagination.
 - [Recent repositories](docs/recent-repositories.md) — local suggestions, deletion and PAT changes.
 - [Split view](docs/monitor-mode.md) — selection and ordering, shared URLs, refresh and responsive layout.
 

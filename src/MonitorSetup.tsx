@@ -9,11 +9,15 @@ import {
 import type { RecentRepositories } from './RecentRepositories';
 import { lowercaseField } from './repoInput';
 import { monitorShareURL } from './repositoryLocation';
+import type { OwnerRepositories } from './OwnerRepositories';
+import { OwnerRepositoryPicker } from './OwnerRepositoryPicker';
+import { useOwnerRepositoryPicker } from './useOwnerRepositoryPicker';
 
 export function MonitorSetup({
   current,
   recent,
   saved,
+  owners,
   initial,
   branches,
   onStart,
@@ -22,6 +26,7 @@ export function MonitorSetup({
   current: string;
   recent: RecentRepositories;
   saved: MonitorRepositories;
+  owners: OwnerRepositories;
   initial?: readonly string[];
   branches?: ReadonlyMap<string, string>;
   onStart: (repositories: string[]) => void;
@@ -42,9 +47,17 @@ export function MonitorSetup({
   const [dragging, setDragging] = useState(''),
     [orderStatus, setOrderStatus] = useState('');
   const dialog = useRef<HTMLElement>(null),
+    addArea = useRef<HTMLDivElement>(null),
     scrollArea = useRef<HTMLDivElement>(null),
     field = useRef<HTMLInputElement>(null),
     list = useRef<HTMLOListElement>(null);
+  const ownerPicker = useOwnerRepositoryPicker(
+    owners,
+    input,
+    addArea,
+    field,
+    selected.length < MONITOR_LIMIT,
+  );
   const drag = useRef<{ repository: string; pointerId: number; index: number } | null>(null);
   const available =
     selected.length < MONITOR_LIMIT
@@ -267,32 +280,51 @@ export function MonitorSetup({
           <div className="monitor-order-status" role="status" aria-live="polite">
             {orderStatus}
           </div>
-          <form
-            className="monitor-add"
-            onSubmit={(event) => {
-              event.preventDefault();
-              add(input);
-              field.current?.focus();
-            }}
-          >
-            <input
-              ref={field}
-              aria-label="Repository to monitor"
-              placeholder="owner/repository"
-              autoComplete="off"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              value={input}
-              onChange={(event) => {
-                setInput(lowercaseField(event.currentTarget));
+          <div ref={addArea} className="monitor-owner-input">
+            <form
+              className="monitor-add"
+              onSubmit={(event) => {
+                event.preventDefault();
                 setError('');
+                if (ownerPicker.submit(input)) return;
+                ownerPicker.close();
+                add(input);
+                field.current?.focus();
               }}
-            />
-            <button type="submit" disabled={selected.length >= MONITOR_LIMIT}>
-              Add
-            </button>
-          </form>
+            >
+              <input
+                ref={field}
+                aria-label="Repository to monitor"
+                placeholder="owner or owner/repository"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={input}
+                onKeyDown={ownerPicker.keyDown}
+                onChange={(event) => {
+                  setInput(lowercaseField(event.currentTarget));
+                  setError('');
+                }}
+              />
+              <button type="submit" disabled={selected.length >= MONITOR_LIMIT}>
+                Add
+              </button>
+            </form>
+            {ownerPicker.showing && (
+              <OwnerRepositoryPicker
+                model={owners}
+                inline
+                excluded={selected}
+                disabled={selected.length >= MONITOR_LIMIT}
+                onClose={() => ownerPicker.close(true)}
+                onSelect={(repository) => {
+                  add(repository);
+                  ownerPicker.close(true);
+                }}
+              />
+            )}
+          </div>
           {error && (
             <p className="monitor-setup-error" role="alert">
               {error}
