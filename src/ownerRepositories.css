@@ -224,4 +224,7 @@
   .repo-input .owner-picker input.owner-repository-filter {
     font-size: 16px;
   }
+  .owner-picker input.owner-repository-filter::placeholder {
+    font-size: 14px;
+  }
 }
