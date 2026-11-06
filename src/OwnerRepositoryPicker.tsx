@@ -99,7 +99,8 @@ export function OwnerRepositoryPicker({
     const element = panel.current;
     if (!element) return;
     const viewport = window.visualViewport;
-    let scrollArea = inline ? element.parentElement : null;
+    const anchor = element.parentElement;
+    let scrollArea = inline ? anchor : null;
     while (scrollArea && !/(auto|scroll)/.test(getComputedStyle(scrollArea).overflowY))
       scrollArea = scrollArea.parentElement;
     const visibleBounds = () => {
@@ -115,14 +116,13 @@ export function OwnerRepositoryPicker({
     const update = () => {
       const left = viewport?.offsetLeft || 0;
       const width = viewport?.width || window.innerWidth;
-      if (!inline) {
-        const anchor = element.parentElement?.getBoundingClientRect();
-        if (anchor) {
-          const panelWidth = Math.min(440, Math.max(0, width - 16));
-          const x = Math.max(left + 8, Math.min(anchor.left, left + width - panelWidth - 8));
-          element.style.width = `${panelWidth}px`;
-          element.style.left = `${x - anchor.left}px`;
-        }
+      if (!inline && anchor) {
+        const rect = anchor.getBoundingClientRect();
+        const availableWidth = Math.max(0, width - 16);
+        const panelWidth = Math.min(rect.width, availableWidth);
+        const x = Math.max(left + 8, Math.min(rect.left, left + width - panelWidth - 8));
+        element.style.maxWidth = `${availableWidth}px`;
+        element.style.left = `${x - rect.left}px`;
       }
       const bounds = visibleBounds();
       const available =
@@ -138,11 +138,14 @@ export function OwnerRepositoryPicker({
       update();
     };
     fit();
+    const observer = !inline && anchor ? new ResizeObserver(update) : null;
+    if (anchor) observer?.observe(anchor);
     window.addEventListener('resize', fit);
     document.addEventListener('scroll', update, true);
     viewport?.addEventListener('resize', fit);
     viewport?.addEventListener('scroll', update);
     return () => {
+      observer?.disconnect();
       window.removeEventListener('resize', fit);
       document.removeEventListener('scroll', update, true);
       viewport?.removeEventListener('resize', fit);
