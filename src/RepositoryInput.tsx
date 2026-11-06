@@ -25,7 +25,6 @@ export function RepositoryInput({
   const input = useRef<HTMLInputElement>(null),
     form = useRef<HTMLFormElement>(null),
     listId = useId();
-  const selectionFrame = useRef<number | null>(null);
   const snapshot = useSyncExternalStore(recent.subscribe, recent.getSnapshot);
   const [open, setOpen] = useState(false),
     [edited, setEdited] = useState(false),
@@ -36,14 +35,7 @@ export function RepositoryInput({
   const showing = open && !popupOpen && snapshot.available && matches.length > 0,
     expanded = showing && menuHeight !== 0;
   const activeId = expanded && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined;
-  function cancelSelection() {
-    if (selectionFrame.current !== null) {
-      cancelAnimationFrame(selectionFrame.current);
-      selectionFrame.current = null;
-    }
-  }
   function close() {
-    cancelSelection();
     setOpen(false);
     setActive(null);
   }
@@ -53,7 +45,6 @@ export function RepositoryInput({
     input.current?.blur();
     onRecent(repository);
   }
-  useEffect(() => () => cancelSelection(), []);
   useEffect(() => {
     if (popupOpen) close();
   }, [popupOpen]);
@@ -125,32 +116,18 @@ export function RepositoryInput({
           spellCheck={false}
           value={value}
           placeholder="owner/repository"
-          onFocus={(event) => {
+          onFocus={() => {
             setOpen(true);
             setActive(null);
             setEdited(false);
-            if (current && value === current) {
-              const field = event.currentTarget;
-              field.select();
-              cancelSelection();
-              selectionFrame.current = requestAnimationFrame(() => {
-                selectionFrame.current = null;
-                if (document.activeElement === field && field.value === current)
-                  field.setSelectionRange(0, field.value.length);
-              });
-            }
           }}
-          onBlur={cancelSelection}
-          onPointerDown={cancelSelection}
           onChange={(event) => {
-            cancelSelection();
             setEdited(true);
             onChange(lowercaseField(event.currentTarget));
             setOpen(true);
             setActive(null);
           }}
           onKeyDown={(event) => {
-            cancelSelection();
             if (event.nativeEvent.isComposing) return;
             if (
               (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&

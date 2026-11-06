@@ -53,6 +53,26 @@ function rememberFocus(key: string, focus: GraphHoverFocus, index: HoverIndex) {
   return focus;
 }
 
+function focusedBranches(owner: string | undefined, nodes: ReadonlySet<string>, index: HoverIndex) {
+  const boundaryOwners = new Set<string>();
+  // Only the existing start/end nodes identify neighboring paths. Their labels
+  // may be at newer HEADs, but none of their other nodes or edges become focused.
+  for (const sha of nodes) {
+    const boundaryOwner = index.owners.get(sha);
+    if (boundaryOwner && boundaryOwner !== owner) boundaryOwners.add(boundaryOwner);
+  }
+  return new Set(
+    [...index.heads]
+      .filter(([, sha]) => {
+        const branchOwner = index.owners.get(sha);
+        return branchOwner === owner
+          ? nodes.has(sha)
+          : !!branchOwner && boundaryOwners.has(branchOwner);
+      })
+      .map(([name]) => name),
+  );
+}
+
 function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
   const cached = index.flows.get(head);
   if (cached) return cached;
@@ -72,9 +92,7 @@ function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
     nodes.add(merge);
     edges.add(`${merge}:${head}`);
   }
-  const branches = new Set(
-    [...index.heads].filter(([, sha]) => index.owners.get(sha) === head).map(([name]) => name),
-  );
+  const branches = focusedBranches(head, nodes, index);
   const focus = { nodes, edges, branches };
   // Keep two recent flows; moving among commits in one flow reuses one result.
   return rememberFocus(head, focus, index);
@@ -97,11 +115,7 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
     if (next) edges.add(`${sha}:${next}`);
     sha = next;
   }
-  const branches = new Set(
-    [...index.heads]
-      .filter(([, sha]) => nodes.has(sha) && index.owners.get(sha) === owner)
-      .map(([name]) => name),
-  );
+  const branches = focusedBranches(owner, nodes, index);
   return rememberFocus(key, { nodes, edges, branches }, index);
 }
 
@@ -132,8 +146,15 @@ export function resolveGraphHover(
     return mergeFocus(child, parent, index);
   }
   const focus = flowFocus(owner, index);
-  if (target?.kind === 'branch' && focus.branches.size > 1)
-    return { ...focus, branches: new Set([target.id]) };
+  if (target?.kind === 'branch') {
+    const branches = new Set(
+      [...focus.branches].filter(
+        (name) => name === target.id || index.owners.get(index.heads.get(name)!) !== owner,
+      ),
+    );
+    // Keep the cached result when only boundary names accompany this badge.
+    if (branches.size !== focus.branches.size) return { ...focus, branches };
+  }
   return focus;
 }
 
