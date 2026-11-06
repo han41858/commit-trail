@@ -81,6 +81,13 @@ export function MonitorSetup({
     copySequence.current++;
     setCopyStatus('idle');
   }
+  function addRepositories(repositories: readonly string[]) {
+    setSelected((names) => normalizeMonitorRepositories([...names, ...repositories]));
+    setInput('');
+    setError('');
+    resetCopy();
+    setOrderStatus('');
+  }
   function add(value: string) {
     let repository: string;
     try {
@@ -97,11 +104,7 @@ export function MonitorSetup({
       setError(`Select up to ${MONITOR_LIMIT} repositories.`);
       return;
     }
-    setSelected((names) => [...names, repository]);
-    setInput('');
-    setError('');
-    resetCopy();
-    setOrderStatus('');
+    addRepositories([repository]);
   }
   async function copyLink() {
     const sequence = ++copySequence.current;
@@ -320,6 +323,11 @@ export function MonitorSetup({
                 onClose={() => ownerPicker.close(true)}
                 onSelect={(repository) => {
                   add(repository);
+                  ownerPicker.close(true);
+                }}
+                selectionLimit={MONITOR_LIMIT - selected.length}
+                onSelectMany={(repositories) => {
+                  addRepositories(repositories);
                   ownerPicker.close(true);
                 }}
               />

@@ -30,6 +30,28 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  overflow: hidden;
+}
+.owner-picker-content {
+  display: contents;
+}
+.owner-picker-inline .owner-picker-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  margin: -4px;
+  scroll-padding: 4px;
+}
+.owner-picker-inline .owner-repository-list {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 0;
+  margin: 0;
 }
 .owner-picker-inline .owner-picker-hint {
   display: flex;
@@ -99,8 +121,35 @@
   text-align: left;
 }
 .owner-picker .owner-repository-option[aria-selected='true'],
-.owner-picker .owner-repository-option:not(:disabled):hover {
+.owner-picker button.owner-repository-option:not(:disabled):hover,
+.owner-picker .owner-repository-choice[data-active='true'],
+.owner-picker .owner-repository-choice[data-disabled='false']:hover {
   background: var(--bg);
+}
+.owner-picker .owner-repository-choice {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.owner-picker .owner-repository-choice[data-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+.owner-repository-choice input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.owner-repository-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 .owner-repository-title {
   display: flex;
@@ -153,6 +202,21 @@
 .owner-picker-actions > div {
   display: flex;
   gap: 8px;
+}
+.owner-picker-selection {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+.owner-picker-selection small {
+  color: var(--muted);
+}
+.owner-picker-selection button {
+  min-height: 40px;
 }
 @media (max-width: 800px) {
   .owner-picker input.owner-repository-filter,
