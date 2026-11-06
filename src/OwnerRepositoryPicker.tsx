@@ -45,11 +45,11 @@ export function OwnerRepositoryPicker({
   ];
   const more = sources.some((source) => source.more);
   const failed = sources.filter((source) => source.error);
-  const canRetry = failed.some((source) => !source.busy && source.wait === 0);
+  const canRetry = !snapshot.busy && failed.some((source) => !source.busy && source.wait === 0);
   const retryWait = failed.length ? Math.min(...failed.map((source) => source.wait)) : 0;
-  const canLoadMore = sources.some(
-    (source) => source.more && !source.error && !source.busy && source.wait === 0,
-  );
+  const canLoadMore =
+    !snapshot.busy &&
+    sources.some((source) => source.more && !source.error && !source.busy && source.wait === 0);
   const search = query.trim().toLowerCase();
   const shown = snapshot.repositories.filter((repository) =>
     repository.name.toLowerCase().includes(search),

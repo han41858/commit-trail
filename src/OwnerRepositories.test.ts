@@ -126,8 +126,13 @@ test('invalid or restricted PAT errors keep independent public results', async (
   }
 });
 
-test('public page becomes visible before a slow authenticated request completes', async (t) => {
+test('initial public and authenticated pages appear together after the slower request settles', async (t) => {
   const store = fixture(t, 'pat');
+  const completed: string[][] = [];
+  store.subscribe(() => {
+    const state = store.getSnapshot();
+    if (state.owner && !state.busy) completed.push(names(store));
+  });
   let finishAuth!: (result: Response) => void;
   globalThis.fetch = async (input) =>
     new URL(String(input)).pathname === '/user/repos'
@@ -137,7 +142,7 @@ test('public page becomes visible before a slow authenticated request completes'
       : response([repository(1, 'public')]);
   const loading = store.open('owner');
   await flush();
-  assert.deepEqual(names(store), ['public']);
+  assert.deepEqual(names(store), []);
   assert.equal(store.getSnapshot().busy, true);
   assert.equal(store.getSnapshot().public.busy, false);
   assert.equal(store.getSnapshot().authenticated.busy, true);
@@ -145,6 +150,7 @@ test('public page becomes visible before a slow authenticated request completes'
   await loading;
   assert.deepEqual(names(store), ['private', 'public']);
   assert.equal(store.getSnapshot().busy, false);
+  assert.deepEqual(completed, [['private', 'public']]);
 });
 
 test('authenticated results are usable even if the public source fails', async (t) => {
@@ -388,7 +394,10 @@ test('fresh successful pages survive close and are reused across owner casing an
   };
   await store.open('owner');
   store.close();
-  await store.open('OWNER');
+  const cached = store.open('OWNER');
+  assert.deepEqual(names(store), ['private', 'public']);
+  assert.equal(store.getSnapshot().busy, false);
+  await cached;
   assert.equal(calls, 2);
   assert.deepEqual(names(store), ['private', 'public']);
   await store.open('other');
@@ -514,25 +523,27 @@ test('reopening a partial load reuses completed public pages and retries only th
   const store = fixture(t, 'pat');
   let publicCalls = 0;
   let authCalls = 0;
-  let finish!: (value: Response) => void;
+  const pending: ((value: Response) => void)[] = [];
   globalThis.fetch = async (input) => {
     if (new URL(String(input)).pathname !== '/user/repos') {
       publicCalls++;
       return response([repository(1, 'public')], true);
     }
     authCalls++;
-    if (authCalls === 1)
-      return new Promise<Response>((resolve) => {
-        finish = resolve;
-      });
-    return response([repository(2, 'private', 'owner', true)]);
+    return new Promise<Response>((resolve) => pending.push(resolve));
   };
   const previous = store.open('owner');
   await flush();
-  assert.deepEqual(names(store), ['public']);
+  assert.deepEqual(names(store), []);
   store.close();
-  await store.open('owner');
-  finish(response([repository(3, 'stale-private', 'owner', true)]));
+  const reopened = store.open('owner');
+  await flush();
+  assert.deepEqual(names(store), []);
+  assert.equal(store.getSnapshot().busy, true);
+  assert.equal(publicCalls, 1);
+  pending[1](response([repository(2, 'private', 'owner', true)]));
+  await reopened;
+  pending[0](response([repository(3, 'stale-private', 'owner', true)]));
   await previous;
   assert.equal(publicCalls, 1);
   assert.equal(authCalls, 2);
@@ -584,4 +595,154 @@ test('an authenticated rate limit leaves public pagination usable and remains sc
   await store.open('owner');
   assert.deepEqual(names(store), ['new-private', 'public-1']);
   assert.equal(store.getSnapshot().authenticated.retryAt, null);
+});
+
+test('a fast authenticated page also waits for public data before showing the combined list', async (t) => {
+  const store = fixture(t, 'pat');
+  let finishPublic!: (value: Response) => void;
+  globalThis.fetch = async (input) =>
+    new URL(String(input)).pathname === '/user/repos'
+      ? response([repository(2, 'private', 'owner', true), repository(1, 'public')])
+      : new Promise<Response>((resolve) => {
+          finishPublic = resolve;
+        });
+  const loading = store.open('owner');
+  await flush();
+  assert.deepEqual(names(store), []);
+  assert.equal(store.getSnapshot().busy, true);
+  assert.equal(store.getSnapshot().public.busy, true);
+  assert.equal(store.getSnapshot().authenticated.busy, false);
+  finishPublic(response([repository(1, 'public')]));
+  await loading;
+  assert.deepEqual(names(store), ['private', 'public']);
+  assert.equal(store.getSnapshot().busy, false);
+});
+
+test('authentication failure reveals the successful public page when the initial action completes', async (t) => {
+  const store = fixture(t, 'invalid');
+  let finishAuth!: (value: Response) => void;
+  globalThis.fetch = async (input) =>
+    new URL(String(input)).pathname === '/user/repos'
+      ? new Promise<Response>((resolve) => {
+          finishAuth = resolve;
+        })
+      : response([repository(1, 'public')]);
+  const loading = store.open('owner');
+  await flush();
+  assert.deepEqual(names(store), []);
+  assert.equal(store.getSnapshot().busy, true);
+  finishAuth(new Response('{}', { status: 401 }));
+  await loading;
+  assert.deepEqual(names(store), ['public']);
+  assert.match(store.getSnapshot().authenticated.error, /invalid or expired/);
+  assert.equal(store.getSnapshot().public.error, '');
+  assert.equal(store.getSnapshot().busy, false);
+});
+
+test('Load more keeps displayed rows stable and blocks overlapping actions until both sources finish', async (t) => {
+  const store = fixture(t, 'pat');
+  const calls: string[] = [];
+  let finishAuth!: (value: Response) => void;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    const page = Number(url.searchParams.get('page'));
+    calls.push(`${url.pathname}:${page}`);
+    if (page === 1)
+      return url.pathname === '/user/repos'
+        ? response([repository(2, 'private', 'owner', true)], true)
+        : response([repository(1, 'public')], true);
+    if (url.pathname === '/user/repos')
+      return new Promise<Response>((resolve) => {
+        finishAuth = resolve;
+      });
+    return response([repository(3, 'new-public')], true);
+  };
+  await store.open('owner');
+  const originalRows = store.getSnapshot().repositories;
+  const loading = store.loadMore();
+  await flush();
+  assert.equal(store.getSnapshot().repositories, originalRows);
+  assert.deepEqual(names(store), ['private', 'public']);
+  assert.equal(store.getSnapshot().busy, true);
+  assert.equal(store.getSnapshot().public.busy, false);
+  assert.equal(store.getSnapshot().authenticated.busy, true);
+  await store.loadMore();
+  await store.retry();
+  await store.open('OWNER');
+  assert.equal(calls.length, 4);
+  finishAuth(response([repository(4, 'new-private', 'owner', true)]));
+  await loading;
+  assert.deepEqual(names(store), ['new-private', 'new-public', 'private', 'public']);
+  assert.equal(store.getSnapshot().busy, false);
+  assert.equal(calls.length, 4);
+});
+
+test('Retry keeps prior rows until every retried source settles and does not replay successful pages', async (t) => {
+  const store = fixture(t, 'pat');
+  const calls: string[] = [];
+  const pending = new Map<string, (value: Response) => void>();
+  let retrying = false;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    const page = Number(url.searchParams.get('page'));
+    calls.push(`${url.pathname}:${page}`);
+    if (page === 1)
+      return url.pathname === '/user/repos'
+        ? response([repository(2, 'private', 'owner', true)], true)
+        : response([repository(1, 'public')], true);
+    if (!retrying) return new Response('{}', { status: 500 });
+    return new Promise<Response>((resolve) => pending.set(url.pathname, resolve));
+  };
+  await store.open('owner');
+  await store.loadMore();
+  const originalRows = store.getSnapshot().repositories;
+  assert.deepEqual(names(store), ['private', 'public']);
+  assert.ok(store.getSnapshot().public.error);
+  assert.ok(store.getSnapshot().authenticated.error);
+  retrying = true;
+  const loading = store.retry();
+  await flush();
+  pending.get('/users/owner/repos')!(response([repository(3, 'new-public')]));
+  await flush();
+  assert.equal(store.getSnapshot().repositories, originalRows);
+  assert.equal(store.getSnapshot().busy, true);
+  await store.retry();
+  await store.loadMore();
+  assert.equal(calls.length, 6);
+  pending.get('/user/repos')!(response([repository(4, 'new-private', 'owner', true)]));
+  await loading;
+  assert.deepEqual(names(store), ['new-private', 'new-public', 'private', 'public']);
+  assert.equal(store.getSnapshot().busy, false);
+  assert.equal(store.getSnapshot().public.error, '');
+  assert.equal(store.getSnapshot().authenticated.error, '');
+  assert.equal(calls.filter((call) => call.endsWith(':1')).length, 2);
+});
+
+test('a failed source in Load more preserves old rows until the other source finishes', async (t) => {
+  const store = fixture(t, 'pat');
+  let finishPublic!: (value: Response) => void;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    const page = Number(url.searchParams.get('page'));
+    if (page === 1)
+      return url.pathname === '/user/repos'
+        ? response([repository(2, 'private', 'owner', true)], true)
+        : response([repository(1, 'public')], true);
+    if (url.pathname === '/user/repos') return new Response('{}', { status: 403 });
+    return new Promise<Response>((resolve) => {
+      finishPublic = resolve;
+    });
+  };
+  await store.open('owner');
+  const originalRows = store.getSnapshot().repositories;
+  const loading = store.loadMore();
+  await flush();
+  assert.equal(store.getSnapshot().repositories, originalRows);
+  assert.equal(store.getSnapshot().busy, true);
+  assert.ok(store.getSnapshot().authenticated.error);
+  finishPublic(response([repository(3, 'new-public')]));
+  await loading;
+  assert.deepEqual(names(store), ['new-public', 'private', 'public']);
+  assert.ok(store.getSnapshot().authenticated.error);
+  assert.equal(store.getSnapshot().busy, false);
 });

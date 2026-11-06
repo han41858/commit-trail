@@ -33,7 +33,13 @@ type CachedSource = {
   expiresAt: number;
 };
 type Source = CachedSource & OwnerRepositorySource & { reader: GitHubReader };
-type Session = { owner: string; public: Source; authenticated: Source | null };
+type Session = {
+  owner: string;
+  public: Source;
+  authenticated: Source | null;
+  repositories: readonly OwnerRepository[];
+  loading: boolean;
+};
 type CachedOwner = Partial<Record<SourceName, CachedSource>>;
 const CACHE_LIFETIME = 60_000;
 const CACHE_LIMIT = 10;
@@ -170,27 +176,32 @@ export class OwnerRepositories {
       owner,
       public: source('public'),
       authenticated: this.token ? source('authenticated') : null,
+      repositories: [],
+      loading: false,
     };
     this.session = session;
     if (cached) {
       this.cache.delete(owner);
       this.cache.set(owner, cached);
     }
-    this.publish(session);
-    await Promise.all(
-      (['public', 'authenticated'] as const).map((name) =>
-        session[name]?.page === 0 ? this.load(session, name) : undefined,
-      ),
+    const missing = (['public', 'authenticated'] as const).filter(
+      (name) => session[name]?.page === 0,
     );
+    if (missing.length) await this.loadBatch(session, missing);
+    else {
+      session.repositories = mergedRepositories(session);
+      this.publish(session);
+    }
   }
 
   async loadMore() {
     const session = this.session;
     if (!session) return;
-    await Promise.all(
-      (['public', 'authenticated'] as const).map((name) => {
+    await this.loadBatch(
+      session,
+      (['public', 'authenticated'] as const).filter((name) => {
         const source = session[name];
-        return source?.more && !source.error ? this.load(session, name) : undefined;
+        return source?.more && !source.error;
       }),
     );
   }
@@ -198,11 +209,27 @@ export class OwnerRepositories {
   async retry() {
     const session = this.session;
     if (!session) return;
-    await Promise.all(
-      (['public', 'authenticated'] as const).map((name) =>
-        session[name]?.error ? this.load(session, name) : undefined,
-      ),
+    await this.loadBatch(
+      session,
+      (['public', 'authenticated'] as const).filter((name) => session[name]?.error),
     );
+  }
+
+  private async loadBatch(session: Session, names: readonly SourceName[]) {
+    if (session !== this.session || session.loading || !names.length) return;
+    session.loading = true;
+    this.publish(session);
+    try {
+      await Promise.all(names.map((name) => this.load(session, name)));
+    } finally {
+      if (session === this.session) {
+        // Keep the previous rows stable while public and authenticated pages load.
+        // A completed action exposes their combined result in one list update.
+        session.repositories = mergedRepositories(session);
+        session.loading = false;
+        this.publish(session);
+      }
+    }
   }
 
   private notify() {
@@ -222,8 +249,8 @@ export class OwnerRepositories {
         : sourceState();
     this.snapshot = {
       owner: session.owner,
-      repositories: mergedRepositories(session),
-      busy: session.public.busy || !!session.authenticated?.busy,
+      repositories: session.repositories,
+      busy: session.loading,
       public: state(session.public),
       authenticated: { ...state(session.authenticated), enabled: !!session.authenticated },
     };
