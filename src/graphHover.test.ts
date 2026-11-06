@@ -76,6 +76,35 @@ const intermediateRefHistory = () => [
   commit('older'),
 ];
 
+const boundaryHistory = () => [
+  commit('c-head', 'c-merge'),
+  commit('c-merge', 'c-base', 'b-head'),
+  commit('b-head', 'b-middle'),
+  commit('b-middle', 'b-first'),
+  commit('b-first', 'a-fork'),
+  commit('a-head', 'a-fork'),
+  commit('a-fork', 'a-base'),
+  commit('a-base', 'ancestor-head'),
+  commit('c-base', 'ancestor-head'),
+  commit('unrelated-head', 'ancestor-head'),
+  commit('ancestor-head', 'root'),
+  commit('root'),
+];
+const boundaryNames = {
+  ancestor: 'ancestor-head',
+  a: 'a-head',
+  'a-alias': 'a-head',
+  'a-marker': 'a-base',
+  b: 'b-head',
+  'b-alias': 'b-head',
+  'b-marker': 'b-middle',
+  c: 'c-head',
+  'c-alias': 'c-head',
+  'c-marker': 'c-base',
+  unrelated: 'unrelated-head',
+};
+const boundaryBadges = ['a', 'a-alias', 'a-marker', 'c', 'c-alias', 'c-marker'];
+
 test('first-parent line hover reuses its child path including the fork boundary', () => {
   const paths = index(merged());
   assert.equal(edge('feature:base', paths), node('feature', paths));
@@ -121,7 +150,7 @@ test('historical connectors cap the incoming path at that merge and exclude futu
   assert.deepEqual([...focus.nodes], ['merge', 'old-work', 'base']);
   assert.deepEqual([...focus.edges], ['merge:old-work', 'old-work:base']);
   assert.equal(focus.nodes.has('new-work'), false);
-  assert.equal(focus.branches.size, 0);
+  assert.deepEqual(focus.branches, new Set(['main']));
   assert.equal(branch('work', paths).nodes.has('merge'), false);
 });
 
@@ -143,12 +172,12 @@ test('an intermediate ref cannot split the colored path for badges, nodes or mer
   assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3', 'a3:a2', 'a2:a1', 'a1:b']);
   assert.equal(focus.nodes.has('a5'), false);
   assert.equal(focus.nodes.has('older'), false);
-  assert.deepEqual([...focus.branches], ['topic']);
+  assert.deepEqual(focus.branches, new Set(['main', 'topic']));
   assert.equal(focus.branches.has('dev'), false);
-  assert.equal(focus.branches.has('main'), false);
+  assert.equal(focus.branches.has('main'), true);
   assert.deepEqual(branch('dev', paths).nodes, branch('topic', paths).nodes);
   assert.equal(node('a3', paths).nodes, branch('dev', paths).nodes);
-  assert.deepEqual([...branch('topic', paths).branches], ['topic']);
+  assert.deepEqual(branch('topic', paths).branches, new Set(['main', 'topic']));
   assert.equal(paths.owners.get('a6'), paths.owners.get('a3'));
 });
 
@@ -271,11 +300,98 @@ test('a branch includes its fork and terminal merge without following either nei
   const focus = branch('feature', index(merged()));
   assert.deepEqual([...focus.nodes], ['feature', 'base', 'merge']);
   assert.deepEqual([...focus.edges], ['feature:base', 'merge:feature']);
-  assert.deepEqual([...focus.branches], ['feature']);
+  assert.deepEqual(focus.branches, new Set(['main', 'feature']));
   assert.equal(graphHoverAlpha(focus, 'nodes', 'base'), 1);
   assert.equal(graphHoverAlpha(focus, 'edges', 'base:root'), 0.25);
   assert.equal(graphHoverAlpha(focus, 'edges', 'merge:feature'), 1);
   assert.equal(graphHoverAlpha(focus, 'nodes', 'root'), 0.25);
+});
+
+test('path focus includes existing source and destination badges without extending either path', () => {
+  const paths = index(boundaryHistory(), boundaryNames, 'ancestor', false, true);
+  const focus = node('b-middle', paths);
+  assert.deepEqual(focus.nodes, new Set(['b-head', 'b-middle', 'b-first', 'a-fork', 'c-merge']));
+  assert.deepEqual(
+    focus.edges,
+    new Set(['b-head:b-middle', 'b-middle:b-first', 'b-first:a-fork', 'c-merge:b-head']),
+  );
+  assert.deepEqual(focus.branches, new Set([...boundaryBadges, 'b', 'b-alias', 'b-marker']));
+  assert.equal(edge('b-first:a-fork', paths), focus);
+  assert.deepEqual(edge('c-merge:b-head', paths), focus);
+  assert.equal(paths.owners.get('a-fork'), paths.owners.get('a-head'));
+  assert.equal(paths.owners.get('c-merge'), paths.owners.get('c-head'));
+  assert.notEqual(paths.owners.get('a-head'), paths.owners.get('c-head'));
+  for (const name of [...boundaryBadges, 'b', 'b-alias', 'b-marker'])
+    assert.equal(graphHoverAlpha(focus, 'branches', name), 1, name);
+  for (const name of ['ancestor', 'unrelated'])
+    assert.equal(graphHoverAlpha(focus, 'branches', name), 0.25, name);
+  for (const sha of ['a-head', 'a-base', 'c-head', 'c-base', 'ancestor-head', 'unrelated-head'])
+    assert.equal(graphHoverAlpha(focus, 'nodes', sha), 0.25, sha);
+  for (const id of ['a-fork:a-base', 'c-head:c-merge', 'c-merge:c-base', 'c-base:ancestor-head'])
+    assert.equal(graphHoverAlpha(focus, 'edges', id), 0.25, id);
+});
+
+test('an explicit badge filters its own aliases while preserving all boundary owner aliases', () => {
+  const paths = index(boundaryHistory(), boundaryNames, 'ancestor');
+  const ordinary = node('b-middle', paths);
+  for (const name of ['b', 'b-alias', 'b-marker']) {
+    const selected = branch(name, paths);
+    assert.equal(selected.nodes, ordinary.nodes);
+    assert.equal(selected.edges, ordinary.edges);
+    assert.deepEqual(selected.branches, new Set([...boundaryBadges, name]));
+    for (const alias of ['b', 'b-alias', 'b-marker'])
+      assert.equal(graphHoverAlpha(selected, 'branches', alias), alias === name ? 1 : 0.25);
+    assert.equal(node('b-first', paths), ordinary);
+    assert.deepEqual(ordinary.branches, new Set([...boundaryBadges, 'b', 'b-alias', 'b-marker']));
+  }
+  assert.equal(paths.flows.size, 1);
+});
+
+test('historical merge badges include only the selected destination and source boundary owners', () => {
+  const commits = [
+    commit('later-head', 'later-merge'),
+    commit('later-merge', 'later-base', 'b-head'),
+    commit('later-base', 'ancestor-head'),
+    ...boundaryHistory().map((c) =>
+      c.sha === 'c-merge' ? commit('c-merge', 'c-base', 'b-middle') : c,
+    ),
+  ];
+  const paths = index(
+    commits,
+    { ...boundaryNames, later: 'later-head', 'later-alias': 'later-merge' },
+    'ancestor',
+    false,
+    true,
+  );
+  const focus = edge('c-merge:b-middle', paths);
+  assert.deepEqual(focus.nodes, new Set(['c-merge', 'b-middle', 'b-first', 'a-fork']));
+  assert.deepEqual(
+    focus.edges,
+    new Set(['c-merge:b-middle', 'b-middle:b-first', 'b-first:a-fork']),
+  );
+  assert.deepEqual(focus.branches, new Set([...boundaryBadges, 'b-marker']));
+  for (const name of ['b', 'b-alias', 'later', 'later-alias', 'ancestor', 'unrelated'])
+    assert.equal(graphHoverAlpha(focus, 'branches', name), 0.25, name);
+  for (const sha of ['b-head', 'c-head', 'a-head', 'later-head', 'later-merge'])
+    assert.equal(graphHoverAlpha(focus, 'nodes', sha), 0.25, sha);
+  assert.equal(graphHoverAlpha(focus, 'edges', 'later-merge:b-head'), 0.25);
+  assert.equal(edge('c-merge:b-middle', paths), focus);
+});
+
+test('an unloaded source boundary adds no guessed badge while a known destination keeps its aliases', () => {
+  const commits = boundaryHistory().filter((c) => !['a-head', 'a-fork', 'a-base'].includes(c.sha));
+  const paths = index(commits, boundaryNames, 'ancestor');
+  const focus = node('b-middle', paths);
+  assert.deepEqual(focus.nodes, new Set(['b-head', 'b-middle', 'b-first', 'c-merge']));
+  assert.deepEqual(
+    focus.edges,
+    new Set(['b-head:b-middle', 'b-middle:b-first', 'b-first:a-fork', 'c-merge:b-head']),
+  );
+  assert.deepEqual(focus.branches, new Set(['b', 'b-alias', 'b-marker', 'c', 'c-alias', 'c-marker']));
+  for (const name of ['a', 'a-alias', 'a-marker']) {
+    assert.equal(graphHoverAlpha(focus, 'branches', name), 0.25);
+    assert.equal(resolveGraphHover({ kind: 'branch', id: name }, paths), null);
+  }
 });
 
 test('an intermediate promotion does not terminate work that continued after it', () => {
@@ -387,7 +503,7 @@ test('deleted branches retain their own path without a name', () => {
   const paths = index(commits, { main: 'merge' });
   assert.deepEqual([...node('work', paths).nodes], ['tip', 'work', 'base', 'merge']);
   assert.equal(node('work', paths), node('tip', paths));
-  assert.equal(node('work', paths).branches.size, 0);
+  assert.deepEqual(node('work', paths).branches, new Set(['main']));
 });
 
 test('same-HEAD aliases share a path while the explicit badge keeps only its own name bright', () => {
@@ -447,6 +563,14 @@ test('reverse direction changes geometry without changing path or merge-scope me
   const reverse = index(merged(), undefined, 'main', true);
   assert.deepEqual(branch('feature', normal), branch('feature', reverse));
   assert.deepEqual(edge('merge:feature', normal), edge('merge:feature', reverse));
+  const forwardBoundaries = index(boundaryHistory(), boundaryNames, 'ancestor');
+  const reverseBoundaries = index(boundaryHistory(), boundaryNames, 'ancestor', true);
+  assert.deepEqual(node('b-middle', forwardBoundaries), node('b-middle', reverseBoundaries));
+  assert.deepEqual(branch('b', forwardBoundaries), branch('b', reverseBoundaries));
+  assert.deepEqual(
+    edge('c-merge:b-head', forwardBoundaries),
+    edge('c-merge:b-head', reverseBoundaries),
+  );
 });
 
 test('track geometry cannot extend a path into unrelated colored history', () => {
