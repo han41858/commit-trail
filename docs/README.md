@@ -4,7 +4,7 @@
 
 `docs/`는 빌드에서 사용하지 않는 문서·예제·이미지 전용 폴더다. 이 폴더와 루트의 `README.md`·`AGENTS.md`·`LICENSE.md`만 변경되면 CI의 무거운 검사와 Vercel 배포를 생략한다. 앱·빌드에서 읽는 문서나 템플릿은 확장자와 관계없이 `src/`·`public/`·`templates/` 등 이 폴더 밖에서 관리한다. 판정과 필수 검사 유지 규칙은 [기술 가이드](technical-guide.md#documentation-only-change-detection)를 따른다.
 
-PR 제목·본문만 수정하면 별도 이름의 검사를 건너뛰며 러너를 사용하지 않는다. 기존 필수 `Test and build` 결과와 진행 중인 검사는 유지한다. 대상 브랜치 변경, 코드 변경, `dev`·`main` push는 계속 검증한다. 이벤트 구분과 동시 실행 정책은 [CI 이벤트 필터](technical-guide.md#ci-event-filtering)를 따른다.
+PR 제목·본문 수정도 대상 브랜치 변경과 같은 `edited` 이벤트라서 필수 `Test and build`를 다시 실행한다. 생략한 작업은 이름 식이 평가되지 않고, 최신 실행에 필수 검사가 없으면 머지가 막히므로 이 이벤트를 건너뛰지 않는다. 자세한 내용은 [CI 이벤트](technical-guide.md#ci-event-filtering)를 따른다.
 
 ## 문서 역할과 상세 규칙의 위치
 
