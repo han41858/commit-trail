@@ -228,3 +228,10 @@
     font-size: 14px;
   }
 }
+
+.owner-picker-load-more {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 7px;
+}
