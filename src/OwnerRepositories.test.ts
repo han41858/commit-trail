@@ -45,8 +45,8 @@ test('owner query is explicit, anonymous, normalized and uses public owner repos
     assert.equal(url.origin, 'https://api.github.com');
     assert.equal(url.pathname, '/users/owner/repos');
     assert.equal(url.searchParams.get('type'), 'owner');
-    assert.equal(url.searchParams.get('sort'), 'pushed');
-    assert.equal(url.searchParams.get('direction'), 'desc');
+    assert.equal(url.searchParams.get('sort'), 'full_name');
+    assert.equal(url.searchParams.get('direction'), 'asc');
     assert.equal(url.searchParams.get('per_page'), '100');
     assert.equal(url.searchParams.get('page'), '1');
     assert.equal((init?.headers as Record<string, string>).Authorization, undefined);
@@ -88,8 +88,8 @@ test('PAT lookup merges by ID and filters collaboration repositories by exact ow
       assert.equal(auth, 'Bearer limited-pat');
       assert.equal(url.searchParams.get('type'), null);
       assert.equal(url.searchParams.get('affiliation'), 'owner,collaborator,organization_member');
-      assert.equal(url.searchParams.get('sort'), 'pushed');
-      assert.equal(url.searchParams.get('direction'), 'desc');
+      assert.equal(url.searchParams.get('sort'), 'full_name');
+      assert.equal(url.searchParams.get('direction'), 'asc');
       assert.equal(url.searchParams.get('per_page'), '100');
       return response([
         publicRepo,
@@ -165,7 +165,7 @@ test('authenticated results are usable even if the public source fails', async (
   assert.equal(store.getSnapshot().authenticated.error, '');
 });
 
-test('repository order uses descending push time, then case-insensitive name and ID', async (t) => {
+test('repository order uses case-insensitive name regardless of push time', async (t) => {
   const store = fixture(t);
   globalThis.fetch = async () => response([
     repository(1, 'zeta'),
@@ -176,10 +176,10 @@ test('repository order uses descending push time, then case-insensitive name and
     repository(6, 'invalid-push', 'owner', false, 'invalid'),
   ]);
   await store.open('owner');
-  assert.deepEqual(names(store), ['new', 'alpha', 'Beta', 'zeta', 'invalid-push', 'no-push']);
+  assert.deepEqual(names(store), ['alpha', 'Beta', 'invalid-push', 'new', 'no-push', 'zeta']);
 });
 
-test('both sources paginate only on explicit Load more and preserve unmatched authenticated pages', async (t) => {
+test('both sources paginate only on loadMore calls and preserve unmatched authenticated pages', async (t) => {
   const store = fixture(t, 'pat');
   const calls: string[] = [];
   globalThis.fetch = async (input) => {
@@ -321,7 +321,7 @@ test('malformed payload reports a retryable safe error instead of an empty resul
   assert.equal(store.getSnapshot().repositories.length, 0);
 });
 
-test('same-owner open and Load more cannot duplicate in-flight work', async (t) => {
+test('same-owner open and loadMore cannot duplicate in-flight work', async (t) => {
   const store = fixture(t);
   let finish!: (value: Response) => void;
   let calls = 0;
@@ -639,7 +639,7 @@ test('authentication failure reveals the successful public page when the initial
   assert.equal(store.getSnapshot().busy, false);
 });
 
-test('Load more keeps displayed rows stable and blocks overlapping actions until both sources finish', async (t) => {
+test('loadMore keeps displayed rows stable and blocks overlapping actions until both sources finish', async (t) => {
   const store = fixture(t, 'pat');
   const calls: string[] = [];
   let finishAuth!: (value: Response) => void;
@@ -718,7 +718,7 @@ test('Retry keeps prior rows until every retried source settles and does not rep
   assert.equal(calls.filter((call) => call.endsWith(':1')).length, 2);
 });
 
-test('a failed source in Load more preserves old rows until the other source finishes', async (t) => {
+test('a failed source in loadMore preserves old rows until the other source finishes', async (t) => {
   const store = fixture(t, 'pat');
   let finishPublic!: (value: Response) => void;
   globalThis.fetch = async (input) => {

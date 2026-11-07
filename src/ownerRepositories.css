@@ -228,3 +228,8 @@
     font-size: 14px;
   }
 }
+
+.owner-picker-sentinel {
+  min-height: 1px;
+  flex-shrink: 0;
+}

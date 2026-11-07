@@ -59,7 +59,7 @@ Portrait Split view emphasizes the DAG. Landscape can show one-line commit messa
 2. Enter `owner/repo` or a GitHub repository URL and press Enter. Or enter just an owner, such as `han41858`, then choose a repository from the list.
 3. Choose a branch, scroll through history and select a commit for details.
 
-Owner lists appear after you submit the input; typing makes no requests. Filter the loaded names locally and use **Load more** for additional pages. In Split view, check multiple repositories and choose **Add N repositories** to add them together, up to 32 including your existing selection. See the [owner selection guide](docs/owner-repositories.md) for access and pagination details.
+Owner lists appear after you submit the input; typing makes no requests. Repositories are requested in name order (A–Z). Filter loaded names locally; scrolling to the bottom automatically loads additional pages. In Split view, check multiple repositories and choose **Add N repositories** to add them together, up to 32 including your existing selection. See the [owner selection guide](docs/owner-repositories.md) for access and pagination details.
 
 Commit Trail remembers the last branch you choose for each repository in this browser. An explicit `branch` in a shared URL takes priority for that visit without changing your saved choice; otherwise it restores your choice, then falls back to `main`, `master`, or the repository default.
 

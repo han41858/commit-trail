@@ -33,6 +33,9 @@ export function OwnerRepositoryPicker({
   const [active, setActive] = useState<number | null>(null);
   const [pending, setPending] = useState<string[]>([]);
   const panel = useRef<HTMLElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
   const listId = useId();
   const headingId = useId();
@@ -157,6 +160,20 @@ export function OwnerRepositoryPicker({
     if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
   }, [activeId]);
 
+  useEffect(() => {
+    const target = sentinel.current;
+    const root = inline ? content.current : list.current;
+    if (!target || !root || !canLoadMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void model.loadMore();
+      },
+      { root, rootMargin: '0px 0px 120px 0px' },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [model, inline, canLoadMore, snapshot.owner, snapshot.repositories, search]);
+
   if (!snapshot.owner) return null;
 
   let empty = snapshot.authenticated.enabled
@@ -165,7 +182,7 @@ export function OwnerRepositoryPicker({
   if (search) empty = 'No matching repositories in the loaded pages.';
   else if (snapshot.busy) empty = 'Loading repositories…';
   else if (failed.length) empty = 'No repositories loaded.';
-  else if (more) empty = 'No repositories for this owner in the loaded pages. Load more to continue.';
+  else if (more) empty = 'No repositories for this owner in the loaded pages. Scroll to continue.';
 
   return (
     <section
@@ -246,13 +263,14 @@ export function OwnerRepositoryPicker({
           }
         }}
       />
-      <div className="owner-picker-content">
+      <div ref={content} className="owner-picker-content">
         <small id={hintId} className="owner-picker-hint">
-          {snapshot.repositories.length.toLocaleString()} loaded · Recent push first
+          {snapshot.repositories.length.toLocaleString()} loaded · Name A–Z
           {more ? ' · More pages available' : ''}
           {inline && snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
         </small>
         <div
+          ref={list}
           className="owner-repository-list"
           id={listId}
           role={multiple ? 'group' : 'listbox'}
@@ -336,13 +354,14 @@ export function OwnerRepositoryPicker({
               </button>
             );
           })}
+          {more && <div ref={sentinel} className="owner-picker-sentinel" aria-hidden="true" />}
         </div>
         {!shown.length && (
           <p className="owner-picker-empty" role="status">
             {empty}
           </p>
         )}
-        {(failed.length > 0 || more) && (
+        {failed.length > 0 && (
           <div className="owner-picker-actions">
             {snapshot.public.error && (
               <p role="alert">Public repositories: {snapshot.public.error}</p>
@@ -354,11 +373,6 @@ export function OwnerRepositoryPicker({
               {failed.length > 0 && (
                 <button type="button" disabled={!canRetry} onClick={() => void model.retry()}>
                   {canRetry ? 'Retry' : retryLabel(retryWait)}
-                </button>
-              )}
-              {more && (
-                <button type="button" disabled={!canLoadMore} onClick={() => void model.loadMore()}>
-                  Load more
                 </button>
               )}
             </div>
