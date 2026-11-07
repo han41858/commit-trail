@@ -1,5 +1,12 @@
 import { lowercaseRepoInput } from './model';
 
+// Only bare GitHub logins enter owner discovery. Repository paths and URLs keep
+// using their existing parser, including its validation and normalization rules.
+export function ownerFromInput(value: string) {
+  const owner = value.trim().toLowerCase();
+  return /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/.test(owner) ? owner : null;
+}
+
 type TextField = {
   value: string;
   selectionStart: number | null;

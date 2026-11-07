@@ -4,13 +4,13 @@ import {
   branchByName,
   branchesPage,
   closedPullsPage,
-  commitsPage,
   github,
   branchActivityPage,
 } from './api';
 import { preferredBranch, PullCounts, RECOMMENDATION_LIMIT } from './recommendations';
-import { RequestPool } from './RequestPool';
+import { HistoryCommitPages } from './HistoryCommitPages';
 import { GitHubReader } from './GitHubReader';
+import { commitAncestry, historyFrontiers, historyRange } from './historyTraversal';
 import { parseRepo, commitTime, type Branch, type Commit, type HistoryFrontier } from './model';
 import type { BranchSelections } from './BranchSelections';
 import { branchName } from './branchName';
@@ -102,9 +102,7 @@ export class History {
   private listeners = new Set<() => void>();
   private controllers = new Set<AbortController>();
   private generation = 0;
-  private commitPool = new RequestPool();
-  private commitPages = new Map<string, Awaited<ReturnType<typeof commitsPage>>>();
-  private commitRequests = new Map<string, ReturnType<typeof commitsPage>>();
+  private commitPages = new HistoryCommitPages();
   private sourceTasks = new Map<string, Promise<void>>();
   private failedSources = new Set<string>();
   private discoveryTask: { signal: AbortSignal; promise: Promise<void> } | null = null;
@@ -190,9 +188,7 @@ export class History {
     this.branchScan = null;
     this.catalogComplete = !this.refsNext;
     this.refreshing = null;
-    this.commitPool = new RequestPool();
-    this.commitPages.clear();
-    this.commitRequests.clear();
+    this.commitPages.reset();
     this.sourceTasks.clear();
     this.failedSources.clear();
     this.discoveryTask = null;
@@ -206,43 +202,7 @@ export class History {
     this.forwardWindow = [];
   }
   private fetchCommits(ref: string, page: number, signal: AbortSignal, since?: number) {
-    const key = `${ref}:${page}:${since ?? ''}`;
-    const cached = this.commitPages.get(key);
-    if (cached) {
-      debug.cache('commits', debug.forSignal(signal));
-      return Promise.resolve(cached);
-    }
-    const existing = this.commitRequests.get(key);
-    if (existing) {
-      debug.cache('commits', debug.forSignal(signal), 'shared');
-      return existing;
-    }
-    const repo = this.snapshot.repo,
-      token = this.token;
-    const request = this.commitPool
-      .run(signal, () => commitsPage(repo, ref, page, token, signal, since))
-      .then((result) => {
-        signal.throwIfAborted();
-        const immutable = /^[a-f0-9]{40}$/i.test(ref);
-        // Validate an unfiltered head page before caching it or accepting new refs.
-        // Later forward pages and since-filtered discovery may omit the head.
-        if (
-          immutable &&
-          page === 1 &&
-          since === undefined &&
-          (!Array.isArray(result.data) || !result.data.some((commit) => commit.sha === ref))
-        )
-          throw new Error(
-            'GitHub did not return the requested commit. Retry to continue this branch.',
-          );
-        if (immutable) this.commitPages.set(key, result);
-        return result;
-      })
-      .finally(() => {
-        if (this.commitRequests.get(key) === request) this.commitRequests.delete(key);
-      });
-    this.commitRequests.set(key, request);
-    return request;
+    return this.commitPages.get(this.snapshot.repo, ref, page, this.token, signal, since);
   }
   clear = () => {
     this.requestedBranch = undefined;
@@ -281,27 +241,12 @@ export class History {
         this.commits.set(commit.sha, commit);
         changed = true;
       }
-    const frontiers: HistoryFrontier[] = [];
-    if (this.snapshot.reverse) {
-      if (this.nextPage > 0) {
-        const parents = new Set(
-          [...this.commits.values()].flatMap((commit) =>
-            commit.parents.map((parent) => parent.sha),
-          ),
-        );
-        const tips = this.forwardWindow.filter((commit) => !parents.has(commit.sha));
-        for (const commit of tips.length ? tips : this.forwardWindow.slice(0, 1))
-          frontiers.push({ sha: commit.sha, sources: [`page:${this.nextPage}`] });
-      }
-    }
-    for (const commit of this.commits.values()) {
-      if (this.snapshot.reverse && !this.sideCommits.has(commit.sha)) continue;
-      // A queried parent may have been pruned; only a loaded commit closes a gap.
-      const sources = [...new Set(commit.parents.map((parent) => parent.sha))].filter(
-        (sha) => !this.commits.has(sha),
-      );
-      if (sources.length) frontiers.push({ sha: commit.sha, sources });
-    }
+    const frontiers = historyFrontiers(this.commits, {
+      reverse: this.snapshot.reverse,
+      nextPage: this.nextPage,
+      forwardWindow: this.forwardWindow,
+      sideCommits: this.sideCommits,
+    });
     const range = this.historyRange();
     if (range && this.activityNeeded(range))
       frontiers.push({ sha: range.anchor, sources: ['activity'] });
@@ -333,29 +278,7 @@ export class History {
     await this.discoverActive(signal);
   }
   private historyRange() {
-    const known: Commit[] = [];
-    const seen = new Set<string>();
-    let sha: string | undefined = this.historyHead;
-    while (sha && !seen.has(sha)) {
-      seen.add(sha);
-      const commit = this.commits.get(sha);
-      if (!commit) break;
-      known.push(commit);
-      sha = commit.parents[0]?.sha;
-    }
-    let min = Infinity,
-      max = -Infinity,
-      anchor = '';
-    for (const commit of known.length ? known : this.forwardWindow) {
-      const time = commitTime(commit);
-      if (!Number.isFinite(time)) continue;
-      if (time < min) {
-        min = time;
-        anchor = commit.sha;
-      }
-      max = Math.max(max, time);
-    }
-    return anchor ? { min, max, anchor } : null;
+    return historyRange(this.commits, this.historyHead, this.forwardWindow);
   }
   private activityNeeded(range: { min: number; max: number }) {
     if (this.snapshot.discoveryError || (this.snapshot.reverse && this.nextPage > 0)) return false;
@@ -520,23 +443,6 @@ export class History {
     }
     return false;
   }
-  private ancestry(heads: Iterable<string>, stopAt?: ReadonlySet<string>) {
-    const reachable = new Set<string>(),
-      todo = [...heads];
-    let partial = false;
-    while (todo.length) {
-      const sha = todo.pop()!;
-      if (reachable.has(sha) || stopAt?.has(sha)) continue;
-      reachable.add(sha);
-      const commit = this.commits.get(sha);
-      if (!commit) {
-        partial = true;
-        continue;
-      }
-      for (const parent of commit.parents) todo.push(parent.sha);
-    }
-    return { reachable, partial };
-  }
   private async fetchRefs(signal: AbortSignal) {
     const refreshVersion = this.snapshot.refreshVersion;
     const result = await branchesPage(this.snapshot.repo, this.refsPage + 1, this.token, signal);
@@ -693,7 +599,10 @@ export class History {
       this.refsNext = false;
       this.branchScan = null;
       // Full cache cleanup requires every branch and parent to be known.
-      const { reachable, partial } = this.ancestry(refs.map((ref) => ref.commit.sha));
+      const { reachable, partial } = commitAncestry(
+        this.commits,
+        refs.map((ref) => ref.commit.sha),
+      );
       if (!partial && base && !pinned) {
         for (const sha of this.commits.keys())
           if (!reachable.has(sha)) {
@@ -706,10 +615,12 @@ export class History {
         // Retire deleted paths even when another catalog head or parent is unknown.
         // Prior heads of surviving refs protect their cached history across gaps.
         const surviving = [...previous.values()].filter((ref) => scan.refs.has(ref.name));
-        const protectedCommits = this.ancestry(
+        const protectedCommits = commitAncestry(
+          this.commits,
           [...refs, ...surviving].map((ref) => ref.commit.sha),
         ).reachable;
-        const retired = this.ancestry(
+        const retired = commitAncestry(
+          this.commits,
           removed.map((ref) => ref.commit.sha),
           protectedCommits,
         );

@@ -1,6 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { lowercaseField } from './repoInput';
+import { lowercaseRepoInput } from './model';
 import { matchingRecentRepositories, type RecentRepositories } from './RecentRepositories';
+import type { OwnerRepositories } from './OwnerRepositories';
+import { OwnerRepositoryPicker } from './OwnerRepositoryPicker';
+import { useOwnerRepositoryPicker } from './useOwnerRepositoryPicker';
 import './recentRepositories.css';
 
 type Props = {
@@ -10,6 +14,7 @@ type Props = {
   onOpen: (value: string) => void;
   onRecent: (repository: string) => void;
   recent: RecentRepositories;
+  owners: OwnerRepositories;
   popupOpen: boolean;
 };
 
@@ -20,19 +25,22 @@ export function RepositoryInput({
   onOpen,
   onRecent,
   recent,
+  owners,
   popupOpen,
 }: Props) {
   const input = useRef<HTMLInputElement>(null),
     form = useRef<HTMLFormElement>(null),
     listId = useId();
   const snapshot = useSyncExternalStore(recent.subscribe, recent.getSnapshot);
+  const ownerPicker = useOwnerRepositoryPicker(owners, value, form, input);
   const [open, setOpen] = useState(false),
     [edited, setEdited] = useState(false),
     [active, setActive] = useState<string | null>(null),
     [menuHeight, setMenuHeight] = useState<number | null>(null);
   const matches = matchingRecentRepositories(snapshot.entries, value, edited ? undefined : current),
     activeIndex = matches.findIndex((entry) => entry.repository === active);
-  const showing = open && !popupOpen && snapshot.available && matches.length > 0,
+  const showing =
+      open && !popupOpen && !ownerPicker.showing && snapshot.available && matches.length > 0,
     expanded = showing && menuHeight !== 0;
   const activeId = expanded && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined;
   function close() {
@@ -40,14 +48,18 @@ export function RepositoryInput({
     setActive(null);
   }
   function choose(repository: string) {
+    ownerPicker.close();
     close();
     onChange(repository);
     input.current?.blur();
     onRecent(repository);
   }
   useEffect(() => {
-    if (popupOpen) close();
-  }, [popupOpen]);
+    if (popupOpen) {
+      close();
+      ownerPicker.close();
+    }
+  }, [popupOpen, ownerPicker.close]);
   useEffect(() => {
     if (!open) return;
     const outside = (event: Event) => {
@@ -95,6 +107,8 @@ export function RepositoryInput({
       onSubmit={(event) => {
         event.preventDefault();
         close();
+        if (ownerPicker.submit(value)) return;
+        ownerPicker.close();
         input.current?.blur();
         onOpen(value);
       }}
@@ -105,9 +119,9 @@ export function RepositoryInput({
           aria-label="GitHub repository"
           role="combobox"
           aria-autocomplete="list"
-          aria-haspopup="grid"
-          aria-expanded={expanded}
-          aria-controls={expanded ? listId : undefined}
+          aria-haspopup={ownerPicker.showing ? 'dialog' : 'grid'}
+          aria-expanded={ownerPicker.showing || expanded}
+          aria-controls={ownerPicker.showing ? `${listId}-owner` : expanded ? listId : undefined}
           aria-activedescendant={activeId}
           autoComplete="off"
           enterKeyHint="go"
@@ -115,7 +129,7 @@ export function RepositoryInput({
           autoCorrect="off"
           spellCheck={false}
           value={value}
-          placeholder="owner/repository"
+          placeholder="owner or owner/repository"
           onFocus={() => {
             setOpen(true);
             setActive(null);
@@ -129,9 +143,11 @@ export function RepositoryInput({
           }}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing) return;
+            if (ownerPicker.keyDown(event)) return;
             if (
               (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
               !popupOpen &&
+              !ownerPicker.showing &&
               snapshot.available &&
               matches.length
             ) {
@@ -181,6 +197,24 @@ export function RepositoryInput({
               <path d="m6 6 12 12M18 6 6 18" />
             </svg>
           </button>
+        )}
+        {ownerPicker.showing && (
+          <OwnerRepositoryPicker
+            id={`${listId}-owner`}
+            model={owners}
+            onClose={() => {
+              ownerPicker.close(true);
+              close();
+            }}
+            onSelect={(repository) => {
+              const normalized = lowercaseRepoInput(repository);
+              ownerPicker.close();
+              close();
+              onChange(normalized);
+              input.current?.blur();
+              onOpen(normalized);
+            }}
+          />
         )}
         {expanded && (
           <div
