@@ -104,13 +104,7 @@ function mergedRepositories(session: Session) {
     ...(session.authenticated?.repositories || []),
   ])
     repositories.set(repository.id, repository);
-  const pushedAt = (value: string | null) => {
-    const time = value ? Date.parse(value) : NaN;
-    return Number.isFinite(time) ? time : -Infinity;
-  };
   return [...repositories.values()].sort((a, b) => {
-    const time = pushedAt(b.pushed_at) - pushedAt(a.pushed_at);
-    if (time && !Number.isNaN(time)) return time;
     const aName = a.name.toLowerCase(),
       bName = b.name.toLowerCase();
     return (aName < bName ? -1 : aName > bName ? 1 : 0) || a.id - b.id;
@@ -273,8 +267,8 @@ export class OwnerRepositories {
     const page = source.page + 1;
     const path =
       name === 'public'
-        ? `/users/${encodeURIComponent(session.owner)}/repos?type=owner&sort=pushed&direction=desc&per_page=100&page=${page}`
-        : `/user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&direction=desc&per_page=100&page=${page}`;
+        ? `/users/${encodeURIComponent(session.owner)}/repos?type=owner&sort=full_name&direction=asc&per_page=100&page=${page}`
+        : `/user/repos?affiliation=owner,collaborator,organization_member&sort=full_name&direction=asc&per_page=100&page=${page}`;
     try {
       const result = await source.reader.get<unknown>(path);
       if (session !== this.session) return;
@@ -283,7 +277,7 @@ export class OwnerRepositories {
       for (const repository of repositories) merged.set(repository.id, repository);
       source.repositories = [...merged.values()];
       source.page = page;
-      source.more = result.next;
+      source.more = Array.isArray(result.data) && result.data.length >= 100 && result.next;
       if (page === 1) source.expiresAt = Date.now() + CACHE_LIFETIME;
       const cached = this.cache.get(session.owner) || {};
       cached[name] = {

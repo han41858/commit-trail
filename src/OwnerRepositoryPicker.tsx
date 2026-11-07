@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { OwnerRepositoryScroll } from './OwnerRepositoryScroll';
 import type { OwnerRepositories } from './OwnerRepositories';
 import { LoadingIndicator } from './LoadingIndicator';
 import { MONITOR_LIMIT } from './MonitorRepositories';
@@ -33,7 +34,12 @@ export function OwnerRepositoryPicker({
   const [active, setActive] = useState<number | null>(null);
   const [pending, setPending] = useState<string[]>([]);
   const panel = useRef<HTMLElement>(null);
+  const paging = useRef(new OwnerRepositoryScroll());
+  const scrollIntent = useRef(false);
+  const touchY = useRef<number | null>(null);
   const field = useRef<HTMLInputElement>(null);
+  const loadButton = useRef<HTMLButtonElement>(null);
+  const focusAfterLoad = useRef<{ owner: string; ids: Set<number> } | null>(null);
   const listId = useId();
   const headingId = useId();
   const hintId = useId();
@@ -45,12 +51,12 @@ export function OwnerRepositoryPicker({
   ];
   const more = sources.some((source) => source.more);
   const failed = sources.filter((source) => source.error);
-  const canRetry = !snapshot.busy && failed.some((source) => !source.busy && source.wait === 0);
-  const retryWait = failed.length ? Math.min(...failed.map((source) => source.wait)) : 0;
   const canLoadMore =
     !snapshot.busy &&
     sources.some((source) => source.more && !source.error && !source.busy && source.wait === 0);
+  const loadWait = Math.min(...sources.filter((source) => source.more).map((source) => source.wait));
   const search = query.trim().toLowerCase();
+  const showLoadMore = more && !search;
   const shown = snapshot.repositories.filter((repository) =>
     repository.name.toLowerCase().includes(search),
   );
@@ -84,11 +90,46 @@ export function OwnerRepositoryPicker({
   function focusChoice(index: number) {
     const repository = selectable[index];
     if (!repository) return;
+    scrollIntent.current = false;
     setActive(repository.id);
     document.getElementById(`${listId}-${repository.id}`)?.focus({ preventScroll: true });
   }
 
+  function focusLoadMore() {
+    if (!showLoadMore) return false;
+    scrollIntent.current = false;
+    loadButton.current?.focus();
+    return true;
+  }
+
+  function loadMoreWithFocus() {
+    if (!canLoadMore || search) return;
+    scrollIntent.current = false;
+    focusAfterLoad.current = {
+      owner: snapshot.owner,
+      ids: new Set(snapshot.repositories.map((repository) => repository.id)),
+    };
+    void model.loadMore();
+  }
+
   useEffect(() => {
+    const pendingFocus = focusAfterLoad.current;
+    if (!pendingFocus || snapshot.busy) return;
+    focusAfterLoad.current = null;
+    if (pendingFocus.owner !== snapshot.owner) return;
+    const firstNew = selectable.find((repository) => !pendingFocus.ids.has(repository.id));
+    scrollIntent.current = false;
+    if (firstNew) {
+      setActive(firstNew.id);
+      if (multiple)
+        document.getElementById(`${listId}-${firstNew.id}`)?.focus({ preventScroll: true });
+      else field.current?.focus({ preventScroll: true });
+    } else if (showLoadMore && canLoadMore) loadButton.current?.focus();
+    else field.current?.focus({ preventScroll: true });
+  }, [snapshot, selectable, multiple, listId, showLoadMore, canLoadMore]);
+
+  useEffect(() => {
+    focusAfterLoad.current = null;
     setQuery('');
     setActive(null);
     setPending([]);
@@ -157,6 +198,51 @@ export function OwnerRepositoryPicker({
     if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
   }, [activeId]);
 
+  useEffect(() => {
+    paging.current.reset();
+    scrollIntent.current = false;
+  }, [snapshot.owner, search]);
+
+  function scrollMore(element: HTMLDivElement, movement: number) {
+    if (!scrollIntent.current) return;
+    if (paging.current.request(element, movement, canLoadMore, !!search)) {
+      scrollIntent.current = false;
+      void model.loadMore();
+    }
+  }
+
+  const scrollEvents = {
+    onPointerDown: () => {
+      scrollIntent.current = true;
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.buttons) scrollIntent.current = true;
+    },
+    onKeyDownCapture: (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (['ArrowDown', 'PageDown', 'End', ' '].includes(event.key))
+        scrollIntent.current = true;
+    },
+    onWheel: (event: React.WheelEvent<HTMLDivElement>) => {
+      scrollIntent.current = true;
+      scrollMore(event.currentTarget, event.deltaY);
+    },
+    onTouchStart: (event: React.TouchEvent<HTMLDivElement>) => {
+      touchY.current = event.touches[0]?.clientY ?? null;
+    },
+    onTouchMove: (event: React.TouchEvent<HTMLDivElement>) => {
+      const y = event.touches[0]?.clientY;
+      if (y === undefined || touchY.current === null) return;
+      scrollIntent.current = true;
+      scrollMore(event.currentTarget, touchY.current - y);
+      touchY.current = y;
+    },
+    onScroll: (event: React.UIEvent<HTMLDivElement>) => {
+      const element = event.currentTarget;
+      const movement = paging.current.move(element.scrollTop);
+      scrollMore(element, movement);
+    },
+  };
+
   if (!snapshot.owner) return null;
 
   let empty = snapshot.authenticated.enabled
@@ -165,7 +251,7 @@ export function OwnerRepositoryPicker({
   if (search) empty = 'No matching repositories in the loaded pages.';
   else if (snapshot.busy) empty = 'Loading repositories…';
   else if (failed.length) empty = 'No repositories loaded.';
-  else if (more) empty = 'No repositories for this owner in the loaded pages. Load more to continue.';
+  else if (more) empty = 'No repositories for this owner in the loaded pages. Scroll down to continue.';
 
   return (
     <section
@@ -226,12 +312,17 @@ export function OwnerRepositoryPicker({
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
             event.stopPropagation();
-            if (!selectable.length) return;
+            if (!selectable.length) {
+              if (event.key === 'ArrowDown') focusLoadMore();
+              return;
+            }
             if (multiple) {
               focusChoice(event.key === 'ArrowDown' ? 0 : selectable.length - 1);
               return;
             }
             const current = selectable.findIndex((repository) => repository.id === selected?.id);
+            if (event.key === 'ArrowDown' && current === selectable.length - 1 && focusLoadMore())
+              return;
             const next =
               (current + (event.key === 'ArrowDown' ? 1 : -1) + selectable.length) %
               selectable.length;
@@ -246,103 +337,127 @@ export function OwnerRepositoryPicker({
           }
         }}
       />
-      <div className="owner-picker-content">
+      <div className="owner-picker-content" {...(inline ? scrollEvents : {})}>
         <small id={hintId} className="owner-picker-hint">
-          {snapshot.repositories.length.toLocaleString()} loaded · Recent push first
-          {more ? ' · More pages available' : ''}
+          {snapshot.repositories.length.toLocaleString()} loaded · Name A–Z
+          {more ? (search ? ' · Clear filter to load more' : ' · Scroll down or Load more') : ''}
           {inline && snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
         </small>
         <div
+          {...(!inline ? scrollEvents : {})}
           className="owner-repository-list"
-          id={listId}
-          role={multiple ? 'group' : 'listbox'}
-          aria-label="Owner repositories"
-          onKeyDown={(event) => {
-            if (!multiple || event.nativeEvent.isComposing) return;
-            const target = event.target;
-            if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') return;
-            const current = selectable.findIndex(
-              (repository) => `${listId}-${repository.id}` === target.id,
-            );
-            if (current < 0) return;
-            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-              event.preventDefault();
-              event.stopPropagation();
-              focusChoice(
-                (current + (event.key === 'ArrowDown' ? 1 : -1) + selectable.length) %
-                  selectable.length,
-              );
-            } else if (event.key === 'Enter') {
-              event.preventDefault();
-              event.stopPropagation();
-              toggle(selectable[current].full_name);
-            }
-          }}
         >
-          {shown.map((repository) => {
-            const added = isExcluded(repository.full_name);
-            const label = `${repository.name}, ${repository.private ? 'Private' : 'Public'}${added ? ', already added' : ''}`;
-            const content = (
-              <>
-                <span className="owner-repository-title">
-                  <strong>{repository.name}</strong>
-                  <small>{repository.private ? 'Private' : 'Public'}</small>
-                </span>
-                {repository.description && (
-                  <span className="owner-repository-description">{repository.description}</span>
-                )}
-                {added && <small>Already added</small>}
-              </>
-            );
-            if (multiple) {
-              const blocked = isBlocked(repository.full_name);
-              return (
-                <label
-                  key={repository.id}
-                  className="owner-repository-option owner-repository-choice"
-                  data-active={active === repository.id}
-                  data-disabled={blocked}
-                  title={repository.full_name}
-                >
-                  <input
-                    id={`${listId}-${repository.id}`}
-                    type="checkbox"
-                    aria-label={label}
-                    checked={added || isPending(repository.full_name)}
-                    disabled={blocked}
-                    onFocus={() => setActive(repository.id)}
-                    onChange={() => toggle(repository.full_name)}
-                  />
-                  <span className="owner-repository-content">{content}</span>
-                </label>
+          <div
+            id={listId}
+            role={multiple ? 'group' : 'listbox'}
+            aria-label="Owner repositories"
+            onKeyDown={(event) => {
+              if (!multiple || event.nativeEvent.isComposing) return;
+              const target = event.target;
+              if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') return;
+              const current = selectable.findIndex(
+                (repository) => `${listId}-${repository.id}` === target.id,
               );
-            }
-            return (
-              <button
-                key={repository.id}
-                id={`${listId}-${repository.id}`}
-                type="button"
-                role="option"
-                aria-selected={selected?.id === repository.id}
-                aria-label={label}
-                disabled={disabled || added}
-                tabIndex={-1}
-                className="owner-repository-option"
-                title={repository.full_name}
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={() => onSelect(repository.full_name)}
-              >
-                {content}
-              </button>
-            );
-          })}
+              if (current < 0) return;
+              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                event.stopPropagation();
+                if (event.key === 'ArrowDown' && current === selectable.length - 1 && focusLoadMore())
+                  return;
+                focusChoice(
+                  (current + (event.key === 'ArrowDown' ? 1 : -1) + selectable.length) %
+                    selectable.length,
+                );
+              } else if (event.key === 'Enter') {
+                event.preventDefault();
+                event.stopPropagation();
+                toggle(selectable[current].full_name);
+              }
+            }}
+          >
+            {shown.map((repository) => {
+              const added = isExcluded(repository.full_name);
+              const label = `${repository.name}, ${repository.private ? 'Private' : 'Public'}${added ? ', already added' : ''}`;
+              const content = (
+                <>
+                  <span className="owner-repository-title">
+                    <strong>{repository.name}</strong>
+                    <small>{repository.private ? 'Private' : 'Public'}</small>
+                  </span>
+                  {repository.description && (
+                    <span className="owner-repository-description">{repository.description}</span>
+                  )}
+                  {added && <small>Already added</small>}
+                </>
+              );
+              if (multiple) {
+                const blocked = isBlocked(repository.full_name);
+                return (
+                  <label
+                    key={repository.id}
+                    className="owner-repository-option owner-repository-choice"
+                    data-active={active === repository.id}
+                    data-disabled={blocked}
+                    title={repository.full_name}
+                  >
+                    <input
+                      id={`${listId}-${repository.id}`}
+                      type="checkbox"
+                      aria-label={label}
+                      checked={added || isPending(repository.full_name)}
+                      disabled={blocked}
+                      onFocus={() => setActive(repository.id)}
+                      onChange={() => toggle(repository.full_name)}
+                    />
+                    <span className="owner-repository-content">{content}</span>
+                  </label>
+                );
+              }
+              return (
+                <button
+                  key={repository.id}
+                  id={`${listId}-${repository.id}`}
+                  type="button"
+                  role="option"
+                  aria-selected={selected?.id === repository.id}
+                  aria-label={label}
+                  disabled={disabled || added}
+                  tabIndex={-1}
+                  className="owner-repository-option"
+                  title={repository.full_name}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => onSelect(repository.full_name)}
+                >
+                  {content}
+                </button>
+              );
+            })}
+          </div>
+          {showLoadMore && (
+            <button
+              ref={loadButton}
+              type="button"
+              className="owner-picker-load-more"
+              aria-label="Load more repositories"
+              aria-disabled={!canLoadMore}
+              onFocus={() => {
+                scrollIntent.current = false;
+              }}
+              onKeyDown={() => {
+                scrollIntent.current = false;
+              }}
+              onClick={loadMoreWithFocus}
+            >
+              {snapshot.busy ? 'Loading repositories…' : !canLoadMore && loadWait > 0 ? retryLabel(loadWait) : 'Load more'}
+            </button>
+          )}
         </div>
         {!shown.length && (
           <p className="owner-picker-empty" role="status">
             {empty}
           </p>
         )}
-        {(failed.length > 0 || more) && (
+        {failed.length > 0 && (
           <div className="owner-picker-actions">
             {snapshot.public.error && (
               <p role="alert">Public repositories: {snapshot.public.error}</p>
@@ -350,18 +465,6 @@ export function OwnerRepositoryPicker({
             {snapshot.authenticated.error && (
               <p role="alert">Token access: {snapshot.authenticated.error}</p>
             )}
-            <div>
-              {failed.length > 0 && (
-                <button type="button" disabled={!canRetry} onClick={() => void model.retry()}>
-                  {canRetry ? 'Retry' : retryLabel(retryWait)}
-                </button>
-              )}
-              {more && (
-                <button type="button" disabled={!canLoadMore} onClick={() => void model.loadMore()}>
-                  Load more
-                </button>
-              )}
-            </div>
           </div>
         )}
       </div>
