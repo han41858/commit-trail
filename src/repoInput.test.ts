@@ -1,6 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lowercaseField } from './repoInput';
+import { lowercaseField, ownerFromInput } from './repoInput';
+
+test('owner discovery accepts only normalized bare GitHub logins', () => {
+  for (const owner of ['han41858', 'a', 'my-org', 'a'.repeat(39)])
+    assert.equal(ownerFromInput(` ${owner.toUpperCase()} `), owner);
+  for (const value of [
+    '',
+    ' ',
+    '-owner',
+    'owner-',
+    'two--hyphens',
+    'under_score',
+    'dot.name',
+    'a'.repeat(40),
+    'owner/repo',
+    'owner/',
+    'https://github.com/owner/repo',
+    'https://github.com/owner',
+    ':debug',
+    'owner name',
+    '한글',
+  ])
+    assert.equal(ownerFromInput(value), null, value);
+});
 
 const field = (value: string, start: number, end = start) => {
   const f = {

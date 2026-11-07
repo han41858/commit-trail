@@ -43,6 +43,7 @@ import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStor
 import { AccessTokenPanel } from './AccessTokenPanel';
 import { ViewOptions } from './ViewOptions';
 import { AppStatus } from './AppStatus';
+import { OwnerRepositories } from './OwnerRepositories';
 import { Analytics } from '@vercel/analytics/react';
 import { analyticsBeforeSend } from './analytics';
 import './style.css';
@@ -58,6 +59,11 @@ function App() {
   const appliedLocation = useRef<RepositoryLocation | null>(null);
   const pickedLocation = useRef<string | null>(null);
   const [savedToken] = useState(readStoredToken);
+  const [ownerRepositories] = useState(() => {
+    const owners = new OwnerRepositories();
+    owners.setToken(savedToken.token);
+    return owners;
+  });
   const authToken = useRef(savedToken.token);
   const [recent] = useState(
     () =>
@@ -331,6 +337,10 @@ function App() {
       )
         monitorRepositories.reload();
       if (event.key === null || event.key === TOKEN_STORAGE_KEY) {
+        // A token changed in another tab. Never restore that tab's private list
+        // with this tab's previously applied credential; require an explicit apply.
+        ownerRepositories.close();
+        ownerRepositories.setToken('');
         lastMonitorSelection.current = undefined;
         leaveMonitor();
         lastMonitorBranches.current.clear();
@@ -339,15 +349,16 @@ function App() {
     };
     window.addEventListener('storage', changed);
     return () => window.removeEventListener('storage', changed);
-  }, [recent, branchSelections, monitorRepositories, leaveMonitor]);
+  }, [recent, branchSelections, monitorRepositories, leaveMonitor, ownerRepositories]);
   useEffect(
     () => () => {
       measured.cancel();
+      ownerRepositories.close();
       monitor.stop();
       history.clear();
       info.cancel();
     },
-    [history, info, monitor],
+    [history, info, monitor, ownerRepositories],
   );
   useEffect(() => {
     setMonitorSetup(false);
@@ -455,6 +466,7 @@ function App() {
     recent.authenticationChanged(appliedToken, value);
     const error = saveStoredToken(value);
     authToken.current = value;
+    ownerRepositories.setToken(value);
     recent.reload();
     monitorRepositories.reconcile();
     setToken(value);
@@ -485,6 +497,7 @@ function App() {
     measured.cancel();
     const error = saveStoredToken('');
     authToken.current = '';
+    ownerRepositories.setToken('');
     recent.reload();
     monitorRepositories.reconcile();
     history.clear();
@@ -685,6 +698,7 @@ function App() {
           onOpen={open}
           onRecent={openRecent}
           recent={recent}
+          owners={ownerRepositories}
           popupOpen={auth || options || details || monitorSetup}
         />
         <div className="view-controls">
@@ -823,6 +837,7 @@ function App() {
           current={state.meta ? state.repo : ''}
           recent={recent}
           saved={monitorRepositories}
+          owners={ownerRepositories}
           initial={lastMonitorSelection.current}
           branches={shareBranches}
           onClose={() => {

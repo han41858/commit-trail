@@ -14,6 +14,7 @@ PR 제목·본문 또는 대상 브랜치 변경에도 고정 이름의 필수 `
 | [경로 색상과 하이라이트](dag-hover-highlight.md) | 경로 소유권·색상·강조 범위·입력·불투명도와 그 한계 |
 | [자동 갱신·메타데이터](auto-refresh-and-metadata.md) | 갱신 주기·완료·오류·캐시·태그/릴리즈·Actions 집계 |
 | [Split view](monitor-mode.md) | 선택·정렬·URL·독립 열·공통 갱신·상세 팝업 |
+| [Owner 저장소 선택](owner-repositories.md) | 명시적 Owner 조회·공개/인증 목록 통합·페이지·메모리 캐시 |
 | [최근 저장소](recent-repositories.md) | 방문 기록·직접 선택 브랜치 저장·PAT 생명주기 |
 | [PWA](pwa.md) | 앱 셸 캐시·사용자 확인 업데이트·장애 복구 |
 | [개발자 진단](developer-debug-mode.md) | 활성화·측정 지점·집계 범위와 해석 한계 |
@@ -33,6 +34,7 @@ PR 제목·본문 또는 대상 브랜치 변경에도 고정 이름의 필수 `
 | 앱 화면 구성 | `src/main.tsx`, `src/ViewOptions.tsx`, `src/AccessTokenPanel.tsx`, `src/AppStatus.tsx`, `src/MonitorControls.tsx` | 앱 상태·인증·갱신 수명은 main, 옵션·토큰·상태·Split 제어 표시는 상태를 전달받는 컴포넌트 |
 | 기준 브랜치·공유 | `src/recommendations.ts`, `src/BranchSelections.ts`, `src/repositoryLocation.ts` | 초기 선택 우선순위와 경로 소유권 우선순위의 구분, 직접 선택 저장, 반복 URL 값 |
 | 갱신·Actions | `src/RefreshLoop.ts`, `src/MonitorSession.ts`, `src/CommitInfo.ts` | 성공과 완료 시각의 구분, 이번 주기에 시작한 작업만 대기, success+skipped 집계 |
+| Owner 조회·선택 | `src/OwnerRepositories.ts`, `src/OwnerRepositoryPicker.tsx`, `src/RepositoryInput.tsx`, `src/MonitorSetup.tsx` | 제출 시에만 조회, 공개/인증 페이지 독립, PAT 변경 시 캐시 무효화, 일반 즉시 선택·Split 체크 후 일괄 추가 |
 | 요청 수·최근 저장소 | `src/LoadingIndicator.tsx`, `src/requestActivity.ts`, `src/RecentRepositories.ts` | 실제 진행 요청만 계수, Split 열별 범위, 최근 10개·비공개 이력 정리 |
 | PWA·보안 | `vite.config.ts`, `src/PwaUpdates.ts`, `src/pwa.ts`, `vercel.json` | 정적 자산만 캐시, 확인 후 업데이트, same-origin 분석 경로와 GitHub API 허용 |
 | 진단 | `src/measuredLayout.ts`, `src/debug.ts` | 화면 배치 계측과 별도 색상 정규화 계산의 구분 |
