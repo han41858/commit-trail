@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { OwnerRepositoryScroll } from './OwnerRepositoryScroll';
 import type { OwnerRepositories } from './OwnerRepositories';
 import { LoadingIndicator } from './LoadingIndicator';
 import { MONITOR_LIMIT } from './MonitorRepositories';
@@ -33,9 +34,9 @@ export function OwnerRepositoryPicker({
   const [active, setActive] = useState<number | null>(null);
   const [pending, setPending] = useState<string[]>([]);
   const panel = useRef<HTMLElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  const list = useRef<HTMLDivElement>(null);
-  const sentinel = useRef<HTMLDivElement>(null);
+  const paging = useRef(new OwnerRepositoryScroll());
+  const scrollIntent = useRef(false);
+  const touchY = useRef<number | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const listId = useId();
   const headingId = useId();
@@ -161,18 +162,49 @@ export function OwnerRepositoryPicker({
   }, [activeId]);
 
   useEffect(() => {
-    const target = sentinel.current;
-    const root = inline ? content.current : list.current;
-    if (!target || !root || !canLoadMore) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) void model.loadMore();
-      },
-      { root, rootMargin: '0px 0px 120px 0px' },
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [model, inline, canLoadMore, snapshot.owner, snapshot.repositories, search]);
+    paging.current.reset();
+    scrollIntent.current = false;
+  }, [snapshot.owner, search]);
+
+  function scrollMore(element: HTMLDivElement, movement: number) {
+    if (!scrollIntent.current) return;
+    if (paging.current.request(element, movement, canLoadMore, !!search)) {
+      scrollIntent.current = false;
+      void model.loadMore();
+    }
+  }
+
+  const scrollEvents = {
+    onPointerDown: () => {
+      scrollIntent.current = true;
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.buttons) scrollIntent.current = true;
+    },
+    onKeyDownCapture: (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (['ArrowDown', 'PageDown', 'End', ' '].includes(event.key))
+        scrollIntent.current = true;
+    },
+    onWheel: (event: React.WheelEvent<HTMLDivElement>) => {
+      scrollIntent.current = true;
+      scrollMore(event.currentTarget, event.deltaY);
+    },
+    onTouchStart: (event: React.TouchEvent<HTMLDivElement>) => {
+      touchY.current = event.touches[0]?.clientY ?? null;
+    },
+    onTouchMove: (event: React.TouchEvent<HTMLDivElement>) => {
+      const y = event.touches[0]?.clientY;
+      if (y === undefined || touchY.current === null) return;
+      scrollIntent.current = true;
+      scrollMore(event.currentTarget, touchY.current - y);
+      touchY.current = y;
+    },
+    onScroll: (event: React.UIEvent<HTMLDivElement>) => {
+      const element = event.currentTarget;
+      const movement = paging.current.move(element.scrollTop);
+      scrollMore(element, movement);
+    },
+  };
 
   if (!snapshot.owner) return null;
 
@@ -182,7 +214,7 @@ export function OwnerRepositoryPicker({
   if (search) empty = 'No matching repositories in the loaded pages.';
   else if (snapshot.busy) empty = 'Loading repositories…';
   else if (failed.length) empty = 'No repositories loaded.';
-  else if (more) empty = 'No repositories for this owner in the loaded pages. Scroll to continue.';
+  else if (more) empty = 'No repositories for this owner in the loaded pages. Scroll down to continue.';
 
   return (
     <section
@@ -263,14 +295,14 @@ export function OwnerRepositoryPicker({
           }
         }}
       />
-      <div ref={content} className="owner-picker-content">
+      <div className="owner-picker-content" {...(inline ? scrollEvents : {})}>
         <small id={hintId} className="owner-picker-hint">
           {snapshot.repositories.length.toLocaleString()} loaded · Name A–Z
-          {more ? ' · More pages available' : ''}
+          {more ? (search ? ' · Clear filter to load more' : ' · Scroll down for more') : ''}
           {inline && snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
         </small>
         <div
-          ref={list}
+          {...(!inline ? scrollEvents : {})}
           className="owner-repository-list"
           id={listId}
           role={multiple ? 'group' : 'listbox'}
@@ -354,7 +386,6 @@ export function OwnerRepositoryPicker({
               </button>
             );
           })}
-          {more && <div ref={sentinel} className="owner-picker-sentinel" aria-hidden="true" />}
         </div>
         {!shown.length && (
           <p className="owner-picker-empty" role="status">

@@ -20,7 +20,12 @@ const repository = (
   pushed_at: pushedAt,
 });
 const response = (items: unknown, next = false) =>
-  new Response(JSON.stringify(items), {
+  new Response(JSON.stringify(
+    next && Array.isArray(items)
+      ? [...items, ...Array.from({ length: Math.max(0, 100 - items.length) }, (_, index) =>
+          repository(10000 + index, `other-${index}`, 'another-owner'))]
+      : items,
+  ), {
     headers: next ? { Link: '<https://api.github.com/ignored?page=2>; rel="next"' } : {},
   });
 const names = (store: OwnerRepositories) => store.getSnapshot().repositories.map((repo) => repo.name);
@@ -745,4 +750,20 @@ test('a failed source in loadMore preserves old rows until the other source fini
   assert.deepEqual(names(store), ['new-public', 'private', 'public']);
   assert.ok(store.getSnapshot().authenticated.error);
   assert.equal(store.getSnapshot().busy, false);
+});
+
+test('a short raw page is terminal even if a next Link is present', async (t) => {
+  const store = fixture(t, 'pat');
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(JSON.stringify([repository(1, 'one')]), {
+      headers: { Link: '<https://api.github.com/ignored?page=2>; rel="next"' },
+    });
+  };
+  await store.open('owner');
+  assert.equal(store.getSnapshot().public.more, false);
+  assert.equal(store.getSnapshot().authenticated.more, false);
+  for (let i = 0; i < 10; i++) await store.loadMore();
+  assert.equal(calls, 2);
 });

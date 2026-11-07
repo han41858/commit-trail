@@ -277,7 +277,7 @@ export class OwnerRepositories {
       for (const repository of repositories) merged.set(repository.id, repository);
       source.repositories = [...merged.values()];
       source.page = page;
-      source.more = result.next;
+      source.more = Array.isArray(result.data) && result.data.length >= 100 && result.next;
       if (page === 1) source.expiresAt = Date.now() + CACHE_LIFETIME;
       const cached = this.cache.get(session.owner) || {};
       cached[name] = {
