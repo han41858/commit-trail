@@ -51,8 +51,6 @@ export function OwnerRepositoryPicker({
   ];
   const more = sources.some((source) => source.more);
   const failed = sources.filter((source) => source.error);
-  const canRetry = !snapshot.busy && failed.some((source) => !source.busy && source.wait === 0);
-  const retryWait = failed.length ? Math.min(...failed.map((source) => source.wait)) : 0;
   const canLoadMore =
     !snapshot.busy &&
     sources.some((source) => source.more && !source.error && !source.busy && source.wait === 0);
@@ -441,7 +439,7 @@ export function OwnerRepositoryPicker({
               type="button"
               className="owner-picker-load-more"
               aria-label="Load more repositories"
-              disabled={!canLoadMore}
+              aria-disabled={!canLoadMore}
               onFocus={() => {
                 scrollIntent.current = false;
               }}
@@ -450,7 +448,7 @@ export function OwnerRepositoryPicker({
               }}
               onClick={loadMoreWithFocus}
             >
-              {snapshot.busy ? 'Loading repositories…' : canLoadMore ? 'Load more' : retryLabel(loadWait)}
+              {snapshot.busy ? 'Loading repositories…' : !canLoadMore && loadWait > 0 ? retryLabel(loadWait) : 'Load more'}
             </button>
           )}
         </div>
@@ -467,13 +465,6 @@ export function OwnerRepositoryPicker({
             {snapshot.authenticated.error && (
               <p role="alert">Token access: {snapshot.authenticated.error}</p>
             )}
-            <div>
-              {failed.length > 0 && (
-                <button type="button" disabled={!canRetry} onClick={() => void model.retry()}>
-                  {canRetry ? 'Retry' : retryLabel(retryWait)}
-                </button>
-              )}
-            </div>
           </div>
         )}
       </div>

@@ -200,10 +200,6 @@
   color: var(--warning);
   overflow-wrap: anywhere;
 }
-.owner-picker-actions > div {
-  display: flex;
-  gap: 8px;
-}
 .owner-picker-selection {
   display: flex;
   flex-shrink: 0;
@@ -234,4 +230,9 @@
   width: 100%;
   min-height: 40px;
   margin-top: 7px;
+}
+
+.owner-picker-load-more[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
 }
