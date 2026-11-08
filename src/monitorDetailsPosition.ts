@@ -1,7 +1,14 @@
 type Bounds = { left: number; right: number; top: number; bottom: number };
-export function monitorDetailsFrame(anchor: { left: number; width: number }, bounds: Bounds) {
+export function monitorDetailsFrame(
+  anchor: { left: number; width: number },
+  bounds: Bounds,
+  noticeTop = bounds.bottom,
+) {
   const availableWidth = Math.max(0, bounds.right - bounds.left),
-    availableHeight = Math.max(0, bounds.bottom - bounds.top);
+    originalHeight = Math.max(0, bounds.bottom - bounds.top),
+    bottom = Math.min(bounds.bottom, noticeTop),
+    rise = Math.max(0, bounds.bottom - bottom),
+    availableHeight = Math.max(0, bottom - bounds.top);
   const gapX = Math.min(8, availableWidth / 2),
     gapY = Math.min(8, availableHeight / 2),
     width = Math.min(480, availableWidth - gapX * 2);
@@ -13,6 +20,6 @@ export function monitorDetailsFrame(anchor: { left: number; width: number }, bou
     left,
     width,
     bottom: bounds.top + availableHeight - gapY,
-    maxHeight: Math.min(availableHeight * 0.65, availableHeight - gapY * 2),
+    maxHeight: Math.max(0, Math.min(originalHeight * 0.65 - rise, availableHeight - gapY * 2)),
   };
 }

@@ -10,6 +10,7 @@ import { createRoot } from 'react-dom/client';
 import { debug } from './debug';
 import { DebugRoot } from './DebugRoot';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
+import { AppNotices } from './AppNotices';
 import { registerPwa } from './pwa';
 import { useMeasuredOpen } from './measuredOperations';
 import { Graph } from './Graph';
@@ -202,6 +203,7 @@ function App() {
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute('content', resolvedTheme === 'light' ? '#f2f6fc' : '#070a11');
   }, [resolvedTheme]);
+  const appRef = useRef<HTMLDivElement>(null);
   const optionsRef = useRef<HTMLDivElement>(null),
     toolbarRef = useRef<HTMLElement>(null),
     authRef = useRef<HTMLElement>(null),
@@ -567,6 +569,7 @@ function App() {
   else shareBranches.delete(state.repo);
   return (
     <div
+      ref={appRef}
       className={`app${monitorState.active ? ' app-monitor' : ''}`}
       data-theme={resolvedTheme}
       style={{ '--toolbar-bottom': `${topInset - 20}px` } as React.CSSProperties}
@@ -855,10 +858,10 @@ function App() {
           }}
         />
       )}
-      <div className="app-notices">
-        <DebugRoot developer={import.meta.env.DEV} />
+      <AppNotices>
+        <DebugRoot developer={import.meta.env.DEV} panelHost={appRef} />
         <PwaUpdatePrompt />
-      </div>
+      </AppNotices>
       <AppStatus
         state={state}
         extras={extras}
