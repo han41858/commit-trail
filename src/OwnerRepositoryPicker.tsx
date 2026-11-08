@@ -407,6 +407,12 @@ export function OwnerRepositoryPicker({
                     data-active={active === repository.id}
                     data-disabled={blocked}
                     title={repository.full_name}
+                    onPointerDown={(event) => {
+                      if (event.target instanceof HTMLInputElement && !blocked) return;
+                      // Block the dialog's pointer focus; let native label activation
+                      // focus/toggle the checkbox without inheriting keyboard focus styling.
+                      event.preventDefault();
+                    }}
                   >
                     <input
                       id={`${listId}-${repository.id}`}
