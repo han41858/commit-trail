@@ -195,17 +195,9 @@ export class OwnerRepositories {
       session,
       (['public', 'authenticated'] as const).filter((name) => {
         const source = session[name];
-        return source?.more && !source.error;
+        return source && (source.more || !!source.error) &&
+          (source.retryAt === null || source.retryAt <= Date.now());
       }),
-    );
-  }
-
-  async retry() {
-    const session = this.session;
-    if (!session) return;
-    await this.loadBatch(
-      session,
-      (['public', 'authenticated'] as const).filter((name) => session[name]?.error),
     );
   }
 

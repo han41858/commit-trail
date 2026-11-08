@@ -234,7 +234,7 @@ test('an empty matching authenticated page is not treated as exhaustion while Li
   assert.equal(authCalls, 2);
 });
 
-test('failed next page keeps prior rows and Retry repeats only the failed source page', async (t) => {
+test('failed next page keeps prior rows and loadMore retries the failed source page', async (t) => {
   const store = fixture(t, 'pat');
   const calls: string[] = [];
   let failed = false;
@@ -254,7 +254,7 @@ test('failed next page keeps prior rows and Retry repeats only the failed source
   await store.loadMore();
   assert.deepEqual(names(store), ['private', 'public']);
   assert.match(store.getSnapshot().public.error, /Could not reach/);
-  await store.retry();
+  await store.loadMore();
   assert.deepEqual(names(store), ['private', 'public', 'public-two']);
   assert.deepEqual(calls.sort(), [
     '/user/repos:1',
@@ -287,14 +287,14 @@ test('public rate limiting does not block authenticated results or retry before 
   await store.open('owner');
   assert.deepEqual(names(store), ['private']);
   assert.equal(store.getSnapshot().public.retryAt, now + 60_000);
-  await store.retry();
+  await store.loadMore();
   assert.equal(publicCalls, 1);
   store.close();
   await store.open('owner');
   assert.equal(publicCalls, 1);
   assert.deepEqual(names(store), ['private']);
   now += 60_001;
-  await store.retry();
+  await store.loadMore();
   assert.equal(publicCalls, 2);
   assert.equal(authCalls, 1);
   assert.deepEqual(names(store), ['private', 'public']);
@@ -594,7 +594,7 @@ test('an authenticated rate limit leaves public pagination usable and remains sc
   assert.ok(store.getSnapshot().authenticated.retryAt! > Date.now());
   await store.loadMore();
   assert.deepEqual(names(store), ['public-1', 'public-2']);
-  await store.retry();
+  await store.loadMore();
   assert.equal(calls.filter((path) => path.startsWith('/user/repos:')).length, 1);
   store.setToken('new');
   await store.open('owner');
@@ -672,7 +672,7 @@ test('loadMore keeps displayed rows stable and blocks overlapping actions until 
   assert.equal(store.getSnapshot().public.busy, false);
   assert.equal(store.getSnapshot().authenticated.busy, true);
   await store.loadMore();
-  await store.retry();
+  await store.loadMore();
   await store.open('OWNER');
   assert.equal(calls.length, 4);
   finishAuth(response([repository(4, 'new-private', 'owner', true)]));
@@ -682,7 +682,7 @@ test('loadMore keeps displayed rows stable and blocks overlapping actions until 
   assert.equal(calls.length, 4);
 });
 
-test('Retry keeps prior rows until every retried source settles and does not replay successful pages', async (t) => {
+test('loadMore retries keep prior rows until every retried source settles and does not replay successful pages', async (t) => {
   const store = fixture(t, 'pat');
   const calls: string[] = [];
   const pending = new Map<string, (value: Response) => void>();
@@ -705,13 +705,12 @@ test('Retry keeps prior rows until every retried source settles and does not rep
   assert.ok(store.getSnapshot().public.error);
   assert.ok(store.getSnapshot().authenticated.error);
   retrying = true;
-  const loading = store.retry();
+  const loading = store.loadMore();
   await flush();
   pending.get('/users/owner/repos')!(response([repository(3, 'new-public')]));
   await flush();
   assert.equal(store.getSnapshot().repositories, originalRows);
   assert.equal(store.getSnapshot().busy, true);
-  await store.retry();
   await store.loadMore();
   assert.equal(calls.length, 6);
   pending.get('/user/repos')!(response([repository(4, 'new-private', 'owner', true)]));
@@ -766,4 +765,33 @@ test('a short raw page is terminal even if a next Link is present', async (t) =>
   assert.equal(store.getSnapshot().authenticated.more, false);
   for (let i = 0; i < 10; i++) await store.loadMore();
   assert.equal(calls, 2);
+});
+
+test('loadMore recovers an initial page failure while advancing a healthy source in one batch', async (t) => {
+  const store = fixture(t, 'pat');
+  const calls: string[] = [];
+  let fail = true;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    const page = Number(url.searchParams.get('page'));
+    calls.push(`${url.pathname}:${page}`);
+    if (url.pathname === '/users/owner/repos') {
+      if (fail) return new Response('{}', { status: 500 });
+      return response([repository(1, 'public')]);
+    }
+    return response([repository(page + 1, `private-${page}`, 'owner', true)], page === 1);
+  };
+  await store.open('owner');
+  assert.ok(store.getSnapshot().public.error);
+  assert.equal(store.getSnapshot().public.more, false);
+  assert.deepEqual(names(store), ['private-1']);
+  fail = false;
+  await store.loadMore();
+  assert.equal(store.getSnapshot().public.error, '');
+  assert.deepEqual(names(store), ['private-1', 'private-2', 'public']);
+  assert.deepEqual(calls.sort(), [
+    '/user/repos:1', '/user/repos:2', '/users/owner/repos:1', '/users/owner/repos:1',
+  ]);
+  await store.loadMore();
+  assert.equal(calls.length, 4);
 });

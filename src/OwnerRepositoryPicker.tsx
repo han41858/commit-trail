@@ -43,6 +43,7 @@ export function OwnerRepositoryPicker({
   const listId = useId();
   const headingId = useId();
   const hintId = useId();
+  const errorId = useId();
   const publicWait = useRetryCountdown(snapshot.public.retryAt);
   const authenticatedWait = useRetryCountdown(snapshot.authenticated.retryAt);
   const sources = [
@@ -53,10 +54,13 @@ export function OwnerRepositoryPicker({
   const failed = sources.filter((source) => source.error);
   const canLoadMore =
     !snapshot.busy &&
-    sources.some((source) => source.more && !source.error && !source.busy && source.wait === 0);
-  const loadWait = Math.min(...sources.filter((source) => source.more).map((source) => source.wait));
+    sources.some((source) =>
+      (source.more || !!source.error) && !source.busy && source.wait === 0 &&
+      (source.retryAt === null || source.retryAt <= Date.now()),
+    );
   const search = query.trim().toLowerCase();
-  const showLoadMore = more && !search;
+  // Keep the control visible while a first-page retry clears its error in flight.
+  const showLoadMore = (more || failed.length > 0 || snapshot.busy) && !search;
   const shown = snapshot.repositories.filter((repository) =>
     repository.name.toLowerCase().includes(search),
   );
@@ -338,9 +342,12 @@ export function OwnerRepositoryPicker({
         }}
       />
       <div className="owner-picker-content" {...(inline ? scrollEvents : {})}>
-        <small id={hintId} className="owner-picker-hint">
+        <small id={hintId} className="owner-picker-hint" role="status" aria-live="polite">
           {snapshot.repositories.length.toLocaleString()} loaded · Name A–Z
-          {more ? (search ? ' · Clear filter to load more' : ' · Scroll down or Load more') : ''}
+          {more || failed.length ? (search ? ' · Clear filter to load more' : ' · Scroll down or Load more') : ''}
+          {snapshot.busy && ' · Loading repositories…'}
+          {publicWait > 0 && ` · Public repositories: ${retryLabel(publicWait)}`}
+          {authenticatedWait > 0 && ` · Token access: ${retryLabel(authenticatedWait)}`}
           {inline && snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
         </small>
         <div
@@ -439,6 +446,7 @@ export function OwnerRepositoryPicker({
               type="button"
               className="owner-picker-load-more"
               aria-label="Load more repositories"
+              aria-describedby={`${hintId}${failed.length ? ` ${errorId}` : ''}`}
               aria-disabled={!canLoadMore}
               onFocus={() => {
                 scrollIntent.current = false;
@@ -448,7 +456,7 @@ export function OwnerRepositoryPicker({
               }}
               onClick={loadMoreWithFocus}
             >
-              {snapshot.busy ? 'Loading repositories…' : !canLoadMore && loadWait > 0 ? retryLabel(loadWait) : 'Load more'}
+              Load more
             </button>
           )}
         </div>
@@ -458,7 +466,7 @@ export function OwnerRepositoryPicker({
           </p>
         )}
         {failed.length > 0 && (
-          <div className="owner-picker-actions">
+          <div id={errorId} className="owner-picker-actions">
             {snapshot.public.error && (
               <p role="alert">Public repositories: {snapshot.public.error}</p>
             )}
