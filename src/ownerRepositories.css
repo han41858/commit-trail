@@ -54,12 +54,6 @@
   padding: 0;
   margin: 0;
 }
-.owner-picker-inline .owner-picker-hint {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 .owner-picker-heading {
   display: flex;
   align-items: center;
@@ -68,11 +62,19 @@
   min-width: 0;
 }
 .owner-picker-heading > strong {
+  display: flex;
+  gap: 4px;
   flex: 1;
+  min-width: 0;
+}
+.owner-picker-heading-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.owner-picker-heading > strong > :last-child {
+  flex-shrink: 0;
 }
 .owner-picker .owner-picker-close {
   flex-shrink: 0;

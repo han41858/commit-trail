@@ -52,6 +52,7 @@ export function OwnerRepositoryPicker({
   ];
   const more = sources.some((source) => source.more);
   const failed = sources.filter((source) => source.error);
+  const hasHint = more || failed.length > 0 || snapshot.busy;
   const canLoadMore =
     !snapshot.busy &&
     sources.some((source) =>
@@ -263,8 +264,7 @@ export function OwnerRepositoryPicker({
       ref={panel}
       className={`owner-picker${inline ? ' owner-picker-inline' : ''}`}
       role={inline ? 'region' : 'dialog'}
-      aria-label={inline ? `Repositories for ${snapshot.owner}` : undefined}
-      aria-labelledby={inline ? undefined : headingId}
+      aria-labelledby={headingId}
       aria-busy={snapshot.busy}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;
@@ -275,10 +275,13 @@ export function OwnerRepositoryPicker({
         }
       }}
     >
-      {!inline && (
-        <div className="owner-picker-heading">
-          <strong id={headingId}>Repositories for {snapshot.owner}</strong>
-          {snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
+      <div className="owner-picker-heading">
+        <strong id={headingId}>
+          <span className="owner-picker-heading-name">Repositories for {snapshot.owner}</span>{' '}
+          <span>({snapshot.repositories.length.toLocaleString()})</span>
+        </strong>
+        {snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
+        {!inline && (
           <button
             type="button"
             className="owner-picker-close"
@@ -287,8 +290,8 @@ export function OwnerRepositoryPicker({
           >
             ×
           </button>
-        </div>
-      )}
+        )}
+      </div>
       <input
         ref={field}
         data-owner-filter=""
@@ -300,7 +303,7 @@ export function OwnerRepositoryPicker({
         aria-expanded={multiple ? undefined : true}
         aria-controls={listId}
         aria-activedescendant={multiple ? undefined : activeId}
-        aria-describedby={hintId}
+        aria-describedby={hasHint ? hintId : undefined}
         autoComplete="off"
         autoCapitalize="none"
         autoCorrect="off"
@@ -342,12 +345,12 @@ export function OwnerRepositoryPicker({
         }}
       />
       <div className="owner-picker-content" {...(inline ? scrollEvents : {})}>
-        <small id={hintId} className="owner-picker-hint">
-          {snapshot.repositories.length.toLocaleString()} loaded · Name A–Z
-          {more || failed.length ? (search ? ' · Clear filter to load more' : ' · Scroll down or Load more') : ''}
-          {snapshot.busy && ' · Loading repositories…'}
-          {inline && snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
-        </small>
+        {hasHint && (
+          <small id={hintId} className="owner-picker-hint">
+            {more || failed.length ? (search ? 'Clear filter to load more' : 'Scroll down or Load more') : ''}
+            {snapshot.busy && `${more || failed.length ? ' · ' : ''}Loading repositories…`}
+          </small>
+        )}
         <div
           {...(!inline ? scrollEvents : {})}
           className="owner-repository-list"
