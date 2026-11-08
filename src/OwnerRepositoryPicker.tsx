@@ -3,7 +3,7 @@ import { OwnerRepositoryScroll } from './OwnerRepositoryScroll';
 import type { OwnerRepositories } from './OwnerRepositories';
 import { LoadingIndicator } from './LoadingIndicator';
 import { MONITOR_LIMIT } from './MonitorRepositories';
-import { retryLabel, useRetryCountdown } from './useRetryCountdown';
+import { useRetryCountdown } from './useRetryCountdown';
 import './ownerRepositories.css';
 
 type Props = {
@@ -342,12 +342,10 @@ export function OwnerRepositoryPicker({
         }}
       />
       <div className="owner-picker-content" {...(inline ? scrollEvents : {})}>
-        <small id={hintId} className="owner-picker-hint" role="status" aria-live="polite">
+        <small id={hintId} className="owner-picker-hint">
           {snapshot.repositories.length.toLocaleString()} loaded · Name A–Z
           {more || failed.length ? (search ? ' · Clear filter to load more' : ' · Scroll down or Load more') : ''}
           {snapshot.busy && ' · Loading repositories…'}
-          {publicWait > 0 && ` · Public repositories: ${retryLabel(publicWait)}`}
-          {authenticatedWait > 0 && ` · Token access: ${retryLabel(authenticatedWait)}`}
           {inline && snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
         </small>
         <div
