@@ -1,5 +1,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
+// Only bottom-fixed notices belong here: every visible child lifts commit details.
+// Render movable UI (e.g. the debug panel) outside this container.
 // Measure every notice, including children positioned outside normal flow.
 // Consumers update geometry without remounting or refocusing commit details.
 export function AppNotices({ children }: { children: ReactNode }) {
