@@ -409,10 +409,9 @@ export function OwnerRepositoryPicker({
                     title={repository.full_name}
                     onPointerDown={(event) => {
                       if (event.target instanceof HTMLInputElement && !blocked) return;
-                      // Keep focus inside the picker until the label activates its checkbox.
-                      // Otherwise the dialog takes focus and closes the picker first.
+                      // Block the dialog's pointer focus; let native label activation
+                      // focus/toggle the checkbox without inheriting keyboard focus styling.
                       event.preventDefault();
-                      if (!blocked) event.currentTarget.control?.focus({ preventScroll: true });
                     }}
                   >
                     <input
