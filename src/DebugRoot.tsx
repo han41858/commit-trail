@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useEffect, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import { debug } from './debug';
 
 const DebugUI = lazy(() => import('./DebugPanel'));
@@ -33,7 +33,10 @@ class DebugLoadBoundary extends Component<{ children: ReactNode }, { failed: boo
 }
 
 // Stays in the main bundle: only the activation shortcut and mode wiring. The UI loads when debug mode turns on.
-export function DebugRoot({ developer }: { developer: boolean }) {
+export function DebugRoot({ developer, panelHost }: {
+  developer: boolean;
+  panelHost: RefObject<HTMLElement | null>;
+}) {
   const mode = useSyncExternalStore(debug.subscribeMode, debug.getMode);
   useEffect(() => {
     if (!developer) return;
@@ -57,7 +60,7 @@ export function DebugRoot({ developer }: { developer: boolean }) {
   return (
     <DebugLoadBoundary>
       <Suspense fallback={null}>
-        <DebugUI mode={mode} />
+        <DebugUI mode={mode} panelHost={panelHost} />
       </Suspense>
     </DebugLoadBoundary>
   );
