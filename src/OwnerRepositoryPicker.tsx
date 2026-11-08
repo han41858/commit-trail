@@ -278,7 +278,7 @@ export function OwnerRepositoryPicker({
       <div className="owner-picker-heading">
         <strong id={headingId}>
           <span className="owner-picker-heading-name">Repositories for {snapshot.owner}</span>{' '}
-          <span>({snapshot.repositories.length.toLocaleString()})</span>
+          <span>({snapshot.repositories.length.toLocaleString()}{more ? '+' : ''})</span>
         </strong>
         {snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
         {!inline && (
