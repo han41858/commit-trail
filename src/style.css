@@ -277,7 +277,7 @@ input {
   margin: 16px 0;
 }
 .details {
-  bottom: 100px;
+  bottom: 16px;
   right: 16px;
   width: 320px;
   max-height: calc(100% - 220px);
