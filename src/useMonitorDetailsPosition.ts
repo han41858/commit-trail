@@ -13,7 +13,8 @@ export function useMonitorDetailsPosition(
   useLayoutEffect(() => {
     if (!enabled) return;
     const element = pane.current,
-      stage = element?.closest('.monitor-stage');
+      stage = element?.closest('.monitor-stage'),
+      app = element?.closest<HTMLElement>('.app');
     if (!element || !stage) return;
     const viewport = window.visualViewport;
     const update = () => {
@@ -22,6 +23,11 @@ export function useMonitorDetailsPosition(
       if (!anchor.width) return;
       const left = viewport?.offsetLeft ?? 0,
         top = viewport?.offsetTop ?? 0;
+      const clearance = app
+        ? parseFloat(getComputedStyle(app).getPropertyValue('--notices-clearance')) || 0
+        : 0;
+      // The frame already adds its own 8px bottom gap.
+      const noticeTop = clearance ? window.innerHeight - clearance + 8 : undefined;
       const frame = monitorDetailsFrame(anchor, {
         left: Math.max(area.left, left),
         right: Math.min(
@@ -30,7 +36,7 @@ export function useMonitorDetailsPosition(
         ),
         top: Math.max(area.top, top),
         bottom: Math.min(area.bottom, top + (viewport?.height ?? window.innerHeight)),
-      });
+      }, noticeTop);
       const next = {
         left: frame.left,
         width: frame.width,
@@ -51,11 +57,13 @@ export function useMonitorDetailsPosition(
     const observer = new ResizeObserver(update);
     observer.observe(element);
     observer.observe(stage);
+    app?.addEventListener('noticeschange', update);
     window.addEventListener('resize', update);
     viewport?.addEventListener('resize', update);
     viewport?.addEventListener('scroll', update);
     return () => {
       observer.disconnect();
+      app?.removeEventListener('noticeschange', update);
       window.removeEventListener('resize', update);
       viewport?.removeEventListener('resize', update);
       viewport?.removeEventListener('scroll', update);

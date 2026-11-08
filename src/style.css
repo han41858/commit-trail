@@ -277,10 +277,17 @@ input {
   margin: 16px 0;
 }
 .details {
-  bottom: 16px;
+  --details-bottom: 16px;
+  --details-max-height: calc(100% - 220px);
+  --details-viewport-offset: var(--safe-bottom, 0px);
+  --details-notice-offset: max(
+    0px,
+    calc(var(--notices-clearance, 0px) - var(--details-viewport-offset) - var(--details-bottom))
+  );
+  bottom: calc(var(--details-bottom) + var(--details-notice-offset));
   right: 16px;
   width: 320px;
-  max-height: calc(100% - 220px);
+  max-height: max(0px, calc(var(--details-max-height) - var(--details-notice-offset)));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -505,11 +512,11 @@ pre {
     max-height: calc(100% - 250px);
   }
   .details {
-    bottom: 96px;
+    --details-bottom: 96px;
     left: 10px;
     right: 10px;
     width: auto;
-    max-height: 45dvh;
+    --details-max-height: 45dvh;
     padding: 20px;
   }
   .graph-status {
@@ -855,8 +862,8 @@ pre {
     font-size: 10px;
   }
   .details {
-    bottom: 70px;
-    max-height: 50dvh;
+    --details-bottom: 70px;
+    --details-max-height: 50dvh;
   }
   .error {
     bottom: 70px;
@@ -1515,7 +1522,9 @@ pre {
     right: max(10px, var(--safe-right));
     width: auto;
   }
-  .details,
+  .details {
+    --details-bottom: calc(70px + var(--safe-bottom));
+  }
   .error {
     bottom: calc(70px + var(--safe-bottom));
   }

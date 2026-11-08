@@ -51,3 +51,26 @@ test('a column outside the visible area and a collapsed viewport never yield neg
   assert.equal(frame.width, 0);
   assert.equal(frame.maxHeight, 0);
 });
+
+test('notices lift every column and reduce maximum height by the same distance', () => {
+  for (const left of [0, 960]) {
+    const anchor = { left, width: 320 };
+    const before = monitorDetailsFrame(anchor, bounds);
+    const raised = monitorDetailsFrame(anchor, bounds, 700);
+    assert.equal(raised.left, before.left);
+    assert.equal(raised.width, before.width);
+    assert.equal(raised.bottom, 692);
+    assert.equal(raised.maxHeight, before.maxHeight - 100);
+    assert.equal(raised.bottom - raised.maxHeight, before.bottom - before.maxHeight);
+    assert.ok(raised.bottom - raised.maxHeight >= bounds.top);
+    assert.deepEqual(monitorDetailsFrame(anchor, bounds, 900), before);
+  }
+});
+
+test('a tall wrapped notice cannot produce a negative panel height', () => {
+  const frame = monitorDetailsFrame({ left: 195, width: 195 }, {
+    left: 0, right: 390, top: 136, bottom: 844,
+  }, 140);
+  assert.equal(frame.maxHeight, 0);
+  assert.ok(frame.bottom >= 136);
+});

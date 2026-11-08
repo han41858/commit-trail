@@ -10,6 +10,7 @@ import { createRoot } from 'react-dom/client';
 import { debug } from './debug';
 import { DebugRoot } from './DebugRoot';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
+import { AppNotices } from './AppNotices';
 import { registerPwa } from './pwa';
 import { useMeasuredOpen } from './measuredOperations';
 import { Graph } from './Graph';
@@ -855,10 +856,10 @@ function App() {
           }}
         />
       )}
-      <div className="app-notices">
+      <AppNotices>
         <DebugRoot developer={import.meta.env.DEV} />
         <PwaUpdatePrompt />
-      </div>
+      </AppNotices>
       <AppStatus
         state={state}
         extras={extras}
