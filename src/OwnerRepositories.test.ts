@@ -20,7 +20,12 @@ const repository = (
   pushed_at: pushedAt,
 });
 const response = (items: unknown, next = false) =>
-  new Response(JSON.stringify(items), {
+  new Response(JSON.stringify(
+    next && Array.isArray(items)
+      ? [...items, ...Array.from({ length: Math.max(0, 100 - items.length) }, (_, index) =>
+          repository(10000 + index, `other-${index}`, 'another-owner'))]
+      : items,
+  ), {
     headers: next ? { Link: '<https://api.github.com/ignored?page=2>; rel="next"' } : {},
   });
 const names = (store: OwnerRepositories) => store.getSnapshot().repositories.map((repo) => repo.name);
@@ -45,8 +50,8 @@ test('owner query is explicit, anonymous, normalized and uses public owner repos
     assert.equal(url.origin, 'https://api.github.com');
     assert.equal(url.pathname, '/users/owner/repos');
     assert.equal(url.searchParams.get('type'), 'owner');
-    assert.equal(url.searchParams.get('sort'), 'pushed');
-    assert.equal(url.searchParams.get('direction'), 'desc');
+    assert.equal(url.searchParams.get('sort'), 'full_name');
+    assert.equal(url.searchParams.get('direction'), 'asc');
     assert.equal(url.searchParams.get('per_page'), '100');
     assert.equal(url.searchParams.get('page'), '1');
     assert.equal((init?.headers as Record<string, string>).Authorization, undefined);
@@ -88,8 +93,8 @@ test('PAT lookup merges by ID and filters collaboration repositories by exact ow
       assert.equal(auth, 'Bearer limited-pat');
       assert.equal(url.searchParams.get('type'), null);
       assert.equal(url.searchParams.get('affiliation'), 'owner,collaborator,organization_member');
-      assert.equal(url.searchParams.get('sort'), 'pushed');
-      assert.equal(url.searchParams.get('direction'), 'desc');
+      assert.equal(url.searchParams.get('sort'), 'full_name');
+      assert.equal(url.searchParams.get('direction'), 'asc');
       assert.equal(url.searchParams.get('per_page'), '100');
       return response([
         publicRepo,
@@ -165,7 +170,7 @@ test('authenticated results are usable even if the public source fails', async (
   assert.equal(store.getSnapshot().authenticated.error, '');
 });
 
-test('repository order uses descending push time, then case-insensitive name and ID', async (t) => {
+test('repository order uses case-insensitive name regardless of push time', async (t) => {
   const store = fixture(t);
   globalThis.fetch = async () => response([
     repository(1, 'zeta'),
@@ -176,10 +181,10 @@ test('repository order uses descending push time, then case-insensitive name and
     repository(6, 'invalid-push', 'owner', false, 'invalid'),
   ]);
   await store.open('owner');
-  assert.deepEqual(names(store), ['new', 'alpha', 'Beta', 'zeta', 'invalid-push', 'no-push']);
+  assert.deepEqual(names(store), ['alpha', 'Beta', 'invalid-push', 'new', 'no-push', 'zeta']);
 });
 
-test('both sources paginate only on explicit Load more and preserve unmatched authenticated pages', async (t) => {
+test('both sources paginate only on loadMore calls and preserve unmatched authenticated pages', async (t) => {
   const store = fixture(t, 'pat');
   const calls: string[] = [];
   globalThis.fetch = async (input) => {
@@ -229,7 +234,7 @@ test('an empty matching authenticated page is not treated as exhaustion while Li
   assert.equal(authCalls, 2);
 });
 
-test('failed next page keeps prior rows and Retry repeats only the failed source page', async (t) => {
+test('failed next page keeps prior rows and loadMore retries the failed source page', async (t) => {
   const store = fixture(t, 'pat');
   const calls: string[] = [];
   let failed = false;
@@ -249,7 +254,7 @@ test('failed next page keeps prior rows and Retry repeats only the failed source
   await store.loadMore();
   assert.deepEqual(names(store), ['private', 'public']);
   assert.match(store.getSnapshot().public.error, /Could not reach/);
-  await store.retry();
+  await store.loadMore();
   assert.deepEqual(names(store), ['private', 'public', 'public-two']);
   assert.deepEqual(calls.sort(), [
     '/user/repos:1',
@@ -282,14 +287,14 @@ test('public rate limiting does not block authenticated results or retry before 
   await store.open('owner');
   assert.deepEqual(names(store), ['private']);
   assert.equal(store.getSnapshot().public.retryAt, now + 60_000);
-  await store.retry();
+  await store.loadMore();
   assert.equal(publicCalls, 1);
   store.close();
   await store.open('owner');
   assert.equal(publicCalls, 1);
   assert.deepEqual(names(store), ['private']);
   now += 60_001;
-  await store.retry();
+  await store.loadMore();
   assert.equal(publicCalls, 2);
   assert.equal(authCalls, 1);
   assert.deepEqual(names(store), ['private', 'public']);
@@ -321,7 +326,7 @@ test('malformed payload reports a retryable safe error instead of an empty resul
   assert.equal(store.getSnapshot().repositories.length, 0);
 });
 
-test('same-owner open and Load more cannot duplicate in-flight work', async (t) => {
+test('same-owner open and loadMore cannot duplicate in-flight work', async (t) => {
   const store = fixture(t);
   let finish!: (value: Response) => void;
   let calls = 0;
@@ -589,7 +594,7 @@ test('an authenticated rate limit leaves public pagination usable and remains sc
   assert.ok(store.getSnapshot().authenticated.retryAt! > Date.now());
   await store.loadMore();
   assert.deepEqual(names(store), ['public-1', 'public-2']);
-  await store.retry();
+  await store.loadMore();
   assert.equal(calls.filter((path) => path.startsWith('/user/repos:')).length, 1);
   store.setToken('new');
   await store.open('owner');
@@ -639,7 +644,7 @@ test('authentication failure reveals the successful public page when the initial
   assert.equal(store.getSnapshot().busy, false);
 });
 
-test('Load more keeps displayed rows stable and blocks overlapping actions until both sources finish', async (t) => {
+test('loadMore keeps displayed rows stable and blocks overlapping actions until both sources finish', async (t) => {
   const store = fixture(t, 'pat');
   const calls: string[] = [];
   let finishAuth!: (value: Response) => void;
@@ -667,7 +672,7 @@ test('Load more keeps displayed rows stable and blocks overlapping actions until
   assert.equal(store.getSnapshot().public.busy, false);
   assert.equal(store.getSnapshot().authenticated.busy, true);
   await store.loadMore();
-  await store.retry();
+  await store.loadMore();
   await store.open('OWNER');
   assert.equal(calls.length, 4);
   finishAuth(response([repository(4, 'new-private', 'owner', true)]));
@@ -677,7 +682,7 @@ test('Load more keeps displayed rows stable and blocks overlapping actions until
   assert.equal(calls.length, 4);
 });
 
-test('Retry keeps prior rows until every retried source settles and does not replay successful pages', async (t) => {
+test('loadMore retries keep prior rows until every retried source settles and does not replay successful pages', async (t) => {
   const store = fixture(t, 'pat');
   const calls: string[] = [];
   const pending = new Map<string, (value: Response) => void>();
@@ -700,13 +705,12 @@ test('Retry keeps prior rows until every retried source settles and does not rep
   assert.ok(store.getSnapshot().public.error);
   assert.ok(store.getSnapshot().authenticated.error);
   retrying = true;
-  const loading = store.retry();
+  const loading = store.loadMore();
   await flush();
   pending.get('/users/owner/repos')!(response([repository(3, 'new-public')]));
   await flush();
   assert.equal(store.getSnapshot().repositories, originalRows);
   assert.equal(store.getSnapshot().busy, true);
-  await store.retry();
   await store.loadMore();
   assert.equal(calls.length, 6);
   pending.get('/user/repos')!(response([repository(4, 'new-private', 'owner', true)]));
@@ -718,7 +722,7 @@ test('Retry keeps prior rows until every retried source settles and does not rep
   assert.equal(calls.filter((call) => call.endsWith(':1')).length, 2);
 });
 
-test('a failed source in Load more preserves old rows until the other source finishes', async (t) => {
+test('a failed source in loadMore preserves old rows until the other source finishes', async (t) => {
   const store = fixture(t, 'pat');
   let finishPublic!: (value: Response) => void;
   globalThis.fetch = async (input) => {
@@ -745,4 +749,49 @@ test('a failed source in Load more preserves old rows until the other source fin
   assert.deepEqual(names(store), ['new-public', 'private', 'public']);
   assert.ok(store.getSnapshot().authenticated.error);
   assert.equal(store.getSnapshot().busy, false);
+});
+
+test('a short raw page is terminal even if a next Link is present', async (t) => {
+  const store = fixture(t, 'pat');
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(JSON.stringify([repository(1, 'one')]), {
+      headers: { Link: '<https://api.github.com/ignored?page=2>; rel="next"' },
+    });
+  };
+  await store.open('owner');
+  assert.equal(store.getSnapshot().public.more, false);
+  assert.equal(store.getSnapshot().authenticated.more, false);
+  for (let i = 0; i < 10; i++) await store.loadMore();
+  assert.equal(calls, 2);
+});
+
+test('loadMore recovers an initial page failure while advancing a healthy source in one batch', async (t) => {
+  const store = fixture(t, 'pat');
+  const calls: string[] = [];
+  let fail = true;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    const page = Number(url.searchParams.get('page'));
+    calls.push(`${url.pathname}:${page}`);
+    if (url.pathname === '/users/owner/repos') {
+      if (fail) return new Response('{}', { status: 500 });
+      return response([repository(1, 'public')]);
+    }
+    return response([repository(page + 1, `private-${page}`, 'owner', true)], page === 1);
+  };
+  await store.open('owner');
+  assert.ok(store.getSnapshot().public.error);
+  assert.equal(store.getSnapshot().public.more, false);
+  assert.deepEqual(names(store), ['private-1']);
+  fail = false;
+  await store.loadMore();
+  assert.equal(store.getSnapshot().public.error, '');
+  assert.deepEqual(names(store), ['private-1', 'private-2', 'public']);
+  assert.deepEqual(calls.sort(), [
+    '/user/repos:1', '/user/repos:2', '/users/owner/repos:1', '/users/owner/repos:1',
+  ]);
+  await store.loadMore();
+  assert.equal(calls.length, 4);
 });
