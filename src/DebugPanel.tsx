@@ -1,4 +1,5 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { debug } from './debug';
 import { requestActivity } from './requestActivity';
 import './debug.css';
@@ -170,10 +171,14 @@ function Panel() {
   );
 }
 // Loaded on demand by DebugRoot, so users who never enable debug mode do not download the panel or its styles.
-export default function DebugUI({ mode }: { mode: 'button' | 'panel' }) {
-  return mode === 'panel' ? (
-    <Panel />
-  ) : (
+export default function DebugUI({ mode, panelHost }: {
+  mode: 'button' | 'panel';
+  panelHost: RefObject<HTMLElement | null>;
+}) {
+  // Movable diagnostics are not bottom notices; retain the app's theme in the portal.
+  if (mode === 'panel')
+    return panelHost.current ? createPortal(<Panel />, panelHost.current) : null;
+  return (
     <button
       className="debug-entry"
       data-debug-ui

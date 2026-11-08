@@ -203,6 +203,7 @@ function App() {
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute('content', resolvedTheme === 'light' ? '#f2f6fc' : '#070a11');
   }, [resolvedTheme]);
+  const appRef = useRef<HTMLDivElement>(null);
   const optionsRef = useRef<HTMLDivElement>(null),
     toolbarRef = useRef<HTMLElement>(null),
     authRef = useRef<HTMLElement>(null),
@@ -568,6 +569,7 @@ function App() {
   else shareBranches.delete(state.repo);
   return (
     <div
+      ref={appRef}
       className={`app${monitorState.active ? ' app-monitor' : ''}`}
       data-theme={resolvedTheme}
       style={{ '--toolbar-bottom': `${topInset - 20}px` } as React.CSSProperties}
@@ -857,7 +859,7 @@ function App() {
         />
       )}
       <AppNotices>
-        <DebugRoot developer={import.meta.env.DEV} />
+        <DebugRoot developer={import.meta.env.DEV} panelHost={appRef} />
         <PwaUpdatePrompt />
       </AppNotices>
       <AppStatus
