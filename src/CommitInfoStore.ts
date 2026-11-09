@@ -531,7 +531,14 @@ export class CommitInfoStore {
     return task;
   };
   loadMore = (sha: string) => this.refresh(true, sha);
-  refresh = (more = false, sha = this.selected, cycle?: DebugCycle): Promise<RefreshResult> => {
+  // idle: the repository reported no push, so only unfinished Actions can have changed.
+  // A catalog whose last read failed is still retried until it succeeds.
+  refresh = (
+    more = false,
+    sha = this.selected,
+    cycle?: DebugCycle,
+    idle = false,
+  ): Promise<RefreshResult> => {
     const changed = more && this.selected !== sha;
     if (changed) this.selected = sha;
     if (this.batch) {
@@ -543,11 +550,13 @@ export class CommitInfoStore {
     const reader = this.reader;
     const task = Promise.resolve()
       .then(async () => {
-        if (!more || this.next.tags)
+        const quiet = idle && !more,
+          skip = (kind: Kind) => quiet && !this.state.errors[kind];
+        if (!skip('tags') && (!more || this.next.tags))
           await this.guard('tags', reader, () => this.versions('tags', more, reader, cycle));
         if (reader !== this.reader) return {};
         await Promise.all([
-          ...(!more || this.next.releases || this.needsReleaseResolution()
+          ...(!skip('releases') && (!more || this.next.releases || this.needsReleaseResolution())
             ? [
                 this.guard('releases', reader, async () => {
                   await this.versions('releases', more, reader, cycle);
@@ -555,7 +564,11 @@ export class CommitInfoStore {
                 }),
               ]
             : []),
-          ...(!more || (!this.selected && this.next.actions)
+          ...((
+            skip('actions')
+              ? [...this.runs.values()].some(activeRun)
+              : !more || (!this.selected && this.next.actions)
+          )
             ? [
                 this.guard('actions', reader, () =>
                   this.page('actions', more ? this.next.actions : 1, reader, cycle),

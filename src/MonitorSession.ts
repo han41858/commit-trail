@@ -1,4 +1,4 @@
-import { History } from './history';
+import { History, type HistoryRefresh } from './history';
 import { CommitInfoStore } from './CommitInfoStore';
 import { measureRefresh } from './measuredOperations';
 import type { RefreshResult } from './RefreshLoop';
@@ -90,6 +90,26 @@ export class MonitorSession {
     if (retryAt > this.state.retryAt || this.isSettled(this.state) !== this.state.settled)
       this.publish({ retryAt });
   };
+  // Anonymous automatic cycles read tags, releases and Actions only after the
+  // repository reports a push. The policy is the same for single and split views.
+  private metadataAfter(
+    history: History,
+    kind: 'manual' | 'auto',
+    task: Promise<HistoryRefresh>,
+    refresh: (idle: boolean) => Promise<RefreshResult>,
+  ) {
+    if (kind !== 'auto' || !history.anonymous) return refresh(false);
+    // The two stores use separate readers. A limit reported by the repository
+    // read must stop this follow-up before it sends anything.
+    const follow = (idle: boolean, retryAt = 0): Promise<RefreshResult> => {
+      const limit = Math.max(retryAt, this.state.retryAt);
+      return limit > Date.now() ? Promise.resolve({ retryAt: limit }) : refresh(idle);
+    };
+    return task.then(
+      (result) => follow(result.repository !== 'changed', result.retryAt),
+      () => follow(true),
+    );
+  }
   private combined(entry: MonitorEntry): RefreshResult {
     const state = entry.history.getSnapshot(),
       extras = entry.info.getSnapshot();
@@ -238,15 +258,17 @@ export class MonitorSession {
       observe = (result: RefreshResult) =>
         authentication === this.authentication ? this.captureResult(result) : result;
     const task = measureRefresh(kind, this.history, this.info, async (cycle) => {
-      const history = this.history.getSnapshot().error
+      const history: Promise<HistoryRefresh> = this.history.getSnapshot().error
         ? this.history.retry().then(() => {
             const state = this.history.getSnapshot();
             return { error: state.error || undefined, retryAt: state.retryAt || undefined };
           })
-        : this.history.refresh(cycle);
+        : this.history.refresh(cycle, kind);
       const results = await this.settle([
         history.then(observe),
-        this.info.refresh(false, undefined, cycle).then(observe),
+        this.metadataAfter(this.history, kind, history, (idle) =>
+          this.info.refresh(false, undefined, cycle, idle),
+        ).then(observe),
       ]);
       return {
         error:
@@ -287,12 +309,14 @@ export class MonitorSession {
           : entry.primary
             ? this.refreshPrimary(kind)
             : measureRefresh(kind, entry.history, entry.info, async (cycle) => {
-                const history = state.error
+                const history: Promise<HistoryRefresh> = state.error
                   ? entry.history.retry().then(() => this.combined(entry))
-                  : entry.history.refresh(cycle);
+                  : entry.history.refresh(cycle, kind);
                 const metadata =
                   entry.info.getSnapshot().repo === entry.repository
-                    ? entry.info.refresh(false, undefined, cycle)
+                    ? this.metadataAfter(entry.history, kind, history, (idle) =>
+                        entry.info.refresh(false, undefined, cycle, idle),
+                      )
                     : entry.info
                         .open(entry.repository, this.token, cycle)
                         .then(() => this.combined(entry));

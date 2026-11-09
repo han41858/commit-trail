@@ -669,6 +669,7 @@ function App() {
               extras={extras}
               refreshing={!!primaryEntry && monitorState.running.has(primaryEntry)}
               limited={monitorLimited}
+              anonymous={!appliedToken}
             />
           )}
         </section>
@@ -683,6 +684,7 @@ function App() {
                 session={monitor}
                 refreshing={monitorState.running.has(entry)}
                 limited={monitorLimited}
+                anonymous={!appliedToken}
                 selected={selection?.repository === entry.repository ? selection.commit : null}
                 onSelect={selectCommit}
                 onClose={clearSelection}
@@ -868,6 +870,7 @@ function App() {
         refreshState={refreshState}
         discoverySeconds={discoverySeconds}
         refreshRetrySeconds={refreshRetrySeconds}
+        anonymous={!appliedToken}
         onRetryDiscovery={() => void history.retryDiscovery()}
       />
       <Analytics beforeSend={analyticsBeforeSend} />
