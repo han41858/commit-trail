@@ -29,7 +29,7 @@
         "require_last_push_approval": false,
         "required_approving_review_count": 0,
         "required_review_thread_resolution": false,
-        "allowed_merge_methods": ["merge", "squash", "rebase"]
+        "allowed_merge_methods": ["merge"]
       }
     }
   ]
