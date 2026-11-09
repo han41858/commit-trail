@@ -717,10 +717,24 @@ export class History {
     this.publish({ repo });
     await this.run(async (signal) => {
       // The first branch page does not depend on repository metadata; request both at once.
-      const refs = branchesPage(repo, 1, this.token, signal);
+      // It has its own controller: a repository failure ends this task, after which
+      // the task's signal is no longer tracked and could not cancel the request.
+      const early = new AbortController(),
+        stop = () => early.abort();
+      signal.addEventListener('abort', stop, { once: true });
+      debug.bind(early.signal, this.debugInitial);
+      const refs = branchesPage(repo, 1, this.token, early.signal);
       // A repository error below is reported instead of this request's own failure.
-      refs.catch(() => {});
-      const { data: meta } = await github<Meta>(`/repos/${repo}`, this.token, signal);
+      refs
+        .catch(() => {})
+        .finally(() => signal.removeEventListener('abort', stop));
+      let meta: Meta;
+      try {
+        meta = (await github<Meta>(`/repos/${repo}`, this.token, signal)).data;
+      } catch (error) {
+        stop();
+        throw error;
+      }
       this.current(signal);
       if (typeof meta.private === 'boolean') this.onRepositoryMetadata?.(repo, meta.private, true);
       this.seenPush = typeof meta.pushed_at === 'string' ? meta.pushed_at : undefined;
