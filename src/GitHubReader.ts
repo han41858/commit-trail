@@ -15,7 +15,12 @@ export class GitHubReader {
     this.cache.clear();
     this.pending.clear();
   }
-  get<T>(path: string, immutable = false, cycle?: DebugCycle): Promise<GitHubPage<T>> {
+  get<T>(
+    path: string,
+    immutable = false,
+    cycle?: DebugCycle,
+    revalidate = false,
+  ): Promise<GitHubPage<T>> {
     cycle = cycle ?? debug.forSignal(this.controller.signal);
     if (immutable && this.cache.has(path)) {
       debug.cache(path, cycle);
@@ -41,6 +46,7 @@ export class GitHubReader {
             signal,
             this.cache.get(path) as GitHubPage<T> | undefined,
             cycle,
+            revalidate,
           ),
         cycle,
       )

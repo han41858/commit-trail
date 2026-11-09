@@ -26,6 +26,9 @@ export async function github<T>(
   signal?: AbortSignal,
   cached?: GitHubPage<T>,
   cycle?: DebugCycle,
+  // Ref state must not come from the browser's HTTP cache: GitHub allows reuse
+  // for 60 seconds, so a deleted branch could be read back as live.
+  revalidate = false,
 ): Promise<GitHubPage<T>> {
   const probe = debug.request(
     path,
@@ -40,6 +43,8 @@ export async function github<T>(
     try {
       r = await fetch(`https://api.github.com${path}`, {
         signal,
+        // A request carrying If-None-Match already bypasses the browser cache.
+        ...(revalidate && !cached?.etag ? { cache: 'no-cache' as const } : {}),
         headers: {
           Accept: 'application/vnd.github+json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -154,7 +159,14 @@ export const commitsPage = (
     signal,
   );
 export const branchesPage = (repo: string, page: number, token: string, signal?: AbortSignal) =>
-  github<Branch[]>(`/repos/${repo}/branches?per_page=100&page=${page}`, token, signal);
+  github<Branch[]>(
+    `/repos/${repo}/branches?per_page=100&page=${page}`,
+    token,
+    signal,
+    undefined,
+    undefined,
+    true,
+  );
 
 export async function branchByName(
   repo: string,
@@ -164,7 +176,14 @@ export async function branchByName(
 ) {
   try {
     return (
-      await github<Branch>(`/repos/${repo}/branches/${encodeURIComponent(name)}`, token, signal)
+      await github<Branch>(
+        `/repos/${repo}/branches/${encodeURIComponent(name)}`,
+        token,
+        signal,
+        undefined,
+        undefined,
+        true,
+      )
     ).data;
   } catch (e) {
     if (e instanceof GitHubError && e.status === 404) return null;

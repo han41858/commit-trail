@@ -150,6 +150,10 @@ export class History {
   get anonymous() {
     return !this.token;
   }
+  // Opening, base selection and direction changes rebuild the traversal.
+  get loadingBase() {
+    return this.snapshot.busy && !this.started;
+  }
   private publish(patch: Partial<HistorySnapshot> = {}) {
     this.snapshot = { ...this.snapshot, ...patch };
     this.snapshot.more = this.snapshot.frontiers.length > 0;
@@ -476,7 +480,10 @@ export class History {
     }
     if (this.restoreController && !this.restoreController.signal.aborted)
       return Promise.resolve({});
-    if (!this.snapshot.meta || this.snapshot.busy) return Promise.resolve({});
+    // Boundary, activity and picker loads stay busy while a request is slow or
+    // stalled. They are checked against refreshVersion, so they must not hold
+    // back ref sync; only an unestablished base traversal does.
+    if (!this.snapshot.meta || this.loadingBase) return Promise.resolve({});
     if (this.snapshot.retryAt && this.snapshot.retryAt > Date.now())
       return Promise.resolve({ error: this.snapshot.error, retryAt: this.snapshot.retryAt });
     if (!this.started) {
@@ -551,6 +558,9 @@ export class History {
       for (let count = 0; count < 3; count++) {
         const result = await reader.get<Branch[]>(
           `/repos/${repo}/branches?per_page=100&page=${scan.page}`,
+          false,
+          undefined,
+          true,
         );
         signal.throwIfAborted();
         if (!Array.isArray(result.data)) throw new Error('Branch refresh returned invalid data.');
