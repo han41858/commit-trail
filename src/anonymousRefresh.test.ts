@@ -18,17 +18,27 @@ async function using(
     group: MonitorSession;
     history: History;
     info: CommitInfoStore;
-    remote: { pushedAt: string; runs: Run[] };
+    remote: { pushedAt: string; runs: Run[]; failures: Map<string, number> };
     cycle: (work: () => Promise<unknown>) => Promise<string[]>;
   }) => Promise<void>,
 ) {
   const original = globalThis.fetch,
-    remote = { pushedAt: '2026-11-01T00:00:00Z', runs: [] as Run[] };
+    remote = {
+      pushedAt: '2026-11-01T00:00:00Z',
+      runs: [] as Run[],
+      failures: new Map<string, number>(),
+    };
   let paths: string[] = [];
   const json = (data: unknown) => new Response(JSON.stringify(data));
   globalThis.fetch = async (input) => {
     const path = new URL(String(input)).pathname;
     paths.push(path);
+    const failure = remote.failures.get(path);
+    if (failure)
+      return new Response('{}', {
+        status: failure,
+        headers: failure === 429 ? { 'Retry-After': '60' } : {},
+      });
     if (path.endsWith('/branches')) return json([{ name: 'main', commit: { sha: 'head' } }]);
     if (path.endsWith('/commits'))
       return json([
@@ -135,5 +145,41 @@ test('split view applies the same anonymous policy to every repository', async (
       await cycle(() => group.refreshAll('manual')),
       [...full('a/one'), ...full('b/two')].sort(),
     );
+  });
+});
+test('a failed metadata read is retried on unchanged cycles until it succeeds', async () => {
+  await using(async ({ group, history, info, remote, cycle }) => {
+    await history.open('a/one');
+    await info.open('a/one', '');
+    const auto = () => cycle(() => group.refreshPrimary('auto'));
+    remote.failures.set('/repos/a/one/tags', 503);
+    assert.deepEqual(await auto(), full('a/one'));
+    assert.ok(info.getSnapshot().errors.tags);
+    assert.deepEqual(await auto(), ['/repos/a/one', '/repos/a/one/tags']);
+    assert.ok(info.getSnapshot().errors.tags);
+    remote.failures.clear();
+    assert.deepEqual(await auto(), ['/repos/a/one', '/repos/a/one/tags']);
+    assert.equal(info.getSnapshot().errors.tags, undefined);
+    assert.deepEqual(await auto(), ['/repos/a/one']);
+  });
+});
+test('a rate limit on the repository read starts no follow-up Actions request', async () => {
+  await using(async ({ group, history, info, remote, cycle }) => {
+    remote.runs = [{ id: 1, status: 'in_progress', conclusion: null }];
+    await history.open('a/one');
+    await info.open('a/one', '');
+    await cycle(() => group.refreshPrimary('auto'));
+    remote.failures.set('/repos/a/one', 429);
+    assert.deepEqual(await cycle(() => group.refreshPrimary('auto')), ['/repos/a/one']);
+    assert.equal(group.canRequest(), false);
+  });
+  await using(async ({ group, remote, cycle }) => {
+    remote.runs = [{ id: 1, status: 'in_progress', conclusion: null }];
+    await cycle(async () => group.start(['a/one', 'b/two'], ''));
+    await cycle(() => group.refreshAll('auto'));
+    remote.failures.set('/repos/a/one', 429);
+    const paths = await cycle(() => group.refreshAll('auto'));
+    assert.ok(!paths.includes('/repos/a/one/actions/runs'));
+    assert.equal(group.canRequest(), false);
   });
 });

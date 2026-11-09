@@ -99,9 +99,15 @@ export class MonitorSession {
     refresh: (idle: boolean) => Promise<RefreshResult>,
   ) {
     if (kind !== 'auto' || !history.anonymous) return refresh(false);
+    // The two stores use separate readers. A limit reported by the repository
+    // read must stop this follow-up before it sends anything.
+    const follow = (idle: boolean, retryAt = 0): Promise<RefreshResult> => {
+      const limit = Math.max(retryAt, this.state.retryAt);
+      return limit > Date.now() ? Promise.resolve({ retryAt: limit }) : refresh(idle);
+    };
     return task.then(
-      (result) => refresh(result.repository !== 'changed'),
-      () => refresh(true),
+      (result) => follow(result.repository !== 'changed', result.retryAt),
+      () => follow(true),
     );
   }
   private combined(entry: MonitorEntry): RefreshResult {
