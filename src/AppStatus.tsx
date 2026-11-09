@@ -10,6 +10,7 @@ export function AppStatus({
   refreshState,
   discoverySeconds,
   refreshRetrySeconds,
+  anonymous,
   onRetryDiscovery,
 }: {
   state: HistorySnapshot;
@@ -17,6 +18,7 @@ export function AppStatus({
   refreshState: RefreshState;
   discoverySeconds: number;
   refreshRetrySeconds: number;
+  anonymous: boolean;
   onRetryDiscovery: () => void;
 }) {
   return (
@@ -41,7 +43,9 @@ export function AppStatus({
           refreshState.lastCompletedAt !== null) && (
           <span className="refresh-status" role="status" title={refreshState.error || undefined}>
             {refreshRetrySeconds
-              ? `Retry in ${refreshRetrySeconds}s`
+              ? anonymous
+                ? 'Rate limit · token needed'
+                : `Retry in ${refreshRetrySeconds}s`
               : refreshState.error
                 ? 'Refresh failed'
                 : refreshState.lastCompletedAt !== null

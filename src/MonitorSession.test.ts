@@ -455,7 +455,7 @@ test('a rate limit is shared immediately even if the same repository metadata re
     group.start(['a/one'], '');
     holds.set('/repos/a/one/tags', deferred<Response>());
     failures.set('/repos/a/one', 429);
-    await group.refreshAll('auto');
+    await group.refreshAll('manual');
     await until(() => !group.canRequest());
     assert.equal(group.getSnapshot().running.size, 1);
   });

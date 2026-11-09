@@ -20,6 +20,13 @@ type Meta = {
   description: string | null;
   stargazers_count: number;
   private?: boolean;
+  pushed_at?: string | null;
+};
+export type HistoryRefresh = {
+  error?: string;
+  retryAt?: number;
+  // Set only when this refresh compared the repository with GitHub.
+  repository?: 'changed' | 'unchanged';
 };
 export type HistorySnapshot = {
   repo: string;
@@ -98,7 +105,9 @@ export class History {
   private branchScan: { page: number; refs: Map<string, Branch> } | null = null;
   private catalogComplete = false;
   private deletedRefs = new Set<string>();
-  private refreshing: Promise<{ error?: string; retryAt?: number }> | null = null;
+  private refreshing: Promise<HistoryRefresh> | null = null;
+  private seenPush: string | undefined;
+  private syncedPush: string | undefined;
   private listeners = new Set<() => void>();
   private controllers = new Set<AbortController>();
   private generation = 0;
@@ -138,6 +147,9 @@ export class History {
   setToken = (token: string) => {
     this.token = token;
   };
+  get anonymous() {
+    return !this.token;
+  }
   private publish(patch: Partial<HistorySnapshot> = {}) {
     this.snapshot = { ...this.snapshot, ...patch };
     this.snapshot.more = this.snapshot.frontiers.length > 0;
@@ -218,6 +230,8 @@ export class History {
     this.pullsNext = true;
     this.checkedRefs.clear();
     this.deletedRefs.clear();
+    this.seenPush = undefined;
+    this.syncedPush = undefined;
     this.activity.clear();
     this.activityCursor = undefined;
     this.activityRequested.clear();
@@ -454,7 +468,7 @@ export class History {
     // Ref pagination enriches labels/picker choices without fetching any commits.
     this.addRefs(result.data.filter((ref) => ref.name !== this.snapshot.base || !this.started));
   }
-  refresh = (cycle?: DebugCycle): Promise<{ error?: string; retryAt?: number }> => {
+  refresh = (cycle?: DebugCycle, kind: 'manual' | 'auto' = 'manual'): Promise<HistoryRefresh> => {
     if (this.refreshing) {
       debug.cache('other', cycle, 'shared');
       return this.refreshing;
@@ -499,13 +513,16 @@ export class History {
       return task;
     }
     const generation = this.generation;
-    const task = this.refreshCurrent(cycle).finally(() => {
+    const task = this.refreshCurrent(cycle, kind).finally(() => {
       if (this.refreshing === task) this.refreshing = null;
     });
     this.refreshing = task;
     return task.then((result) => (generation === this.generation ? result : {}));
   };
-  private async refreshCurrent(cycle?: DebugCycle): Promise<{ error?: string; retryAt?: number }> {
+  private async refreshCurrent(
+    cycle: DebugCycle | undefined,
+    kind: 'manual' | 'auto',
+  ): Promise<HistoryRefresh> {
     const reader = this.refreshReader ?? (this.refreshReader = new GitHubReader(this.token));
     const signal = reader.controller.signal,
       repo = this.snapshot.repo;
@@ -514,6 +531,19 @@ export class History {
       const meta = (await reader.get<Meta>(`/repos/${repo}`)).data;
       signal.throwIfAborted();
       if (typeof meta.private === 'boolean') this.onRepositoryMetadata?.(repo, meta.private, false);
+      const pushed = typeof meta.pushed_at === 'string' ? meta.pushed_at : undefined;
+      // Anonymous 304 responses still consume the rate limit. An automatic cycle
+      // stops here until the repository reports a push; manual refresh reads everything.
+      if (
+        kind === 'auto' &&
+        this.anonymous &&
+        pushed !== undefined &&
+        pushed === this.syncedPush &&
+        !this.branchScan
+      ) {
+        if (this.snapshot.refreshError) this.publish({ refreshError: '' });
+        return { repository: 'unchanged' };
+      }
       const scan = this.branchScan ?? { page: 1, refs: new Map<string, Branch>() };
       this.branchScan = scan;
       let complete = false;
@@ -535,7 +565,7 @@ export class History {
           refreshError: '',
           refreshNotice: 'Branch list is partial; deletion detection waits for all pages.',
         });
-        return {};
+        return { repository: 'changed' };
       }
       const previous = new Map(this.snapshot.branches.map((ref) => [ref.name, ref]));
       const pinned = this.snapshot.reverse && this.nextPage > 0;
@@ -630,7 +660,11 @@ export class History {
         }
       }
       this.integrate([], patch, cycle);
-      return {};
+      // Branch and Actions responses can lag behind a push. Trust a push time only
+      // after a second full refresh has seen the same value.
+      this.syncedPush = pushed !== undefined && pushed === this.seenPush ? pushed : undefined;
+      this.seenPush = pushed;
+      return { repository: 'changed' };
     } catch (error) {
       if (signal.aborted) {
         if (cycle) cycle.cancelled = true;
@@ -684,6 +718,7 @@ export class History {
       const { data: meta } = await github<Meta>(`/repos/${repo}`, this.token, signal);
       this.current(signal);
       if (typeof meta.private === 'boolean') this.onRepositoryMetadata?.(repo, meta.private, true);
+      this.seenPush = typeof meta.pushed_at === 'string' ? meta.pushed_at : undefined;
       this.publish({ meta, base: meta.default_branch });
       await this.fetchRefs(signal);
       const base = await this.initialBase(this.requestedBranch, signal);
