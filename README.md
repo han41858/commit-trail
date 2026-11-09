@@ -63,7 +63,7 @@ Owner lists appear after you submit the input; typing makes no requests. Reposit
 
 Commit Trail remembers the last branch you choose for each repository in this browser. An explicit `branch` in a shared URL takes priority for that visit without changing your saved choice; otherwise it restores your choice, then falls back to `main`, `master`, or the repository default.
 
-Use **Options** to choose a theme and refresh interval. Install Commit Trail from your browser's app menu or add it to your home screen. The PWA caches the app shell; GitHub data still needs a connection.
+Use **Options** to choose a theme and refresh interval; your choices are remembered in this browser. Install Commit Trail from your browser's app menu or add it to your home screen. The PWA caches the app shell; GitHub data still needs a connection.
 
 Shared links restore the view when opened or reloaded, with repositories arranged left to right in URL order:
 
