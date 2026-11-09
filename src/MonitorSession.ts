@@ -300,7 +300,9 @@ export class MonitorSession {
       started: Promise<RefreshResult>[] = [];
     for (const entry of entries) {
       const state = entry.history.getSnapshot();
-      if (this.tasks.has(entry) || state.busy || entry.info.getSnapshot().busy) continue;
+      // Boundary and metadata loads may stall; they do not hold back ref sync.
+      // The stores share their own in-flight refreshes.
+      if (this.tasks.has(entry) || entry.history.loadingBase) continue;
       const task = this.run(entry, () =>
         !state.meta
           ? entry.primary

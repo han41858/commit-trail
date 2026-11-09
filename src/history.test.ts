@@ -308,6 +308,74 @@ test('a late branch-picker page cannot restore a deleted ref after an authoritat
   );
 });
 
+test('a pending boundary load does not postpone removing a merged and deleted branch', async () => {
+  const main = gitSha(61),
+    root = gitSha(62),
+    feature = gitSha(63),
+    parent = gitSha(64);
+  let deleted = false;
+  let enterParent!: () => void, releaseParent!: (value: Response) => void;
+  const parentEntered = new Promise<void>((r) => (enterParent = r)),
+    parentGate = new Promise<Response>((r) => (releaseParent = r));
+  await using(
+    (url) => {
+      if (url.pathname.endsWith('/branches'))
+        return response([ref('main', main), ...(deleted ? [] : [ref('feature', feature)])]);
+      if (url.pathname.endsWith('/activity')) return response([]);
+      if (url.pathname.endsWith('/commits')) {
+        const sha = url.searchParams.get('sha');
+        if (sha === 'main') return response([commit(main, root)]);
+        if (sha === root) {
+          enterParent();
+          return parentGate;
+        }
+      }
+    },
+    async (h) => {
+      await h.open('a/b');
+      assert.ok(h.getSnapshot().branches.some((b) => b.name === 'feature'));
+      const boundary = h.loadMore([root]);
+      await parentEntered;
+      assert.equal(h.getSnapshot().busy, true);
+      deleted = true;
+      await h.refresh();
+      assert.deepEqual(
+        h.getSnapshot().branches.map((b) => b.name),
+        ['main'],
+      );
+      releaseParent(response([commit(root, parent), commit(parent)]));
+      await boundary;
+      assert.ok(h.getSnapshot().commits.some((c) => c.sha === root));
+      assert.ok(!h.getSnapshot().branches.some((b) => b.name === 'feature'));
+    },
+  );
+});
+
+test('branch state requests bypass the browser HTTP cache', async () => {
+  const original = globalThis.fetch,
+    modes = new Map<string, RequestCache | undefined>(),
+    history = new History();
+  try {
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      modes.set(`${url.pathname}?${url.searchParams.get('page') ?? ''}`, init?.cache);
+      if (url.pathname.endsWith('/branches')) return response([ref('main', 'm')]);
+      if (url.pathname.endsWith('/activity')) return response([]);
+      if (url.pathname.endsWith('/commits')) return response([commit('m')]);
+      return response({ default_branch: 'main', stargazers_count: 0 });
+    };
+    await history.open('a/b');
+    await history.refresh();
+    assert.equal(modes.get('/repos/a/b/branches?1'), 'no-cache');
+    assert.equal(modes.get('/repos/a/b/commits?1'), undefined);
+    await history.findBranch('missing');
+    assert.equal(modes.get('/repos/a/b/branches/missing?'), 'no-cache');
+  } finally {
+    history.cancel();
+    globalThis.fetch = original;
+  }
+});
+
 for (const source of ['ranking', 'search'])
   test(`a late ${source} lookup cannot restore a removed ref or select it`, async () => {
     const main = gitSha(41),
