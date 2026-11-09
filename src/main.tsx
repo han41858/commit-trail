@@ -43,6 +43,7 @@ import logo from '../assets/logo-320.png';
 import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
 import { AccessTokenPanel } from './AccessTokenPanel';
 import { ViewOptions } from './ViewOptions';
+import { readViewOptions, saveViewOptions } from './viewOptions';
 import { AppStatus } from './AppStatus';
 import { OwnerRepositories } from './OwnerRepositories';
 import { Analytics } from '@vercel/analytics/react';
@@ -172,8 +173,9 @@ function App() {
   const [input, setInput] = useState(configuration.repositories[0] || '');
   const [appliedToken, setAppliedToken] = useState(savedToken.token),
     [authRevision, setAuthRevision] = useState(0),
-    [autoRefresh, setAutoRefresh] = useState(true),
-    [intervalChoice, setIntervalChoice] = useState<number | null>(null);
+    [savedOptions] = useState(readViewOptions),
+    [autoRefresh, setAutoRefresh] = useState(savedOptions.autoRefresh),
+    [intervalChoice, setIntervalChoice] = useState<number | null>(savedOptions.interval);
   const seconds =
     intervalChoice === 30 && !appliedToken ? 300 : (intervalChoice ?? (appliedToken ? 60 : 300));
   const refreshRetrySeconds = useRetryCountdown(refreshState.retryAt || null);
@@ -181,8 +183,11 @@ function App() {
     [tokenStorageError, setTokenStorageError] = useState(savedToken.error),
     [tokenApplied, setTokenApplied] = useState(savedToken.token !== ''),
     [auth, setAuth] = useState(false),
-    [theme, setTheme] = useState('system'),
+    [theme, setTheme] = useState(savedOptions.theme),
     [options, setOptions] = useState(false);
+  useEffect(() => {
+    saveViewOptions({ theme, autoRefresh, interval: intervalChoice });
+  }, [theme, autoRefresh, intervalChoice]);
   const [monitorSetup, setMonitorSetup] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
   useEffect(() => {
