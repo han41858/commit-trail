@@ -552,6 +552,16 @@ export class CommitInfoStore {
       .then(async () => {
         const quiet = idle && !more,
           skip = (kind: Kind) => quiet && !this.state.errors[kind];
+        // Actions do not depend on tags; releases wait because they resolve against them.
+        const actions = (
+          skip('actions')
+            ? [...this.runs.values()].some(activeRun)
+            : !more || (!this.selected && this.next.actions)
+        )
+          ? this.guard('actions', reader, () =>
+              this.page('actions', more ? this.next.actions : 1, reader, cycle),
+            )
+          : undefined;
         if (!skip('tags') && (!more || this.next.tags))
           await this.guard('tags', reader, () => this.versions('tags', more, reader, cycle));
         if (reader !== this.reader) return {};
@@ -564,17 +574,7 @@ export class CommitInfoStore {
                 }),
               ]
             : []),
-          ...((
-            skip('actions')
-              ? [...this.runs.values()].some(activeRun)
-              : !more || (!this.selected && this.next.actions)
-          )
-            ? [
-                this.guard('actions', reader, () =>
-                  this.page('actions', more ? this.next.actions : 1, reader, cycle),
-                ),
-              ]
-            : []),
+          ...(actions ? [actions] : []),
         ]);
         if (reader !== this.reader) return {};
         if (!more) await this.refreshActiveRuns(reader, cycle);
