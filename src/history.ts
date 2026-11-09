@@ -457,9 +457,10 @@ export class History {
     }
     return false;
   }
-  private async fetchRefs(signal: AbortSignal) {
+  private async fetchRefs(signal: AbortSignal, pending?: ReturnType<typeof branchesPage>) {
     const refreshVersion = this.snapshot.refreshVersion;
-    const result = await branchesPage(this.snapshot.repo, this.refsPage + 1, this.token, signal);
+    const result = await (pending ??
+      branchesPage(this.snapshot.repo, this.refsPage + 1, this.token, signal));
     this.current(signal);
     if (refreshVersion !== this.snapshot.refreshVersion) return;
     this.refsPage++;
@@ -715,12 +716,16 @@ export class History {
     this.refsNext = true;
     this.publish({ repo });
     await this.run(async (signal) => {
+      // The first branch page does not depend on repository metadata; request both at once.
+      const refs = branchesPage(repo, 1, this.token, signal);
+      // A repository error below is reported instead of this request's own failure.
+      refs.catch(() => {});
       const { data: meta } = await github<Meta>(`/repos/${repo}`, this.token, signal);
       this.current(signal);
       if (typeof meta.private === 'boolean') this.onRepositoryMetadata?.(repo, meta.private, true);
       this.seenPush = typeof meta.pushed_at === 'string' ? meta.pushed_at : undefined;
       this.publish({ meta, base: meta.default_branch });
-      await this.fetchRefs(signal);
+      await this.fetchRefs(signal, refs);
       const base = await this.initialBase(this.requestedBranch, signal);
       this.current(signal);
       this.initialResolved = true;
