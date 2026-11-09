@@ -214,7 +214,8 @@ function App() {
   useEffect(() => {
     if (!monitorState.active) return;
     const key = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      // A popup that this Escape just closed has already claimed the key.
+      if (event.key === 'Escape' && !event.defaultPrevented) {
         event.preventDefault();
         leaveMonitor();
       }
@@ -444,6 +445,8 @@ function App() {
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // Close the open popup first; Split view handles the next Escape.
+        event.preventDefault();
         setOptions(false);
         setAuth(false);
         setSelection(null);
