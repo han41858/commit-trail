@@ -43,6 +43,7 @@ import logo from '../assets/logo-320.png';
 import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
 import { AccessTokenPanel } from './AccessTokenPanel';
 import { ViewOptions } from './ViewOptions';
+import { readViewOptions, saveViewOptions } from './viewOptions';
 import { AppStatus } from './AppStatus';
 import { OwnerRepositories } from './OwnerRepositories';
 import { Analytics } from '@vercel/analytics/react';
@@ -172,8 +173,9 @@ function App() {
   const [input, setInput] = useState(configuration.repositories[0] || '');
   const [appliedToken, setAppliedToken] = useState(savedToken.token),
     [authRevision, setAuthRevision] = useState(0),
-    [autoRefresh, setAutoRefresh] = useState(true),
-    [intervalChoice, setIntervalChoice] = useState<number | null>(null);
+    [savedOptions] = useState(readViewOptions),
+    [autoRefresh, setAutoRefresh] = useState(savedOptions.autoRefresh),
+    [intervalChoice, setIntervalChoice] = useState<number | null>(savedOptions.interval);
   const seconds =
     intervalChoice === 30 && !appliedToken ? 300 : (intervalChoice ?? (appliedToken ? 60 : 300));
   const refreshRetrySeconds = useRetryCountdown(refreshState.retryAt || null);
@@ -181,8 +183,11 @@ function App() {
     [tokenStorageError, setTokenStorageError] = useState(savedToken.error),
     [tokenApplied, setTokenApplied] = useState(savedToken.token !== ''),
     [auth, setAuth] = useState(false),
-    [theme, setTheme] = useState('system'),
+    [theme, setTheme] = useState(savedOptions.theme),
     [options, setOptions] = useState(false);
+  useEffect(() => {
+    saveViewOptions({ theme, autoRefresh, interval: intervalChoice });
+  }, [theme, autoRefresh, intervalChoice]);
   const [monitorSetup, setMonitorSetup] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
   useEffect(() => {
@@ -214,7 +219,8 @@ function App() {
   useEffect(() => {
     if (!monitorState.active) return;
     const key = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      // A popup that this Escape just closed has already claimed the key.
+      if (event.key === 'Escape' && !event.defaultPrevented) {
         event.preventDefault();
         leaveMonitor();
       }
@@ -444,6 +450,8 @@ function App() {
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // Close the open popup first; Split view handles the next Escape.
+        event.preventDefault();
         setOptions(false);
         setAuth(false);
         setSelection(null);
@@ -669,6 +677,7 @@ function App() {
               extras={extras}
               refreshing={!!primaryEntry && monitorState.running.has(primaryEntry)}
               limited={monitorLimited}
+              anonymous={!appliedToken}
             />
           )}
         </section>
@@ -683,6 +692,7 @@ function App() {
                 session={monitor}
                 refreshing={monitorState.running.has(entry)}
                 limited={monitorLimited}
+                anonymous={!appliedToken}
                 selected={selection?.repository === entry.repository ? selection.commit : null}
                 onSelect={selectCommit}
                 onClose={clearSelection}
@@ -868,6 +878,7 @@ function App() {
         refreshState={refreshState}
         discoverySeconds={discoverySeconds}
         refreshRetrySeconds={refreshRetrySeconds}
+        anonymous={!appliedToken}
         onRetryDiscovery={() => void history.retryDiscovery()}
       />
       <Analytics beforeSend={analyticsBeforeSend} />

@@ -13,11 +13,13 @@ export function MonitorStatus({
   extras,
   refreshing,
   limited,
+  anonymous,
 }: {
   state: HistorySnapshot;
   extras: InfoSnapshot;
   refreshing: boolean;
   limited: boolean;
+  anonymous: boolean;
 }) {
   const error =
     state.error ||
@@ -33,7 +35,9 @@ export function MonitorStatus({
         label="Loading repository"
       />
       {limited ? (
-        <p role="status">GitHub rate limit · waiting to retry</p>
+        <p role="status">
+          {anonymous ? 'GitHub rate limit · token needed' : 'GitHub rate limit · waiting to retry'}
+        </p>
       ) : error ? (
         <p role="alert">{error}</p>
       ) : null}
@@ -47,6 +51,7 @@ export const MonitorPane = memo(function MonitorPane({
   session,
   refreshing,
   limited,
+  anonymous,
   selected,
   onSelect,
   onClose,
@@ -57,6 +62,7 @@ export const MonitorPane = memo(function MonitorPane({
   session: MonitorSession;
   refreshing: boolean;
   limited: boolean;
+  anonymous: boolean;
   selected: Commit | null;
   onSelect: (repository: string, commit: Commit) => void;
   onClose: () => void;
@@ -144,7 +150,13 @@ export const MonitorPane = memo(function MonitorPane({
           onMore={session.canRequest() ? entry.info.loadMore : undefined}
         />
       )}
-      <MonitorStatus state={state} extras={extras} refreshing={refreshing} limited={limited} />
+      <MonitorStatus
+        state={state}
+        extras={extras}
+        refreshing={refreshing}
+        limited={limited}
+        anonymous={anonymous}
+      />
     </section>
   );
 });
