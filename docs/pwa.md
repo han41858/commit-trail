@@ -212,11 +212,11 @@ PWA 설치 여부가 인증 권한이나 GitHub API 호출 제한에 영향을 �
 
 기존 GitHub–Vercel Git Integration 배포 정책을 유지합니다.
 
-| 브랜치              | 배포 환경  |
-| ------------------- | ---------- |
-| feature/_, fix/_ 등 | Preview    |
-| dev                 | Preview    |
-| main                | Production |
+| 브랜치                  | 배포 환경  |
+| ----------------------- | ---------- |
+| `feature/*`, `fix/*` 등 | Preview    |
+| dev                     | Preview    |
+| main                    | Production |
 
 - 브랜치별 Preview 자동 배포 유지
 - main 병합 시 Production 자동 배포 유지
