@@ -1,0 +1,9 @@
+# Generated dependencies, build output and local caches
+node_modules/
+dist/
+.vercel/
+.npm-cache/
+*.tsbuildinfo
+
+# Managed by npm
+package-lock.json

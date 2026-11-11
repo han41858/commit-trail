@@ -13,7 +13,10 @@ npm ci
 npm run dev
 npm test
 npm run build
+npm run format:check
 ```
+
+Formatting uses an exactly pinned Prettier version and the shared `han41858/ai-native` configuration in `prettier.config.mjs`. Run `npm run format` to format supported files across the repository, or `npm run format:check` to check them without writing. Generated outputs, local caches and the npm-managed `package-lock.json` are excluded. No formatting plugins or Git hooks are required. CI checks formatting even for documentation-only changes.
 
 Deploy `dist/` to any static host. Repository selection uses `?repo=owner%2Frepo` and survives refresh without server rewrites.
 
@@ -170,7 +173,7 @@ The existing Vercel project `commit-trail` is linked to `han41858/commit-trail`.
 
 - Feature branches (`feature/*` and existing `feat/*`) and `dev` receive Preview deployments through Vercel Git Integration, unless the documentation-only rule below cancels the build.
 - Merging a PR into `main` starts the Production build and deployment unless only audited non-build documentation changed. Every feature, fix, documentation and configuration change first reaches `dev` through a PR. Only a PR from this repository's `dev` branch may target `main`; the required CI job rejects other source branches and forks. Feature, recovery and release branches must not promote directly to `main`.
-- `.github/workflows/ci.yml` starts **Test and build** when PRs targeting `dev` or `main` open, reopen, receive commits or are edited, and on pushes to those branches. Each validation runs the promotion guard. For code, build inputs, automation or uncertain changes it retains `npm ci`, all application and automation tests, and `npm run build`, using `.nvmrc` and the npm download cache. For verified documentation-only changes it reports success without Node setup, dependency installation, tests or build. No new Secrets are needed.
+- `.github/workflows/ci.yml` starts **Test and build** when PRs targeting `dev` or `main` open, reopen, receive commits or are edited, and on pushes to those branches. Each validation runs the promotion guard. For code, build inputs, automation or uncertain changes it retains `npm ci`, all application and automation tests, and `npm run build`, using `.nvmrc` and the npm download cache. Every validation sets up Node, installs dependencies and runs `npm run format:check`. For verified documentation-only changes it skips application and automation tests and the build. No new Secrets are needed.
 - The required GitHub Actions check is **Test and build**. The Ruleset definitions in `.github/rulesets/` retain the existing protections and add this check. `dev` also requires PR branches to be up to date, so concurrent feature PRs are tested against the latest `dev`. `main` does not require an up-to-date head, but every main-targeted PR still validates its proposed merge. Its intentional file difference from `dev` is `.github/workflows/production-release.yml`. Ordinary `dev` → `main` merge commits preserve this main-only addition; do not copy it back into `dev` or merge a main-based feature branch into dev. These JSON files are definitions; changing them in Git does not update GitHub's active Rulesets automatically.
 - GitHub Actions performs validation; Vercel Git Integration performs deployment. Preview builds can run alongside CI. Main's PR checks gate merging; gating production-domain assignment on post-merge checks would require separate Vercel Deployment Checks.
 
