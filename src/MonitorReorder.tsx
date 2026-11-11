@@ -65,7 +65,8 @@ export const MonitorReorder = memo(function MonitorReorder({
   }, [entries, reset]);
   useEffect(() => {
     const cancel = () => {
-      if (drag.current) reset(`Reordering ${drag.current.repository} cancelled.`);
+      if (drag.current)
+        reset(`Reordering ${drag.current.repository} cancelled.`);
     };
     const escape = (event: KeyboardEvent) => {
       if (!drag.current || event.key !== 'Escape') return;
@@ -96,7 +97,10 @@ export const MonitorReorder = memo(function MonitorReorder({
     const size = element.getBoundingClientRect();
     const x = visual.touch ? visual.x - size.width / 2 : visual.x + 18,
       above = visual.y - size.height - 24,
-      y = visual.touch && above >= top + 8 ? above : visual.y + (visual.touch ? 32 : 18);
+      y =
+        visual.touch && above >= top + 8
+          ? above
+          : visual.y + (visual.touch ? 32 : 18);
     element.style.left = `${Math.max(left + 8, Math.min(x, left + width - size.width - 8))}px`;
     element.style.top = `${Math.max(top + 8, Math.min(y, top + height - size.height - 8))}px`;
   }, [visual]);
@@ -138,7 +142,10 @@ export const MonitorReorder = memo(function MonitorReorder({
     if (commit && valid && current.from !== current.to) {
       onReorder(current.repository, current.to);
       const header = current.element.closest('h2');
-      if (header?.isConnected && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (
+        header?.isConnected &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
         const style = getComputedStyle(header);
         dropAnimation.current = header.animate(
           [
@@ -146,7 +153,10 @@ export const MonitorReorder = memo(function MonitorReorder({
               backgroundColor: style.getPropertyValue('--surface'),
               boxShadow: `inset 0 0 0 2px ${style.getPropertyValue('--accent')}`,
             },
-            { backgroundColor: 'transparent', boxShadow: 'inset 0 0 0 2px transparent' },
+            {
+              backgroundColor: 'transparent',
+              boxShadow: 'inset 0 0 0 2px transparent',
+            },
           ],
           { duration: 600, easing: 'ease-out' },
         );
@@ -182,7 +192,8 @@ export const MonitorReorder = memo(function MonitorReorder({
               onDragStart={(event) => event.preventDefault()}
               onClick={(event) => event.preventDefault()}
               onPointerDown={(event) => {
-                if (!event.isPrimary || event.button !== 0 || drag.current) return;
+                if (!event.isPrimary || event.button !== 0 || drag.current)
+                  return;
                 const current: Drag = {
                   repository: entry.repository,
                   entries,
@@ -214,7 +225,12 @@ export const MonitorReorder = memo(function MonitorReorder({
                 current.x = event.clientX;
                 current.y = event.clientY;
                 if (!current.active) {
-                  if (Math.hypot(current.x - current.startX, current.y - current.startY) > 6)
+                  if (
+                    Math.hypot(
+                      current.x - current.startX,
+                      current.y - current.startY,
+                    ) > 6
+                  )
                     reset(`Reordering ${current.repository} cancelled.`);
                   return;
                 }
@@ -233,7 +249,9 @@ export const MonitorReorder = memo(function MonitorReorder({
                 aria-hidden="true"
               >
                 {[4, 9, 14].flatMap((y) =>
-                  [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />),
+                  [5, 11].map((x) => (
+                    <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />
+                  )),
                 )}
               </svg>
             </button>
@@ -250,10 +268,16 @@ export const MonitorReorder = memo(function MonitorReorder({
       </div>
       {visual && (
         <>
-          <div className="monitor-drag-preview" ref={preview} aria-hidden="true">
+          <div
+            className="monitor-drag-preview"
+            ref={preview}
+            aria-hidden="true"
+          >
             <svg width="16" height="20" viewBox="0 0 16 18" fill="currentColor">
               {[4, 9, 14].flatMap((y) =>
-                [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />),
+                [5, 11].map((x) => (
+                  <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />
+                )),
               )}
             </svg>
             <div>
@@ -265,7 +289,9 @@ export const MonitorReorder = memo(function MonitorReorder({
           </div>
           <div
             className="monitor-insertion"
-            style={{ left: Math.max(2, Math.min(visual.line, window.innerWidth - 2)) }}
+            style={{
+              left: Math.max(2, Math.min(visual.line, window.innerWidth - 2)),
+            }}
             aria-hidden="true"
           />
         </>

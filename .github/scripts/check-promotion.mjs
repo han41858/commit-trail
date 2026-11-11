@@ -1,6 +1,12 @@
 import { pathToFileURL } from 'node:url';
 
-export function assertMainPromotion({ eventName, baseRef, headRef, headRepository, repository }) {
+export function assertMainPromotion({
+  eventName,
+  baseRef,
+  headRef,
+  headRepository,
+  repository,
+}) {
   if (eventName !== 'pull_request' || baseRef !== 'main') return;
   if (!repository || headRef !== 'dev' || headRepository !== repository) {
     throw new Error(
@@ -9,7 +15,10 @@ export function assertMainPromotion({ eventName, baseRef, headRef, headRepositor
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   try {
     assertMainPromotion({
       eventName: process.env.GITHUB_EVENT_NAME,

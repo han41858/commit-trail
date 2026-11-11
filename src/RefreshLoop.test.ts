@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RefreshLoop, type RefreshClock, type RefreshResult } from './RefreshLoop';
+import {
+  RefreshLoop,
+  type RefreshClock,
+  type RefreshResult,
+} from './RefreshLoop';
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 function timer() {
   let now = 1000,
@@ -208,7 +212,11 @@ for (const outcome of ['success', 'failure', 'rejection'] as const)
     assert.equal(loop.getSnapshot().nextAt, 63500);
     assert.equal(
       loop.getSnapshot().error,
-      outcome === 'success' ? '' : outcome === 'failure' ? 'API failed' : 'Network failed',
+      outcome === 'success'
+        ? ''
+        : outcome === 'failure'
+          ? 'API failed'
+          : 'Network failed',
     );
   });
 test('dispatch completion keeps its deadline while deferred work controls only the completion timestamp', async () => {

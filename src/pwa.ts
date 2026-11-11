@@ -8,7 +8,8 @@ let activateWaiting: () => Promise<void> = async () => {};
 const unknownWorker = {};
 export const pwaUpdates = new PwaUpdates(
   async () => {
-    if (activeChanged) pwaUpdates.controlled(registration?.active ?? unknownWorker);
+    if (activeChanged)
+      pwaUpdates.controlled(registration?.active ?? unknownWorker);
     else await activateWaiting();
   },
   () => window.location.reload(),
@@ -24,7 +25,8 @@ export function registerPwa() {
     return;
   started = true;
   activateWaiting = registerSW({
-    onNeedRefresh: () => pwaUpdates.ready(registration?.waiting ?? unknownWorker),
+    onNeedRefresh: () =>
+      pwaUpdates.ready(registration?.waiting ?? unknownWorker),
     // Another tab's approval must not force this tab to reload while reading history.
     onNeedReload: () => {
       activeChanged = true;

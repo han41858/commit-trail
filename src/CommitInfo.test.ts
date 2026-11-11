@@ -27,7 +27,11 @@ const run = (
   html_url: 'https://github.com/a/b/actions/runs/' + id,
   ...extra,
 });
-const detail = (id: number, statuses: string[], extra: Partial<JobInfo> = {}): JobInfo => ({
+const detail = (
+  id: number,
+  statuses: string[],
+  extra: Partial<JobInfo> = {},
+): JobInfo => ({
   attempt: 1,
   jobs: statuses.map((status, index) => ({
     id: id * 100 + index,
@@ -111,20 +115,34 @@ test('success with skipped workflows preserves individual results and completed 
 });
 test('success and skipped never override unfinished workflows or the existing active-work priority', () => {
   const completed = [run(1), run(2, 'completed', 'skipped')];
-  for (const status of ['in_progress', 'queued', 'waiting', 'pending', 'requested']) {
+  for (const status of [
+    'in_progress',
+    'queued',
+    'waiting',
+    'pending',
+    'requested',
+  ]) {
     const active = run(3, status, 'success'),
       state = status === 'in_progress' ? 'running' : 'queued';
     for (const extra of [[], [run(4, 'completed', 'failure')]])
-      assert.equal(actionSummary([...completed, active, ...extra], new Map())?.state, state);
+      assert.equal(
+        actionSummary([...completed, active, ...extra], new Map())?.state,
+        state,
+      );
   }
   for (const status of ['future_status', null])
     assert.equal(
-      actionSummary([...completed, run(3, 'completed', 'skipped', { status })], new Map())?.state,
+      actionSummary(
+        [...completed, run(3, 'completed', 'skipped', { status })],
+        new Map(),
+      )?.state,
       'skipped',
     );
   assert.equal(
-    actionSummary([...completed, run(3, 'queued', null), run(4, 'in_progress', null)], new Map())
-      ?.state,
+    actionSummary(
+      [...completed, run(3, 'queued', null), run(4, 'in_progress', null)],
+      new Map(),
+    )?.state,
     'running',
   );
 });
@@ -149,7 +167,10 @@ test('success with skipped uses only the latest workflow attempt and keeps rerun
     ratio: 1,
   });
   assert.deepEqual(
-    actionSummary([old, latest, skipped, run(1, 'in_progress', null, { run_attempt: 3 })], jobs),
+    actionSummary(
+      [old, latest, skipped, run(1, 'in_progress', null, { run_attempt: 3 })],
+      jobs,
+    ),
     { state: 'running', done: null, total: null, ratio: null },
   );
 });
@@ -165,11 +186,17 @@ test('known failures remain red beside skipped or unknown results while active w
         'failure',
       );
     assert.equal(
-      actionSummary([run(1, 'completed', failure), run(2, 'in_progress', null)], new Map())?.state,
+      actionSummary(
+        [run(1, 'completed', failure), run(2, 'in_progress', null)],
+        new Map(),
+      )?.state,
       'running',
     );
     assert.equal(
-      actionSummary([run(1, 'completed', failure), run(2, 'queued', null)], new Map())?.state,
+      actionSummary(
+        [run(1, 'completed', failure), run(2, 'queued', null)],
+        new Map(),
+      )?.state,
       'queued',
     );
   }
@@ -187,7 +214,12 @@ test('multiple workflows aggregate actual completed jobs and deduplicate jobs an
     [3, detail(3, ['queued', 'queued', 'queued'])],
   ]);
   jobs.get(2)!.jobs.push(jobs.get(2)!.jobs[0]);
-  assert.deepEqual(actionSummary(runs, jobs), { state: 'running', done: 5, total: 10, ratio: 0.5 });
+  assert.deepEqual(actionSummary(runs, jobs), {
+    state: 'running',
+    done: 5,
+    total: 10,
+    ratio: 0.5,
+  });
 });
 test('100 percent completed jobs never implies success while GitHub still reports running', () => {
   const active = run(1, 'in_progress', null),
@@ -198,34 +230,54 @@ test('100 percent completed jobs never implies success while GitHub still report
     total: 46,
     ratio: 1,
   });
-  assert.deepEqual(completedJobCount(active, jobs), { completed: 46, total: 46 });
+  assert.deepEqual(completedJobCount(active, jobs), {
+    completed: 46,
+    total: 46,
+  });
 });
 test('incomplete job pages and changed matrix totals suppress percentages', () => {
   const runs = [run(1, 'in_progress', null)];
   assert.equal(
-    actionSummary(runs, new Map([[1, detail(1, ['completed'], { total: 2 })]]))?.ratio,
+    actionSummary(runs, new Map([[1, detail(1, ['completed'], { total: 2 })]]))
+      ?.ratio,
     null,
   );
   assert.equal(
-    actionSummary(runs, new Map([[1, detail(1, ['completed'], { complete: false })]]))?.ratio,
+    actionSummary(
+      runs,
+      new Map([[1, detail(1, ['completed'], { complete: false })]]),
+    )?.ratio,
     null,
   );
 });
 test('the latest attempt replaces old jobs and can lower progress', () => {
   const runs = [run(1), run(1, 'in_progress', null, { run_attempt: 2 })];
-  assert.equal(actionSummary(runs, new Map([[1, detail(1, ['completed'])]]))?.ratio, null);
+  assert.equal(
+    actionSummary(runs, new Map([[1, detail(1, ['completed'])]]))?.ratio,
+    null,
+  );
   assert.deepEqual(
-    actionSummary(runs, new Map([[1, detail(1, ['queued', 'completed'], { attempt: 2 })]])),
+    actionSummary(
+      runs,
+      new Map([[1, detail(1, ['queued', 'completed'], { attempt: 2 })]]),
+    ),
     { state: 'running', done: 1, total: 2, ratio: 0.5 },
   );
 });
 test('every completed job counts regardless of conclusion and unknown status uses the gray fallback', () => {
   const jobs = detail(1, ['completed', 'completed', 'completed', 'completed']);
   jobs.jobs.forEach(
-    (job, i) => (job.conclusion = ['failure', 'cancelled', 'skipped', 'success'][i]),
+    (job, i) =>
+      (job.conclusion = ['failure', 'cancelled', 'skipped', 'success'][i]),
   );
-  assert.equal(actionSummary([run(1, 'in_progress', null)], new Map([[1, jobs]]))?.ratio, 1);
-  assert.equal(actionSummary([run(1, 'future_status', 'success')], new Map())?.state, 'skipped');
+  assert.equal(
+    actionSummary([run(1, 'in_progress', null)], new Map([[1, jobs]]))?.ratio,
+    1,
+  );
+  assert.equal(
+    actionSummary([run(1, 'future_status', 'success')], new Map())?.state,
+    'skipped',
+  );
   assert.equal(actionSummary([], new Map()), null);
 });
 test('workflow badges keep final results distinct and never infer success before completion', () => {
@@ -257,14 +309,28 @@ test('completed elapsed duration freezes at the final API status update', () => 
     run_started_at: '2026-10-30T00:00:00Z',
     updated_at: '2026-10-30T00:02:05Z',
   });
-  assert.equal(runElapsed(completed, Date.parse('2026-10-30T01:00:00Z')), '2m 5s');
-  assert.equal(runElapsed(completed, Date.parse('2026-11-01T00:00:00Z')), '2m 5s');
+  assert.equal(
+    runElapsed(completed, Date.parse('2026-10-30T01:00:00Z')),
+    '2m 5s',
+  );
+  assert.equal(
+    runElapsed(completed, Date.parse('2026-11-01T00:00:00Z')),
+    '2m 5s',
+  );
 });
 test('active elapsed duration advances across seconds, minutes and hours using the current attempt start', () => {
-  const active = run(1, 'in_progress', null, { run_started_at: '2026-10-30T00:00:00Z' });
-  assert.equal(runElapsed(active, Date.parse('2026-10-30T00:00:59.999Z')), '59s');
+  const active = run(1, 'in_progress', null, {
+    run_started_at: '2026-10-30T00:00:00Z',
+  });
+  assert.equal(
+    runElapsed(active, Date.parse('2026-10-30T00:00:59.999Z')),
+    '59s',
+  );
   assert.equal(runElapsed(active, Date.parse('2026-10-30T00:01:00Z')), '1m 0s');
-  assert.equal(runElapsed(active, Date.parse('2026-10-30T01:02:03Z')), '1h 2m 3s');
+  assert.equal(
+    runElapsed(active, Date.parse('2026-10-30T01:02:03Z')),
+    '1h 2m 3s',
+  );
   assert.equal(
     runElapsed(
       { ...active, run_attempt: 2, run_started_at: '2026-10-30T01:00:00Z' },
@@ -277,13 +343,24 @@ test('missing, invalid and out-of-order timestamps remain unknown instead of sho
   const completed = run(1);
   assert.equal(runElapsed(completed), null);
   assert.equal(runElapsed({ ...completed, run_started_at: 'invalid' }), null);
-  assert.equal(runElapsed({ ...completed, run_started_at: '2026-10-31T00:00:00Z' }), null);
   assert.equal(
-    runElapsed({ ...completed, run_started_at: '2026-10-30T00:00:00Z', updated_at: 'invalid' }),
+    runElapsed({ ...completed, run_started_at: '2026-10-31T00:00:00Z' }),
     null,
   );
   assert.equal(
-    runElapsed({ ...completed, status: 'future_status', run_started_at: '2026-10-30T00:00:00Z' }),
+    runElapsed({
+      ...completed,
+      run_started_at: '2026-10-30T00:00:00Z',
+      updated_at: 'invalid',
+    }),
+    null,
+  );
+  assert.equal(
+    runElapsed({
+      ...completed,
+      status: 'future_status',
+      run_started_at: '2026-10-30T00:00:00Z',
+    }),
     null,
   );
 });
@@ -293,11 +370,23 @@ test('workflow job counts use completed jobs consistently with the commit aggreg
   info.jobs.push(
     info.jobs[2],
     { id: 999, run_id: 2, status: 'in_progress', conclusion: null },
-    { id: 998, run_id: 1, run_attempt: 2, status: 'in_progress', conclusion: null },
+    {
+      id: 998,
+      run_id: 1,
+      run_attempt: 2,
+      status: 'in_progress',
+      conclusion: null,
+    },
   );
-  assert.deepEqual(completedJobCount(active, new Map([[1, info]])), { completed: 2, total: 4 });
+  assert.deepEqual(completedJobCount(active, new Map([[1, info]])), {
+    completed: 2,
+    total: 4,
+  });
   assert.deepEqual(
-    completedJobCount(run(1, 'queued', null), new Map([[1, detail(1, ['queued', 'waiting'])]])),
+    completedJobCount(
+      run(1, 'queued', null),
+      new Map([[1, detail(1, ['queued', 'waiting'])]]),
+    ),
     { completed: 0, total: 2 },
   );
 });
@@ -305,22 +394,36 @@ test('partial job pages, unknown statuses and mismatching totals do not fabricat
   const active = run(1, 'in_progress', null);
   assert.equal(completedJobCount(active, new Map()), null);
   assert.equal(
-    completedJobCount(active, new Map([[1, detail(1, ['in_progress'], { complete: false })]])),
+    completedJobCount(
+      active,
+      new Map([[1, detail(1, ['in_progress'], { complete: false })]]),
+    ),
     null,
   );
   assert.equal(
-    completedJobCount(active, new Map([[1, detail(1, ['in_progress'], { total: 2 })]])),
+    completedJobCount(
+      active,
+      new Map([[1, detail(1, ['in_progress'], { total: 2 })]]),
+    ),
     null,
   );
-  assert.equal(completedJobCount(active, new Map([[1, detail(1, ['future_status'])]])), null);
+  assert.equal(
+    completedJobCount(active, new Map([[1, detail(1, ['future_status'])]])),
+    null,
+  );
 });
 test('rerunning a workflow clears previous attempt job counts until its own jobs are known', () => {
   const active = run(1, 'in_progress', null, { run_attempt: 2 });
-  assert.equal(completedJobCount(active, new Map([[1, detail(1, ['in_progress'])]])), null);
+  assert.equal(
+    completedJobCount(active, new Map([[1, detail(1, ['in_progress'])]])),
+    null,
+  );
   assert.deepEqual(
     completedJobCount(
       active,
-      new Map([[1, detail(1, ['in_progress', 'queued', 'completed'], { attempt: 2 })]]),
+      new Map([
+        [1, detail(1, ['in_progress', 'queued', 'completed'], { attempt: 2 })],
+      ]),
     ),
     { completed: 1, total: 3 },
   );
@@ -336,12 +439,15 @@ test('a completed workflow with zero jobs does not block known progress from ano
     ),
     { state: 'running', done: 1, total: 2, ratio: 0.5 },
   );
-  assert.deepEqual(actionSummary([run(1, 'in_progress', null)], new Map([[1, detail(1, [])]])), {
-    state: 'running',
-    done: 0,
-    total: 0,
-    ratio: null,
-  });
+  assert.deepEqual(
+    actionSummary([run(1, 'in_progress', null)], new Map([[1, detail(1, [])]])),
+    {
+      state: 'running',
+      done: 0,
+      total: 0,
+      ratio: null,
+    },
+  );
 });
 test('total Actions elapsed time spans overlapping workflows and freezes at the last final status', () => {
   const runs = [
@@ -354,11 +460,26 @@ test('total Actions elapsed time spans overlapping workflows and freezes at the 
       updated_at: '2026-10-30T00:03:05Z',
     }),
   ];
-  assert.equal(actionsElapsed(runs, Date.parse('2026-10-30T01:00:00Z')), '3m 5s');
-  assert.equal(actionsElapsed(runs, Date.parse('2026-10-31T00:00:00Z')), '3m 5s');
-  const active = [runs[0], { ...runs[1], status: 'in_progress', conclusion: null }];
-  assert.equal(actionsElapsed(active, Date.parse('2026-10-30T00:03:30Z')), '3m 30s');
-  assert.equal(actionsElapsed(active, Date.parse('2026-10-30T00:04:00Z')), '4m 0s');
+  assert.equal(
+    actionsElapsed(runs, Date.parse('2026-10-30T01:00:00Z')),
+    '3m 5s',
+  );
+  assert.equal(
+    actionsElapsed(runs, Date.parse('2026-10-31T00:00:00Z')),
+    '3m 5s',
+  );
+  const active = [
+    runs[0],
+    { ...runs[1], status: 'in_progress', conclusion: null },
+  ];
+  assert.equal(
+    actionsElapsed(active, Date.parse('2026-10-30T00:03:30Z')),
+    '3m 30s',
+  );
+  assert.equal(
+    actionsElapsed(active, Date.parse('2026-10-30T00:04:00Z')),
+    '4m 0s',
+  );
 });
 test('total Actions time uses latest attempts and never fabricates missing or invalid times', () => {
   const previous = run(1, 'completed', 'success', {

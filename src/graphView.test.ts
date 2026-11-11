@@ -65,7 +65,15 @@ test('edge visibility includes crossing segments with both endpoints outside the
     edgeCommit('crossing', 'far-parent'),
     edgeCommit('below', 'far-parent'),
   ];
-  const edges = visibleGraphEdges(commits, positions, new Set(), 48, false, 200, 400);
+  const edges = visibleGraphEdges(
+    commits,
+    positions,
+    new Set(),
+    48,
+    false,
+    200,
+    400,
+  );
   assert.deepEqual(
     edges.map((edge) => edge.id),
     ['crossing:far-parent'],
@@ -97,7 +105,15 @@ test('unloaded parents keep the same half-row dashed stub in both directions', (
 
 test('edges without a source position are ignored rather than inferred from geometry', () => {
   assert.deepEqual(
-    visibleGraphEdges([edgeCommit('missing', 'parent')], new Map(), new Set(), 48, false, 0, 200),
+    visibleGraphEdges(
+      [edgeCommit('missing', 'parent')],
+      new Map(),
+      new Set(),
+      48,
+      false,
+      0,
+      200,
+    ),
     [],
   );
 });
@@ -108,7 +124,11 @@ test('commits show at most one version icon, preferring releases and preserving 
     sha: 'a',
     url: `https://github.com/a/b/tree/${name}`,
   });
-  const release = (id: number, name: string | null, tag_name: string): ReleaseInfo => ({
+  const release = (
+    id: number,
+    name: string | null,
+    tag_name: string,
+  ): ReleaseInfo => ({
     id,
     name,
     tag_name,
@@ -128,7 +148,13 @@ test('commits show at most one version icon, preferring releases and preserving 
     title?: string;
   }[] = [
     { name: 'no versions', tags: [], releases: [] },
-    { name: 'one tag', tags: tags.slice(0, 1), releases: [], text: '🏷️', title: 'v1' },
+    {
+      name: 'one tag',
+      tags: tags.slice(0, 1),
+      releases: [],
+      text: '🏷️',
+      title: 'v1',
+    },
     {
       name: 'release only',
       tags: [],
@@ -143,7 +169,13 @@ test('commits show at most one version icon, preferring releases and preserving 
       text: '🚀',
       title: 'Version 1',
     },
-    { name: 'multiple tags only', tags, releases: [], text: '🏷️', title: 'v1 · alias' },
+    {
+      name: 'multiple tags only',
+      tags,
+      releases: [],
+      text: '🏷️',
+      title: 'v1 · alias',
+    },
     {
       name: 'release with an additional tag',
       tags,
@@ -151,15 +183,29 @@ test('commits show at most one version icon, preferring releases and preserving 
       text: '🚀',
       title: 'Version 1',
     },
-    { name: 'multiple tags and releases', tags, releases, text: '🚀', title: 'Version 1 · alias' },
+    {
+      name: 'multiple tags and releases',
+      tags,
+      releases,
+      text: '🚀',
+      title: 'Version 1 · alias',
+    },
   ];
   assert.deepEqual(commitVersionIcons(undefined, 48), []);
   for (const { name, tags, releases, text, title } of cases) {
     const info: CommitInfo = { tags, releases, runs: [], actions: null },
       before = JSON.stringify(info);
     for (const x of [48, 82, 150])
-      assert.deepEqual(commitVersionIcons(info, x), text ? [{ text, x: x - 20, title }] : [], name);
-    assert.equal(JSON.stringify(info), before, `${name}: keep all detail metadata`);
+      assert.deepEqual(
+        commitVersionIcons(info, x),
+        text ? [{ text, x: x - 20, title }] : [],
+        name,
+      );
+    assert.equal(
+      JSON.stringify(info),
+      before,
+      `${name}: keep all detail metadata`,
+    );
   }
 });
 
@@ -173,26 +219,39 @@ test('history requests include earlier gaps but exclude below-viewport, outside 
   ]);
   const frontiers = [
     { sha: 'visible', sources: ['same', 'pending', 'second', 'same'] },
-    ...['above', 'below', 'left', 'right', 'missing'].map((sha) => ({ sha, sources: [sha] })),
+    ...['above', 'below', 'left', 'right', 'missing'].map((sha) => ({
+      sha,
+      sources: [sha],
+    })),
   ];
   const view = { left: 0, top: 1000, width: 390, height: 600, inset: 100 };
-  assert.deepEqual(visibleHistorySources(frontiers, positions, view, ['pending']), [
-    'same',
-    'second',
-    'above',
-  ]);
-  assert.deepEqual(visibleHistorySources(frontiers, positions, { ...view, width: 0 }), []);
-  assert.deepEqual(visibleHistorySources(frontiers, positions, { ...view, height: 50 }), []);
+  assert.deepEqual(
+    visibleHistorySources(frontiers, positions, view, ['pending']),
+    ['same', 'second', 'above'],
+  );
+  assert.deepEqual(
+    visibleHistorySources(frontiers, positions, { ...view, width: 0 }),
+    [],
+  );
+  assert.deepEqual(
+    visibleHistorySources(frontiers, positions, { ...view, height: 50 }),
+    [],
+  );
 });
 test('successor boundaries are rechecked above the viewport and stop once they move below it', () => {
   const view = { left: 0, top: 3000, width: 390, height: 796, inset: 80 },
     frontiers = [{ sha: 'gap', sources: ['next'] }];
   for (const y of [100, 1960, 3000, 3796])
-    assert.deepEqual(visibleHistorySources(frontiers, new Map([['gap', { x: 48, y }]]), view), [
-      'next',
-    ]);
+    assert.deepEqual(
+      visibleHistorySources(frontiers, new Map([['gap', { x: 48, y }]]), view),
+      ['next'],
+    );
   assert.deepEqual(
-    visibleHistorySources(frontiers, new Map([['gap', { x: 48, y: 3797 }]]), view),
+    visibleHistorySources(
+      frontiers,
+      new Map([['gap', { x: 48, y: 3797 }]]),
+      view,
+    ),
     [],
   );
 });
@@ -203,32 +262,50 @@ test('large End and Home jumps select the current prefix without remembering a p
     ['late', { x: 48, y: 4409 }],
     ['future', { x: 48, y: 6400 }],
   ]);
-  const frontiers = [...positions.keys()].map((sha) => ({ sha, sources: [sha] })),
+  const frontiers = [...positions.keys()].map((sha) => ({
+      sha,
+      sources: [sha],
+    })),
     view = { left: 0, top: 0, width: 390, height: 796, inset: 80 };
-  assert.deepEqual(visibleHistorySources(frontiers, positions, { ...view, top: 5500 }), [
+  assert.deepEqual(
+    visibleHistorySources(frontiers, positions, { ...view, top: 5500 }),
+    ['early', 'middle', 'late'],
+  );
+  assert.deepEqual(
+    visibleHistorySources(frontiers, positions, { ...view, top: 2500 }),
+    ['early', 'middle'],
+  );
+  assert.deepEqual(visibleHistorySources(frontiers, positions, view), [
     'early',
-    'middle',
-    'late',
   ]);
-  assert.deepEqual(visibleHistorySources(frontiers, positions, { ...view, top: 2500 }), [
-    'early',
-    'middle',
-  ]);
-  assert.deepEqual(visibleHistorySources(frontiers, positions, view), ['early']);
 });
 test('layout insertion admits only newly required ancestry before the current viewport bottom', () => {
   const view = { left: 0, top: 1000, width: 390, height: 600, inset: 100 },
     frontiers = [{ sha: 'gap', sources: ['next'] }];
-  assert.deepEqual(visibleHistorySources(frontiers, new Map([['gap', { x: 48, y: 1200 }]]), view), [
-    'next',
-  ]);
   assert.deepEqual(
-    visibleHistorySources(frontiers, new Map([['gap', { x: 48, y: 4600 }]]), view),
+    visibleHistorySources(
+      frontiers,
+      new Map([['gap', { x: 48, y: 1200 }]]),
+      view,
+    ),
+    ['next'],
+  );
+  assert.deepEqual(
+    visibleHistorySources(
+      frontiers,
+      new Map([['gap', { x: 48, y: 4600 }]]),
+      view,
+    ),
     [],
   );
-  assert.deepEqual(visibleHistorySources(frontiers, new Map([['gap', { x: 48, y: 900 }]]), view), [
-    'next',
-  ]);
+  assert.deepEqual(
+    visibleHistorySources(
+      frontiers,
+      new Map([['gap', { x: 48, y: 900 }]]),
+      view,
+    ),
+    ['next'],
+  );
 });
 
 test('narrow frames reserve half the width only while message columns preserve 12px lane spacing', () => {
@@ -237,12 +314,16 @@ test('narrow frames reserve half the width only while message columns preserve 1
       const frame = graphFrame(width, maxLane, true);
       assert.equal(frame.width, width);
       assert.ok(frame.spacing > 0 && frame.spacing <= 34);
-      assert.ok(GRAPH_ORIGIN + maxLane * frame.spacing <= frame.branchWidth - 18 + 1e-9);
+      assert.ok(
+        GRAPH_ORIGIN + maxLane * frame.spacing <= frame.branchWidth - 18 + 1e-9,
+      );
       if (frame.showMessages) {
         assert.ok(frame.branchWidth <= width / 2);
         assert.ok(frame.spacing >= 12);
         assert.ok(frame.messageX > frame.branchWidth);
-        assert.ok(frame.messageWidth >= width * 0.4 && frame.messageWidth <= width / 2);
+        assert.ok(
+          frame.messageWidth >= width * 0.4 && frame.messageWidth <= width / 2,
+        );
         assert.ok(frame.messageX + frame.messageWidth <= width - 12);
       } else {
         assert.equal(frame.branchWidth, width);
@@ -280,7 +361,9 @@ test('message visibility changes in both resize directions and accepts exactly 1
   assert.equal(exact.showMessages, true);
   assert.equal(exact.spacing, 12);
   assert.deepEqual(
-    [320, 390, 430, 320].map((width) => graphFrame(width, 10, true).showMessages),
+    [320, 390, 430, 320].map(
+      (width) => graphFrame(width, 10, true).showMessages,
+    ),
     [false, true, true, false],
   );
 });
@@ -291,12 +374,17 @@ test('narrow message switching preserves a merge DAG and keeps adjacent node col
       parents: parents.map((sha) => ({ sha })),
       commit: {
         message: sha,
-        author: { name: 'Test', date: `2026-10-${String(day).padStart(2, '0')}T00:00:00Z` },
+        author: {
+          name: 'Test',
+          date: `2026-10-${String(day).padStart(2, '0')}T00:00:00Z`,
+        },
         committer: null,
       },
       html_url: '',
     });
-    const sides = Array.from({ length: maxLane }, (_, i) => commit(`side-${i}`, ['root'], 30 - i));
+    const sides = Array.from({ length: maxLane }, (_, i) =>
+      commit(`side-${i}`, ['root'], 30 - i),
+    );
     const merge = commit('merge', ['root', ...sides.map((c) => c.sha)], 31),
       commits = [merge, ...sides, commit('root', [], 1)],
       before = JSON.stringify(commits);
@@ -355,7 +443,9 @@ test('split-column widths follow the same responsive message and lane-spacing po
       assert.equal(frame.messageWidth, 0);
     }
     assert.ok(frame.spacing > 0 && frame.spacing <= 34);
-    assert.ok(GRAPH_ORIGIN + maxLane * frame.spacing <= frame.branchWidth - 18 + 1e-9);
+    assert.ok(
+      GRAPH_ORIGIN + maxLane * frame.spacing <= frame.branchWidth - 18 + 1e-9,
+    );
   }
 });
 test('wide branch width grows with its content up to 50 percent and messages stay capped at 50 percent', () => {
@@ -366,7 +456,9 @@ test('wide branch width grows with its content up to 50 percent and messages sta
       assert.equal(frame.showMessages, true);
       assert.ok(frame.branchWidth <= width / 2);
       assert.ok(frame.spacing > 0 && frame.spacing <= 34);
-      assert.ok(GRAPH_ORIGIN + maxLane * frame.spacing <= frame.branchWidth - 18 + 1e-9);
+      assert.ok(
+        GRAPH_ORIGIN + maxLane * frame.spacing <= frame.branchWidth - 18 + 1e-9,
+      );
       assert.equal(frame.messageX, frame.branchWidth + 16);
       assert.ok(frame.messageWidth <= width / 2);
       assert.ok(frame.messageWidth > 0);
@@ -388,7 +480,10 @@ test('sparse wide graphs leave no half-screen gap and only compress after reachi
     assert.ok(dense.spacing < 34);
     assert.ok(dense.messageWidth < width / 2);
   }
-  assert.equal(graphFrame(900, 3, false).messageX, graphFrame(2560, 3, false).messageX);
+  assert.equal(
+    graphFrame(900, 3, false).messageX,
+    graphFrame(2560, 3, false).messageX,
+  );
 });
 test('branch display names remove repeated namespaces while keeping colliding suffixes distinct', () => {
   const names = branchDisplayNames([
@@ -417,7 +512,11 @@ test('each branch name keeps its own text and long labels retain their beginning
     ['main', 'master', 'dev'].map((name) => branchLabelText(name, display, 16)),
     ['main', 'master', 'dev'],
   );
-  const unicode = branchLabelText('修复窗口滚动时丢失分支显示的问题', new Map(), 10);
+  const unicode = branchLabelText(
+    '修复窗口滚动时丢失分支显示的问题',
+    new Map(),
+    10,
+  );
   assert.equal(Array.from(unicode).length, 10);
   assert.ok(unicode.endsWith('…'));
   assert.ok(!unicode.includes('�'));
@@ -428,6 +527,9 @@ test('individual branch labels handle narrow bounds and Unicode without a refere
   assert.equal(branchLabelText(name, display, 1), '…');
   assert.equal(branchLabelText(name, display, 2), 'i…');
   assert.equal(branchLabelText(name, display, 16), 'invalid-token-r…');
-  assert.equal(branchLabelText('fix-🚀-very-long-name', new Map(), 8), 'fix-🚀-v…');
+  assert.equal(
+    branchLabelText('fix-🚀-very-long-name', new Map(), 8),
+    'fix-🚀-v…',
+  );
   assert.equal(branchLabelText('main', new Map(), 4), 'main');
 });

@@ -100,7 +100,11 @@ test('rebasing preserves unvisited lanes and separated intervals after row inser
   visited.visit(view(0, 1000));
   visited.visit(view(5000, 1000));
   visited.visit(view(5000, 0));
-  visited.rebase([...Array.from({ length: 50 }, (_, i) => `new${i}`), ...rows], 120, 31);
+  visited.rebase(
+    [...Array.from({ length: 50 }, (_, i) => `new${i}`), ...rows],
+    120,
+    31,
+  );
   assert.equal(visited.contains({ x: 48, y: 2500 + 1570 }), false);
   assert.equal(visited.contains({ x: 48, y: 5200 + 1570 }), true);
   assert.equal(visited.contains({ x: 1068, y: 2500 + 1570 }), true);

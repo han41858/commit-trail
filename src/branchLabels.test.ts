@@ -57,13 +57,23 @@ test('a blocked short branch badge stays near its path instead of moving onto ol
       2,
       obstacles,
     );
-    const label = labels.find((entry) => entry.names.includes('feat/compact-action-rows'))!;
+    const label = labels.find((entry) =>
+      entry.names.includes('feat/compact-action-rows'),
+    )!;
     assert.ok(label);
-    assert.ok(label.boxY! + 9 >= Math.min(...tracks[2].points.map((p) => p.y)) - 31);
-    assert.ok(label.boxY! + 9 <= Math.max(...tracks[2].points.map((p) => p.y)) + 31);
+    assert.ok(
+      label.boxY! + 9 >= Math.min(...tracks[2].points.map((p) => p.y)) - 31,
+    );
+    assert.ok(
+      label.boxY! + 9 <= Math.max(...tracks[2].points.map((p) => p.y)) + 31,
+    );
   }
 });
-function clearOfNodes(label: BranchLabel, width: number, nodes: BranchLabelObstacle[]) {
+function clearOfNodes(
+  label: BranchLabel,
+  width: number,
+  nodes: BranchLabelObstacle[],
+) {
   for (const node of nodes)
     assert.ok(
       label.boxX! + width <= node.x - node.radius - 3 ||
@@ -73,7 +83,10 @@ function clearOfNodes(label: BranchLabel, width: number, nodes: BranchLabelObsta
       `${label.names} obscures the node at ${node.x},${node.y}`,
     );
 }
-function clearOfLabels(labels: BranchLabel[], width: (label: BranchLabel) => number) {
+function clearOfLabels(
+  labels: BranchLabel[],
+  width: (label: BranchLabel) => number,
+) {
   for (let i = 0; i < labels.length; i++) {
     for (const other of labels.slice(i + 1)) {
       const label = labels[i];
@@ -131,7 +144,17 @@ test('a short merge connector and a long merge-head name both fit without overla
     { x: 82, y: 172, radius: 12 },
   ];
   const measure = (names: string[]) => widths.get(names[0])!;
-  const labels = visibleBranchLabels(tracks, 90, 500, 0, 212, measure, 18, 2, nodes);
+  const labels = visibleBranchLabels(
+    tracks,
+    90,
+    500,
+    0,
+    212,
+    measure,
+    18,
+    2,
+    nodes,
+  );
   assert.deepEqual(
     new Set(labels.flatMap((label) => label.names)),
     new Set(tracks.map((track) => track.name)),
@@ -140,7 +163,9 @@ test('a short merge connector and a long merge-head name both fit without overla
   clearOfLabels(labels, (label) => measure(label.names));
   for (const label of labels) clearOfNodes(label, measure(label.names), nodes);
   assert.equal(
-    labels.find((label) => label.names.includes('sync/main-stable-ko-20261103'))!.y,
+    labels.find((label) =>
+      label.names.includes('sync/main-stable-ko-20261103'),
+    )!.y,
     110,
   );
 });
@@ -162,9 +187,17 @@ test('unavoidable node overlap does not force three separate branch names on top
     lane: index,
     points: [{ x: 48 + index * 34, y: 200 }],
   }));
-  const labels = visibleBranchLabels(tracks, 100, 400, 0, 180, () => 80, 18, 2, [
-    { x: 48, y: 200, radius: 120 },
-  ]);
+  const labels = visibleBranchLabels(
+    tracks,
+    100,
+    400,
+    0,
+    180,
+    () => 80,
+    18,
+    2,
+    [{ x: 48, y: 200, radius: 120 }],
+  );
   assert.equal(labels.length, 3);
   clearOfLabels(labels, () => 80);
   assert.ok(labels.every((label) => Math.abs(label.boxY! - 191) <= 31));
@@ -214,8 +247,16 @@ test('a side branch ends at its first-parent join with the base instead of namin
     tracks.find((t) => t.name === 'feature')!.points.map((p) => p.y),
     [150, 300, 500],
   );
-  assert.ok(visibleBranchLabels(tracks, 200, 400).some((l) => l.names.includes('feature')));
-  assert.ok(!visibleBranchLabels(tracks, 501, 800).some((l) => l.names.includes('feature')));
+  assert.ok(
+    visibleBranchLabels(tracks, 200, 400).some((l) =>
+      l.names.includes('feature'),
+    ),
+  );
+  assert.ok(
+    !visibleBranchLabels(tracks, 501, 800).some((l) =>
+      l.names.includes('feature'),
+    ),
+  );
 });
 test('reversed tracks and curved joins place labels beside the actual visible line', () => {
   const track: BranchTrack = {
@@ -310,12 +351,26 @@ test('badges use available space beside the anchor instead of covering the commi
   }
 });
 test('a badge moves right at the same height to reveal a neighboring node and Actions ring', () => {
-  const track: BranchTrack = { name: 'main', lane: 0, points: [{ x: 48, y: 200 }] };
+  const track: BranchTrack = {
+    name: 'main',
+    lane: 0,
+    points: [{ x: 48, y: 200 }],
+  };
   const nodes = [
     { x: 48, y: 200, radius: 12 },
     { x: 82, y: 200, radius: 12 },
   ];
-  const [label] = visibleBranchLabels([track], 100, 400, 0, 390, () => 80, 20, 2, nodes);
+  const [label] = visibleBranchLabels(
+    [track],
+    100,
+    400,
+    0,
+    390,
+    () => 80,
+    20,
+    2,
+    nodes,
+  );
   assert.equal(label.x, 48);
   assert.equal(label.y, 200);
   assert.equal(label.boxY, 190);
@@ -373,7 +428,17 @@ test('every row in a shared-head stack avoids nodes beside its lower branch name
     { x: 82, y: 222, radius: 12 },
     { x: 116, y: 244, radius: 12 },
   ];
-  const [label] = visibleBranchLabels(tracks, 100, 400, 0, 400, () => 100, 20, 2, nodes);
+  const [label] = visibleBranchLabels(
+    tracks,
+    100,
+    400,
+    0,
+    400,
+    () => 100,
+    20,
+    2,
+    nodes,
+  );
   assert.deepEqual(label.names, ['main', 'dev', 'release']);
   assert.equal(label.boxX, 131);
   assert.equal(label.boxY, 190);
@@ -400,9 +465,23 @@ test('a short path moves vertically if neither side has space beside its nodes',
   clearOfNodes(label, 60, nodes);
 });
 test('nodes outside a badge height do not push it away from its branch', () => {
-  const track: BranchTrack = { name: 'main', lane: 0, points: [{ x: 48, y: 200 }] };
+  const track: BranchTrack = {
+    name: 'main',
+    lane: 0,
+    points: [{ x: 48, y: 200 }],
+  };
   const nodes = [{ x: 48, y: 200, radius: 12 }];
-  const baseline = visibleBranchLabels([track], 100, 500, 0, 390, () => 80, 20, 2, nodes);
+  const baseline = visibleBranchLabels(
+    [track],
+    100,
+    500,
+    0,
+    390,
+    () => 80,
+    20,
+    2,
+    nodes,
+  );
   assert.deepEqual(
     visibleBranchLabels([track], 100, 500, 0, 390, () => 80, 20, 2, [
       ...nodes,
@@ -425,7 +504,17 @@ test('scrolled reversed paths keep their badges clear of visible commit rings', 
     { x: 82, y: 331, radius: 12 },
     { x: 116, y: 362, radius: 12 },
   ];
-  const [label] = visibleBranchLabels([track], 300, 500, 0, 390, () => 90, 18, 2, nodes);
+  const [label] = visibleBranchLabels(
+    [track],
+    300,
+    500,
+    0,
+    390,
+    () => 90,
+    18,
+    2,
+    nodes,
+  );
   assert.equal(label.names[0], 'feature');
   assert.ok(label.boxY! >= 306 && label.boxY! + 18 <= 500);
   clearOfNodes(label, 90, nodes);
@@ -441,17 +530,37 @@ test('oversized stacks retain every name while moving aside for nodes along the 
     { x: 82, y: 131, radius: 12 },
     { x: 116, y: 162, radius: 12 },
   ];
-  const [label] = visibleBranchLabels(tracks, 80, 280, 0, 390, () => 90, 18, 2, nodes);
+  const [label] = visibleBranchLabels(
+    tracks,
+    80,
+    280,
+    0,
+    390,
+    () => 90,
+    18,
+    2,
+    nodes,
+  );
   assert.equal(label.names.length, 30);
   assert.equal(label.boxY, 91);
   assert.equal(label.boxX, 131);
   clearOfNodes(label, 90, nodes);
 });
 test('crowded viewports retain branch names even when every available position overlaps a node', () => {
-  const tracks: BranchTrack[] = [{ name: 'main', lane: 0, points: [{ x: 48, y: 200 }] }];
-  const [label] = visibleBranchLabels(tracks, 180, 222, 0, 100, () => 80, 18, 2, [
-    { x: 48, y: 200, radius: 40 },
-  ]);
+  const tracks: BranchTrack[] = [
+    { name: 'main', lane: 0, points: [{ x: 48, y: 200 }] },
+  ];
+  const [label] = visibleBranchLabels(
+    tracks,
+    180,
+    222,
+    0,
+    100,
+    () => 80,
+    18,
+    2,
+    [{ x: 48, y: 200, radius: 40 }],
+  );
   assert.deepEqual(label.names, ['main']);
   assert.ok(label.boxX! >= 8 && label.boxX! + 80 <= 92);
 });
@@ -563,7 +672,11 @@ test('merge connectors remain labeled when the branch head is below the viewport
   assert.equal(labels[0].names[0], 'feature');
 });
 test('a reference on the base keeps its name on visible shared history after its head scrolls out', () => {
-  const commits = [commit('dev', 'main'), commit('main', 'root'), commit('root')];
+  const commits = [
+    commit('dev', 'main'),
+    commit('main', 'root'),
+    commit('root'),
+  ];
   const positions = new Map([
     ['dev', { x: 48, y: 100 }],
     ['main', { x: 48, y: 300 }],
@@ -683,14 +796,20 @@ test('identical colors cannot extend a badge path beyond a non-base fork or coll
   const colors = graphColors(commits, branches, 'main');
   for (const map of [colors.nodes, colors.edges, colors.branches])
     for (const id of map.keys()) map.set(id, 0);
-  assert.notEqual(colors.paths.nodes.get('feature'), colors.paths.nodes.get('dev-base'));
+  assert.notEqual(
+    colors.paths.nodes.get('feature'),
+    colors.paths.nodes.get('dev-base'),
+  );
   assert.equal(data.spine.has('dev-base'), false);
 
   for (const reverse of [false, true]) {
     const positions = new Map(
       data.ordered.map((c, index) => [
         c.sha,
-        { x: 48 + data.lanes.get(c.sha)! * 34, y: (reverse ? commits.length - index : index) * 31 },
+        {
+          x: 48 + data.lanes.get(c.sha)! * 34,
+          y: (reverse ? commits.length - index : index) * 31,
+        },
       ]),
     );
     const feature = branchTracks(
@@ -703,8 +822,13 @@ test('identical colors cannot extend a badge path beyond a non-base fork or coll
       colors,
       data.lanes,
     ).find((track) => track.name === 'feature')!;
-    assert.deepEqual(feature.points, [positions.get('feature'), positions.get('dev-base')]);
+    assert.deepEqual(feature.points, [
+      positions.get('feature'),
+      positions.get('dev-base'),
+    ]);
     assert.equal(feature.headSha, 'feature');
-    assert.deepEqual(feature.connections, [[positions.get('dev-tip'), positions.get('feature')]]);
+    assert.deepEqual(feature.connections, [
+      [positions.get('dev-tip'), positions.get('feature')],
+    ]);
   }
 });

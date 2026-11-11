@@ -11,7 +11,10 @@ const commit = (sha: string, ...parents: string[]): Commit => ({
   html_url: '',
 });
 
-const branch = (name: string, sha: string): Branch => ({ name, commit: { sha } });
+const branch = (name: string, sha: string): Branch => ({
+  name,
+  commit: { sha },
+});
 
 function colorsFor(commits: Commit[], branches: Branch[], base = 'main') {
   const head = branches.find((value) => value.name === base)?.commit.sha;
@@ -24,7 +27,11 @@ function sortedEntries<T>(values: ReadonlyMap<string, T>) {
 
 function assertSameColors(expected: GraphColors, actual: GraphColors) {
   for (const kind of ['nodes', 'edges', 'branches'] as const) {
-    assert.deepEqual(sortedEntries(actual[kind]), sortedEntries(expected[kind]), kind);
+    assert.deepEqual(
+      sortedEntries(actual[kind]),
+      sortedEntries(expected[kind]),
+      kind,
+    );
     assert.deepEqual(
       sortedEntries(actual.paths[kind]),
       sortedEntries(expected.paths[kind]),
@@ -70,10 +77,21 @@ test('pagination reserves unloaded first-parent paths and has a deterministic fi
   const first = [commit('main-tip', 'root'), commit('dev-tip', 'unloaded')];
   const before = colorsFor(first, references);
 
-  assert.equal(before.paths.nodes.get('unloaded'), before.paths.nodes.get('dev-tip'));
-  assert.equal(before.paths.edges.get('dev-tip:unloaded'), before.paths.nodes.get('dev-tip'));
+  assert.equal(
+    before.paths.nodes.get('unloaded'),
+    before.paths.nodes.get('dev-tip'),
+  );
+  assert.equal(
+    before.paths.edges.get('dev-tip:unloaded'),
+    before.paths.nodes.get('dev-tip'),
+  );
 
-  const final = [...first, commit('root'), commit('unloaded', 'older'), commit('older', 'root')];
+  const final = [
+    ...first,
+    commit('root'),
+    commit('unloaded', 'older'),
+    commit('older', 'root'),
+  ];
   const after = colorsFor(final, references);
   const fresh = colorsFor([...final].reverse(), [...references].reverse());
 
@@ -81,18 +99,26 @@ test('pagination reserves unloaded first-parent paths and has a deterministic fi
   for (const sha of ['unloaded', 'older']) {
     assert.equal(after.paths.nodes.get(sha), after.paths.nodes.get('dev-tip'));
   }
-  assert.notEqual(after.paths.nodes.get('root'), after.paths.nodes.get('older'));
+  assert.notEqual(
+    after.paths.nodes.get('root'),
+    after.paths.nodes.get('older'),
+  );
 });
 
 test('a new colliding neighbor produces the same result in every fresh instance', () => {
   const seen = new Map<number, { name: string; sha: string }>();
-  let collision: [{ name: string; sha: string }, { name: string; sha: string }] | undefined;
+  let collision:
+    [{ name: string; sha: string }, { name: string; sha: string }] | undefined;
 
   // Find an initial collision through public behavior, without assuming a hash.
   for (let index = 0; index < GRAPH_COLOR_COUNT * 4 && !collision; index++) {
     const candidate = { name: `topic-${index}`, sha: `side-${index}` };
     const colors = colorsFor(
-      [commit('main-tip', 'root', candidate.sha), commit(candidate.sha, 'root'), commit('root')],
+      [
+        commit('main-tip', 'root', candidate.sha),
+        commit(candidate.sha, 'root'),
+        commit('root'),
+      ],
       [branch('main', 'main-tip'), branch(candidate.name, candidate.sha)],
     );
     const color = colors.branches.get(candidate.name)!;
@@ -119,8 +145,14 @@ test('a new colliding neighbor produces the same result in every fresh instance'
 
   // Changed neighborhoods may recolor a path; the same final neighborhood may not.
   assertSameColors(expected, actual);
-  assert.notEqual(expected.branches.get(incoming.name), expected.branches.get(existing.name));
-  assert.notEqual(expected.paths.nodes.get(incoming.sha), expected.paths.nodes.get(existing.sha));
+  assert.notEqual(
+    expected.branches.get(incoming.name),
+    expected.branches.get(existing.name),
+  );
+  assert.notEqual(
+    expected.paths.nodes.get(incoming.sha),
+    expected.paths.nodes.get(existing.sha),
+  );
 });
 
 test('anonymous deleted flows have deterministic identities without branch references', () => {
@@ -136,8 +168,14 @@ test('anonymous deleted flows have deterministic identities without branch refer
   const actual = colorsFor([...commits].reverse(), branches);
 
   assertSameColors(expected, actual);
-  assert.equal(expected.paths.nodes.get('former-tip'), expected.paths.nodes.get('former-middle'));
-  assert.notEqual(expected.paths.nodes.get('root'), expected.paths.nodes.get('former-tip'));
+  assert.equal(
+    expected.paths.nodes.get('former-tip'),
+    expected.paths.nodes.get('former-middle'),
+  );
+  assert.notEqual(
+    expected.paths.nodes.get('root'),
+    expected.paths.nodes.get('former-tip'),
+  );
 });
 
 test('aliases and intermediate refs do not split one first-parent flow', () => {
@@ -149,7 +187,10 @@ test('aliases and intermediate refs do not split one first-parent flow', () => {
   const colors = colorsFor(history, branches);
   const path = colors.paths.nodes.get('dev-tip');
 
-  assertSameColors(colors, colorsFor([...history].reverse(), [...branches].reverse()));
+  assertSameColors(
+    colors,
+    colorsFor([...history].reverse(), [...branches].reverse()),
+  );
   assert.equal(colors.paths.nodes.get('dev-older'), path);
   for (const name of ['dev', 'dev-alias', 'aaa-middle-ref']) {
     assert.equal(colors.paths.branches.get(name), path);
@@ -159,19 +200,32 @@ test('aliases and intermediate refs do not split one first-parent flow', () => {
 });
 
 test('more paths than colors reuse the palette without combining path identities', () => {
-  const heads = Array.from({ length: GRAPH_COLOR_COUNT + 2 }, (_, index) => `side-${index}`);
+  const heads = Array.from(
+    { length: GRAPH_COLOR_COUNT + 2 },
+    (_, index) => `side-${index}`,
+  );
   const commits = [
     commit('main-tip', 'root', ...heads),
     ...heads.map((head) => commit(head, 'root')),
     commit('root'),
   ];
-  const branches = [branch('main', 'main-tip'), ...heads.map((head) => branch(head, head))];
+  const branches = [
+    branch('main', 'main-tip'),
+    ...heads.map((head) => branch(head, head)),
+  ];
   const colors = colorsFor(commits, branches);
   const paths = new Set(heads.map((head) => colors.paths.nodes.get(head)));
   const tones = heads.map((head) => colors.nodes.get(head)!);
 
   assert.equal(paths.size, heads.length);
-  assert.ok(tones.every((tone) => Number.isInteger(tone) && tone >= 0 && tone < GRAPH_COLOR_COUNT));
+  assert.ok(
+    tones.every(
+      (tone) => Number.isInteger(tone) && tone >= 0 && tone < GRAPH_COLOR_COUNT,
+    ),
+  );
   assert.ok(new Set(tones).size < heads.length);
-  assertSameColors(colors, colorsFor([...commits].reverse(), [...branches].reverse()));
+  assertSameColors(
+    colors,
+    colorsFor([...commits].reverse(), [...branches].reverse()),
+  );
 });

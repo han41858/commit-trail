@@ -25,9 +25,11 @@ export function parseViewOptions(raw: string | null): ViewOptionValues {
   }
   if (!saved || typeof saved !== 'object') return options;
   const { theme, autoRefresh, interval } = saved as Record<string, unknown>;
-  if (typeof theme === 'string' && THEMES.includes(theme)) options.theme = theme;
+  if (typeof theme === 'string' && THEMES.includes(theme))
+    options.theme = theme;
   if (typeof autoRefresh === 'boolean') options.autoRefresh = autoRefresh;
-  if (typeof interval === 'number' && INTERVALS.includes(interval)) options.interval = interval;
+  if (typeof interval === 'number' && INTERVALS.includes(interval))
+    options.interval = interval;
   return options;
 }
 export function readViewOptions() {

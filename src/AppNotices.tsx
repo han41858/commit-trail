@@ -12,7 +12,12 @@ export function AppNotices({ children }: { children: ReactNode }) {
     if (!element || !app) return;
     const update = () => {
       const tops = [element, ...element.children]
-        .filter((child) => !['hidden', 'collapse'].includes(getComputedStyle(child).visibility))
+        .filter(
+          (child) =>
+            !['hidden', 'collapse'].includes(
+              getComputedStyle(child).visibility,
+            ),
+        )
         .map((child) => child.getBoundingClientRect())
         .filter((rect) => rect.width > 0 && rect.height > 0)
         .map((rect) => rect.top);

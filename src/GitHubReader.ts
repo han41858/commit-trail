@@ -33,7 +33,11 @@ export class GitHubReader {
     }
     if (this.retryAt > Date.now())
       return Promise.reject(
-        new GitHubError('GitHub API rate limit reached. Waiting to retry.', 429, this.retryAt),
+        new GitHubError(
+          'GitHub API rate limit reached. Waiting to retry.',
+          429,
+          this.retryAt,
+        ),
       );
     const signal = this.controller.signal;
     const task = this.pool

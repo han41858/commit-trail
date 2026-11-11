@@ -2,8 +2,14 @@ import { useState, useSyncExternalStore } from 'react';
 import { pwaUpdates } from './pwa';
 
 export function PwaUpdatePrompt() {
-  const state = useSyncExternalStore(pwaUpdates.subscribe, pwaUpdates.getSnapshot);
-  const [buttonSize, setButtonSize] = useState<{ width: number; height: number }>();
+  const state = useSyncExternalStore(
+    pwaUpdates.subscribe,
+    pwaUpdates.getSnapshot,
+  );
+  const [buttonSize, setButtonSize] = useState<{
+    width: number;
+    height: number;
+  }>();
   if (!state.visible) return null;
   return (
     <section

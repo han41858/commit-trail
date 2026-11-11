@@ -130,7 +130,11 @@ test('canceling a target before the first frame leaves no animation running', ()
 test('an older exception survives A to B to C while the common background keeps fading', () => {
   const opacity = new GraphOpacity();
   const ids = elements(['a', 'b', 'c', 'outside']);
-  const c: GraphHoverFocus = { nodes: new Set(['c']), edges: new Set(), branches: new Set() };
+  const c: GraphHoverFocus = {
+    nodes: new Set(['c']),
+    edges: new Set(),
+    branches: new Set(),
+  };
   opacity.setTarget(null, ids, -10);
   opacity.setTarget(focus('a'), ids, 0);
   opacity.setTarget(focus('b'), ids, 70);
@@ -148,7 +152,11 @@ test('sparse transitions match a dense reference through retargets, clears and r
   const opacity = new GraphOpacity();
   const ids = elements(['a', 'b', 'c', 'outside']);
   const kinds = ['nodes', 'edges', 'branches'] as const;
-  const c: GraphHoverFocus = { nodes: new Set(['c']), edges: new Set(), branches: new Set() };
+  const c: GraphHoverFocus = {
+    nodes: new Set(['c']),
+    edges: new Set(),
+    branches: new Set(),
+  };
   const states = kinds.flatMap((kind) =>
     [...ids[kind]].map((id) => ({ kind, id, from: 1, to: 1 })),
   );
@@ -158,7 +166,16 @@ test('sparse transitions match a dense reference through retargets, clears and r
     return state.from + (state.to - state.from) * t * t * (3 - 2 * t);
   };
   opacity.setTarget(null, ids, started);
-  const targets = [focus('a'), focus('b'), c, null, focus('a'), c, null, focus('b')];
+  const targets = [
+    focus('a'),
+    focus('b'),
+    c,
+    null,
+    focus('a'),
+    c,
+    null,
+    focus('b'),
+  ];
   const times = [0, 25, 50, 75, 100, 140, 250, 390];
   targets.forEach((target, index) => {
     const now = times[index];
@@ -170,7 +187,10 @@ test('sparse transitions match a dense reference through retargets, clears and r
     opacity.setTarget(target, ids, now);
     for (const sample of [now, now + 10, now + 70, now + 140]) {
       for (const state of states)
-        close(opacity.value(state.kind, state.id, sample), expected(state, sample));
+        close(
+          opacity.value(state.kind, state.id, sample),
+          expected(state, sample),
+        );
     }
   });
   assert.equal(opacity.active(530), false);
@@ -195,7 +215,10 @@ test('target changes query membership without traversing the loaded history', ()
     opacity.active(140);
     calls = 0;
     opacity.setTarget(focus('b'), ids, 200);
-    assert.ok(calls < 20, `unrelated history caused ${calls} membership queries`);
+    assert.ok(
+      calls < 20,
+      `unrelated history caused ${calls} membership queries`,
+    );
     lookups.push(calls);
   }
   assert.equal(lookups[0], lookups[1]);
@@ -228,8 +251,16 @@ test('settled older exceptions do not accumulate across many visited flows', () 
 
 test('a common fade with no unfocused elements needs no scheduled frame', () => {
   const opacity = new GraphOpacity();
-  const ids = { nodes: new Set(['a']), edges: new Set<string>(), branches: new Set<string>() };
-  const target: GraphHoverFocus = { nodes: new Set(['a']), edges: new Set(), branches: new Set() };
+  const ids = {
+    nodes: new Set(['a']),
+    edges: new Set<string>(),
+    branches: new Set<string>(),
+  };
+  const target: GraphHoverFocus = {
+    nodes: new Set(['a']),
+    edges: new Set(),
+    branches: new Set(),
+  };
   opacity.setTarget(null, ids, -10);
   opacity.setTarget(target, ids, 0);
   assert.equal(opacity.value('nodes', 'a', 70), 1);
@@ -241,7 +272,11 @@ test('a common fade with no unfocused elements needs no scheduled frame', () => 
 
 test('removing the remaining elements ends all visible animation work', () => {
   const { opacity } = started();
-  const none: GraphHoverFocus = { nodes: new Set(), edges: new Set(), branches: new Set() };
+  const none: GraphHoverFocus = {
+    nodes: new Set(),
+    edges: new Set(),
+    branches: new Set(),
+  };
   opacity.setTarget(null, none, 40);
   assert.equal(opacity.active(40), false);
 });

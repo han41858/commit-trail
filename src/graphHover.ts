@@ -2,7 +2,10 @@ import type { Commit } from './model';
 import type { BranchTrack } from './branchLabels';
 import type { GraphPaths } from './graphPaths';
 
-export type GraphHoverTarget = { kind: 'branch' | 'commit' | 'edge'; id: string };
+export type GraphHoverTarget = {
+  kind: 'branch' | 'commit' | 'edge';
+  id: string;
+};
 export type GraphHoverFocus = {
   nodes: ReadonlySet<string>;
   edges: ReadonlySet<string>;
@@ -48,18 +51,24 @@ export function graphHoverIndex(
 }
 
 function rememberFocus(key: string, focus: GraphHoverFocus, index: HoverIndex) {
-  if (index.flows.size === 2) index.flows.delete(index.flows.keys().next().value!);
+  if (index.flows.size === 2)
+    index.flows.delete(index.flows.keys().next().value!);
   index.flows.set(key, focus);
   return focus;
 }
 
-function focusedBranches(owner: string | undefined, nodes: ReadonlySet<string>, index: HoverIndex) {
+function focusedBranches(
+  owner: string | undefined,
+  nodes: ReadonlySet<string>,
+  index: HoverIndex,
+) {
   const boundaryOwners = new Set<string>();
   // Only the existing start/end nodes identify neighboring paths. Their labels
   // may be at newer HEADs, but none of their other nodes or edges become focused.
   for (const sha of nodes) {
     const boundaryOwner = index.owners.get(sha);
-    if (boundaryOwner && boundaryOwner !== owner) boundaryOwners.add(boundaryOwner);
+    if (boundaryOwner && boundaryOwner !== owner)
+      boundaryOwners.add(boundaryOwner);
   }
   return new Set(
     [...index.heads]
@@ -98,7 +107,11 @@ function flowFocus(head: string, index: HoverIndex): GraphHoverFocus {
   return rememberFocus(head, focus, index);
 }
 
-function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHoverFocus {
+function mergeFocus(
+  child: string,
+  parent: string,
+  index: HoverIndex,
+): GraphHoverFocus {
   const key = `edge:${child}:${parent}`;
   const cached = index.flows.get(key);
   if (cached) return cached;
@@ -119,17 +132,22 @@ function mergeFocus(child: string, parent: string, index: HoverIndex): GraphHove
   return rememberFocus(key, { nodes, edges, branches }, index);
 }
 
-export function graphHoverOwner(target: GraphHoverTarget | null, index: HoverIndex) {
+export function graphHoverOwner(
+  target: GraphHoverTarget | null,
+  index: HoverIndex,
+) {
   if (!target) return;
   let sha = target.kind === 'branch' ? index.heads.get(target.id) : target.id;
   if (target.kind === 'edge') {
     const [child, parent, extra] = target.id.split(':');
     if (!child || !parent || extra !== undefined) return;
     const commit = index.commits.get(child);
-    const position = commit?.parents.findIndex((value) => value.sha === parent) ?? -1;
+    const position =
+      commit?.parents.findIndex((value) => value.sha === parent) ?? -1;
     if (position < 0) return;
     // A merge connector caps the incoming colored path at this historical SHA.
-    if (position > 0) return index.commits.has(parent) ? `edge:${target.id}` : undefined;
+    if (position > 0)
+      return index.commits.has(parent) ? `edge:${target.id}` : undefined;
     sha = child;
   }
   return sha && index.commits.has(sha) ? index.owners.get(sha) : undefined;
@@ -149,7 +167,9 @@ export function resolveGraphHover(
   if (target?.kind === 'branch') {
     const branches = new Set(
       [...focus.branches].filter(
-        (name) => name === target.id || index.owners.get(index.heads.get(name)!) !== owner,
+        (name) =>
+          name === target.id ||
+          index.owners.get(index.heads.get(name)!) !== owner,
       ),
     );
     // Keep the cached result when only boundary names accompany this badge.

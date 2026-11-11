@@ -1,11 +1,22 @@
-import { Component, lazy, Suspense, useEffect, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useSyncExternalStore,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { debug } from './debug';
 
 const DebugUI = lazy(() => import('./DebugPanel'));
 
 // A failed panel download must not unmount the app: keep the error inside the debug UI.
 // Browsers cache a failed dynamic import for the page, so recovery needs a reload rather than an in-page retry.
-class DebugLoadBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+class DebugLoadBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
@@ -33,7 +44,10 @@ class DebugLoadBoundary extends Component<{ children: ReactNode }, { failed: boo
 }
 
 // Stays in the main bundle: only the activation shortcut and mode wiring. The UI loads when debug mode turns on.
-export function DebugRoot({ developer, panelHost }: {
+export function DebugRoot({
+  developer,
+  panelHost,
+}: {
   developer: boolean;
   panelHost: RefObject<HTMLElement | null>;
 }) {

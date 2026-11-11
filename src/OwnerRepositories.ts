@@ -58,7 +58,11 @@ const empty = (authenticated: boolean): OwnerRepositoriesSnapshot => ({
 });
 
 // Only owner-matched records from the actual response can enter the list or cache.
-function repositoriesForOwner(data: unknown, owner: string, publicOnly: boolean) {
+function repositoriesForOwner(
+  data: unknown,
+  owner: string,
+  publicOnly: boolean,
+) {
   if (!Array.isArray(data)) throw new Error('Invalid repository list.');
   const repositories: OwnerRepository[] = [];
   for (const value of data) {
@@ -89,7 +93,8 @@ function repositoriesForOwner(data: unknown, owner: string, publicOnly: boolean)
       name: value.name,
       full_name: value.full_name,
       private: value.private,
-      description: typeof value.description === 'string' ? value.description : null,
+      description:
+        typeof value.description === 'string' ? value.description : null,
       pushed_at: typeof value.pushed_at === 'string' ? value.pushed_at : null,
       owner: { login: value.owner.login },
     });
@@ -195,8 +200,11 @@ export class OwnerRepositories {
       session,
       (['public', 'authenticated'] as const).filter((name) => {
         const source = session[name];
-        return source && (source.more || !!source.error) &&
-          (source.retryAt === null || source.retryAt <= Date.now());
+        return (
+          source &&
+          (source.more || !!source.error) &&
+          (source.retryAt === null || source.retryAt <= Date.now())
+        );
       }),
     );
   }
@@ -238,7 +246,10 @@ export class OwnerRepositories {
       repositories: session.repositories,
       busy: session.loading,
       public: state(session.public),
-      authenticated: { ...state(session.authenticated), enabled: !!session.authenticated },
+      authenticated: {
+        ...state(session.authenticated),
+        enabled: !!session.authenticated,
+      },
     };
     this.notify();
   }
@@ -264,12 +275,20 @@ export class OwnerRepositories {
     try {
       const result = await source.reader.get<unknown>(path);
       if (session !== this.session) return;
-      const repositories = repositoriesForOwner(result.data, session.owner, name === 'public');
-      const merged = new Map(source.repositories.map((repository) => [repository.id, repository]));
-      for (const repository of repositories) merged.set(repository.id, repository);
+      const repositories = repositoriesForOwner(
+        result.data,
+        session.owner,
+        name === 'public',
+      );
+      const merged = new Map(
+        source.repositories.map((repository) => [repository.id, repository]),
+      );
+      for (const repository of repositories)
+        merged.set(repository.id, repository);
       source.repositories = [...merged.values()];
       source.page = page;
-      source.more = Array.isArray(result.data) && result.data.length >= 100 && result.next;
+      source.more =
+        Array.isArray(result.data) && result.data.length >= 100 && result.next;
       if (page === 1) source.expiresAt = Date.now() + CACHE_LIFETIME;
       const cached = this.cache.get(session.owner) || {};
       cached[name] = {
@@ -280,18 +299,22 @@ export class OwnerRepositories {
       };
       this.cache.delete(session.owner);
       this.cache.set(session.owner, cached);
-      while (this.cache.size > CACHE_LIMIT) this.cache.delete(this.cache.keys().next().value!);
+      while (this.cache.size > CACHE_LIMIT)
+        this.cache.delete(this.cache.keys().next().value!);
     } catch (error) {
-      if (session !== this.session || source.reader.controller.signal.aborted) return;
+      if (session !== this.session || source.reader.controller.signal.aborted)
+        return;
       source.error =
         error instanceof GitHubError
           ? name === 'public' && error.status === 404
             ? 'GitHub owner not found. Check the owner name and retry.'
             : error.message
-          : error instanceof Error && error.message.startsWith('Could not reach GitHub.')
+          : error instanceof Error &&
+              error.message.startsWith('Could not reach GitHub.')
             ? error.message
             : 'Could not load repositories. Please retry.';
-      source.retryAt = error instanceof GitHubError ? error.retryAt || null : null;
+      source.retryAt =
+        error instanceof GitHubError ? error.retryAt || null : null;
       this.retryAt[name] = Math.max(this.retryAt[name], source.retryAt || 0);
     } finally {
       if (session === this.session) {

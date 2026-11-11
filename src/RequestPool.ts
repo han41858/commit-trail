@@ -6,7 +6,11 @@ export class RequestPool {
   private active = 0;
   private pending: (() => void)[] = [];
   constructor(private readonly limit = 16) {}
-  run<T>(signal: AbortSignal, task: () => Promise<T>, cycle?: DebugCycle): Promise<T> {
+  run<T>(
+    signal: AbortSignal,
+    task: () => Promise<T>,
+    cycle?: DebugCycle,
+  ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       let started = false,
         queued = false;
@@ -36,7 +40,8 @@ export class RequestPool {
         this.active++;
         Promise.resolve()
           .then(() => {
-            if (signal.aborted) debug.queuedCancelled(cycle ?? debug.forSignal(signal));
+            if (signal.aborted)
+              debug.queuedCancelled(cycle ?? debug.forSignal(signal));
             signal.throwIfAborted();
             return task();
           })
@@ -58,6 +63,7 @@ export class RequestPool {
     });
   }
   private pump() {
-    while (this.active < this.limit && this.pending.length) this.pending.shift()!();
+    while (this.active < this.limit && this.pending.length)
+      this.pending.shift()!();
   }
 }
