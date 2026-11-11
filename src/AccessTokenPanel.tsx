@@ -27,8 +27,16 @@ export function AccessTokenPanel({
   onCreate: () => void;
 }) {
   return (
-    <section className="auth floating-panel" ref={panelRef} aria-label="GitHub access token">
-      <button className="close" aria-label="Close access token" onClick={onClose}>
+    <section
+      className="auth floating-panel"
+      ref={panelRef}
+      aria-label="GitHub access token"
+    >
+      <button
+        className="close"
+        aria-label="Close access token"
+        onClick={onClose}
+      >
         ×
       </button>
       <h2>GitHub access token</h2>

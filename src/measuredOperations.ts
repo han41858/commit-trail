@@ -21,7 +21,10 @@ export async function measureRefresh(
     ? debug.beginCycle(kind, () =>
         cycle?.cancelled
           ? noChanges()
-          : changeCounts(before, captureChanges(history.getSnapshot(), info.getSnapshot())),
+          : changeCounts(
+              before,
+              captureChanges(history.getSnapshot(), info.getSnapshot()),
+            ),
       )
     : undefined;
   debug.bindGraph(history.getSnapshot().commits, cycle);
@@ -44,7 +47,8 @@ export function useMeasuredOpen(history: History, info: CommitInfoStore) {
     const current = initial.current;
     if (!current) return;
     current.cycle.cancelled = true;
-    if (!current.metadataStarted) debug.finish(current.cycle, 'metadata', 'cancelled');
+    if (!current.metadataStarted)
+      debug.finish(current.cycle, 'metadata', 'cancelled');
   }
   function open(value: string, token: string, branch?: string) {
     cancel();
@@ -64,7 +68,10 @@ export function useMeasuredOpen(history: History, info: CommitInfoStore) {
       () =>
         cycle.cancelled || !cycle.sample.requests
           ? noChanges()
-          : changeCounts(baseline, captureChanges(history.getSnapshot(), info.getSnapshot())),
+          : changeCounts(
+              baseline,
+              captureChanges(history.getSnapshot(), info.getSnapshot()),
+            ),
       ['history', 'metadata'],
     )!;
     const current = { cycle, metadataStarted: false };
@@ -78,7 +85,8 @@ export function useMeasuredOpen(history: History, info: CommitInfoStore) {
         !snapshot.meta ||
         cycle.cancelled ||
         (extras.repo === snapshot.repo && !extras.busy);
-      if (!current.metadataStarted && metadataSkipped) debug.finish(cycle, 'metadata');
+      if (!current.metadataStarted && metadataSkipped)
+        debug.finish(cycle, 'metadata');
     });
   }
   // repo is '' until repository metadata has loaded.
@@ -91,7 +99,9 @@ export function useMeasuredOpen(history: History, info: CommitInfoStore) {
         debug.finish(
           current.cycle,
           'metadata',
-          Object.keys(info.getSnapshot().errors).length ? 'failed' : 'completed',
+          Object.keys(info.getSnapshot().errors).length
+            ? 'failed'
+            : 'completed',
         ),
       );
     return task;

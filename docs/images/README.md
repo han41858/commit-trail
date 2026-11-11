@@ -8,14 +8,14 @@
 - Browser API requests were relayed through the environment's allowed HTTP proxy to `api.github.com`; response bodies were passed through unchanged and reused within the capture session. No fabricated commits, branches or workflow states, UI composition, or image overlays were used. No token was entered or stored in the app.
 - Mobile uses Chromium touch/viewport emulation at device scale 1. These are app viewport screenshots, not physical-device or OS-level installed-PWA captures. The Split view mobile screenshots use the same browser session and repository order, resized from portrait to landscape. Resizing issued no additional GitHub requests.
 
-| File | Viewport | Content |
-| --- | --- | --- |
-| `desktop.png` | 1280 × 800 | Commit Trail graph with commit, release, tag and workflow details |
-| `mobile.png` | 390 × 844 | The same selected real commit in the single-repository narrow layout |
-| `split-desktop.png` | 1600 × 900 | Four columns with independent graphs, commit messages, refs and Actions rings |
-| `split-mobile-portrait.png` | 390 × 844 | The same four repositories in narrow, DAG-focused columns |
-| `split-mobile-landscape.png` | 844 × 390 | The same layout after rotation, with messages where column width and lane spacing allow |
-| `auto-refresh.gif` | 900 × 380 | Approximately 10.64 seconds, 72 encoded frames from an 8 fps source recording |
+| File                         | Viewport   | Content                                                                                 |
+| ---------------------------- | ---------- | --------------------------------------------------------------------------------------- |
+| `desktop.png`                | 1280 × 800 | Commit Trail graph with commit, release, tag and workflow details                       |
+| `mobile.png`                 | 390 × 844  | The same selected real commit in the single-repository narrow layout                    |
+| `split-desktop.png`          | 1600 × 900 | Four columns with independent graphs, commit messages, refs and Actions rings           |
+| `split-mobile-portrait.png`  | 390 × 844  | The same four repositories in narrow, DAG-focused columns                               |
+| `split-mobile-landscape.png` | 844 × 390  | The same layout after rotation, with messages where column width and lane spacing allow |
+| `auto-refresh.gif`           | 900 × 380  | Approximately 10.64 seconds, 72 encoded frames from an 8 fps source recording           |
 
 The captures show currently loaded history, not each repository's complete DAG. Message visibility depends on each column's width and actual lane spacing. Select any node to inspect full details even when messages are hidden.
 

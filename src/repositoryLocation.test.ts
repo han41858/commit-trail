@@ -14,15 +14,20 @@ test('an ordinary repository query keeps single mode and uses the existing addre
     repositories: ['owner/repo'],
   });
   assert.deepEqual(
-    readRepositoryLocation(`${base}?repo=https%3A%2F%2Fgithub.com%2FOwner%2FRepo.git`),
+    readRepositoryLocation(
+      `${base}?repo=https%3A%2F%2Fgithub.com%2FOwner%2FRepo.git`,
+    ),
     { mode: 'single', repositories: ['owner/repo'] },
   );
 });
 test('repeated repositories enter monitor mode and retain normalized URL order', () => {
-  assert.deepEqual(readRepositoryLocation(`${base}?repo=B%2FTwo&repo=a%2Fone&repo=b%2Ftwo`), {
-    mode: 'monitor',
-    repositories: ['b/two', 'a/one'],
-  });
+  assert.deepEqual(
+    readRepositoryLocation(`${base}?repo=B%2FTwo&repo=a%2Fone&repo=b%2Ftwo`),
+    {
+      mode: 'monitor',
+      repositories: ['b/two', 'a/one'],
+    },
+  );
 });
 test('explicit monitor mode supports one repository, and repeated duplicates still express monitor intent', () => {
   for (const query of [
@@ -34,7 +39,10 @@ test('explicit monitor mode supports one repository, and repeated duplicates sti
       mode: 'monitor',
       repositories: ['a/one'],
     });
-  assert.equal(readRepositoryLocation(`${base}?repo=a/one&mode=other`).mode, 'single');
+  assert.equal(
+    readRepositoryLocation(`${base}?repo=a/one&mode=other`).mode,
+    'single',
+  );
 });
 test('invalid repositories are discarded and distinct valid names retain their order', () => {
   const url = new URL(base);
@@ -54,7 +62,12 @@ test('invalid repositories are discarded and distinct valid names retain their o
     mode: 'monitor',
     repositories: ['a/one', 'b/two', 'c/three', 'd/four', 'e/five'],
   });
-  for (const query of ['', 'repo=bad&mode=monitor', 'repo=bad&repo=../invalid', 'mode=monitor'])
+  for (const query of [
+    '',
+    'repo=bad&mode=monitor',
+    'repo=bad&repo=../invalid',
+    'mode=monitor',
+  ])
     assert.deepEqual(readRepositoryLocation(`${base}?${query}`), {
       mode: 'single',
       repositories: [],
@@ -96,7 +109,10 @@ test('copying a configuration excludes credentials, debug, settings and fragment
   assert.equal(url.hash, '');
   assert.deepEqual([...url.searchParams.keys()], ['repo', 'repo']);
   assert.ok(!url.href.includes('private-value'));
-  assert.deepEqual(url.searchParams.getAll('repo'), ['private/repo', 'public/repo']);
+  assert.deepEqual(url.searchParams.getAll('repo'), [
+    'private/repo',
+    'public/repo',
+  ]);
 });
 test('share URLs normalize and cap selections, reject empty configurations and unsupported schemes', () => {
   const url = monitorShareURL(base, [
@@ -121,7 +137,10 @@ test('in-app navigation preserves existing non-routing context and removes stale
   assert.equal(url.hash, '#context');
   assert.deepEqual(url.searchParams.getAll('repo'), ['new/one']);
   assert.equal(url.searchParams.has('mode'), false);
-  assert.deepEqual(readRepositoryLocation(url.href), { mode: 'single', repositories: ['new/one'] });
+  assert.deepEqual(readRepositoryLocation(url.href), {
+    mode: 'single',
+    repositories: ['new/one'],
+  });
 });
 test('normalized configurations round-trip without confusing single mode, monitor mode or order', () => {
   const cases = [
@@ -131,7 +150,10 @@ test('normalized configurations round-trip without confusing single mode, monito
     { mode: 'monitor' as const, repositories: ['b/two', 'a/one'] },
   ];
   for (const value of cases)
-    assert.deepEqual(readRepositoryLocation(repositoryLocationURL(base, value).href), value);
+    assert.deepEqual(
+      readRepositoryLocation(repositoryLocationURL(base, value).href),
+      value,
+    );
   assert.equal(new Set(cases.map(repositoryLocationKey)).size, cases.length);
 });
 test('branch parameters preserve case and indexed empty positions across filtering and deduplication', () => {
@@ -143,11 +165,14 @@ test('branch parameters preserve case and indexed empty positions across filteri
     repositories: ['a/one', 'b/two'],
     branches: ['Feature/Fix', 'Dev'],
   });
-  assert.deepEqual(readRepositoryLocation(`${base}?repo=a/one&repo=b/two&branch=&branch=Dev`), {
-    mode: 'monitor',
-    repositories: ['a/one', 'b/two'],
-    branches: [undefined, 'Dev'],
-  });
+  assert.deepEqual(
+    readRepositoryLocation(`${base}?repo=a/one&repo=b/two&branch=&branch=Dev`),
+    {
+      mode: 'monitor',
+      repositories: ['a/one', 'b/two'],
+      branches: [undefined, 'Dev'],
+    },
+  );
 });
 test('share links round-trip Unicode, slash and special ref characters with no sensitive context', () => {
   const branches = ['Feature/日本語+Fix', undefined, 'release|test'];
@@ -177,14 +202,24 @@ test('invalid branch values do not shift other repository selections or block va
     repositories: ['a/one', 'b/two', 'c/three'],
     branches: [undefined, 'Dev'],
   });
-  assert.deepEqual(readRepositoryLocation(`${base}?repo=a/one&branch=bad%20name`), {
-    mode: 'single',
-    repositories: ['a/one'],
-  });
+  assert.deepEqual(
+    readRepositoryLocation(`${base}?repo=a/one&branch=bad%20name`),
+    {
+      mode: 'single',
+      repositories: ['a/one'],
+    },
+  );
 });
 test('routing removes stale branches, keeps mode intent and uses branch-sensitive unambiguous keys', () => {
-  const next = { mode: 'single' as const, repositories: ['a/one'], branches: ['Dev'] };
-  const url = repositoryLocationURL(`${base}?repo=old/repo&branch=old&branch=stale&debug=1`, next);
+  const next = {
+    mode: 'single' as const,
+    repositories: ['a/one'],
+    branches: ['Dev'],
+  };
+  const url = repositoryLocationURL(
+    `${base}?repo=old/repo&branch=old&branch=stale&debug=1`,
+    next,
+  );
   assert.deepEqual(url.searchParams.getAll('branch'), ['Dev']);
   assert.equal(url.searchParams.get('debug'), '1');
   assert.deepEqual(readRepositoryLocation(url.href), next);
@@ -192,10 +227,13 @@ test('routing removes stale branches, keeps mode intent and uses branch-sensitiv
     repositoryLocationKey(next),
     repositoryLocationKey({ ...next, branches: ['dev'] }),
   );
-  assert.deepEqual(readRepositoryLocation(monitorShareURL(base, ['a/one'], ['Dev'])), {
-    ...next,
-    mode: 'monitor',
-  });
+  assert.deepEqual(
+    readRepositoryLocation(monitorShareURL(base, ['a/one'], ['Dev'])),
+    {
+      ...next,
+      mode: 'monitor',
+    },
+  );
 });
 test('writers keep branch associations while normalizing invalid and repeated repository inputs', () => {
   const url = monitorShareURL(
@@ -211,7 +249,9 @@ test('writers keep branch associations while normalizing invalid and repeated re
 });
 test('32-repository links cap normalized names without shifting indexed branches or exposing private context', () => {
   const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
-  const branches = names.map((_, index) => (index % 3 ? undefined : `Feature/日本語+${index}`));
+  const branches = names.map((_, index) =>
+    index % 3 ? undefined : `Feature/日本語+${index}`,
+  );
   branches[31] = 'Last/Branch';
   const repositories = [
     'bad',
@@ -224,8 +264,12 @@ test('32-repository links cap normalized names without shifting indexed branches
     'Overflow',
   ];
   const input = new URL(base);
-  repositories.forEach((repository) => input.searchParams.append('repo', repository));
-  indexedBranches.forEach((branch) => input.searchParams.append('branch', branch || ''));
+  repositories.forEach((repository) =>
+    input.searchParams.append('repo', repository),
+  );
+  indexedBranches.forEach((branch) =>
+    input.searchParams.append('branch', branch || ''),
+  );
   const expected = { mode: 'monitor' as const, repositories: names, branches };
   assert.deepEqual(readRepositoryLocation(input.href), expected);
   const share = monitorShareURL(
@@ -238,13 +282,20 @@ test('32-repository links cap normalized names without shifting indexed branches
     new URL(share).searchParams.getAll('branch'),
     branches.map((branch) => branch || ''),
   );
-  assert.ok(!share.includes('secret') && !share.includes('private') && !share.includes('debug'));
+  assert.ok(
+    !share.includes('secret') &&
+      !share.includes('private') &&
+      !share.includes('debug'),
+  );
   assert.equal(
     repositoryLocationKey(readRepositoryLocation(input.href)),
     repositoryLocationKey(expected),
   );
   assert.notEqual(
     repositoryLocationKey(expected),
-    repositoryLocationKey({ ...expected, branches: [...branches.slice(0, 31), 'Changed'] }),
+    repositoryLocationKey({
+      ...expected,
+      branches: [...branches.slice(0, 31), 'Changed'],
+    }),
   );
 });

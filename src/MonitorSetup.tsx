@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type PointerEvent,
+} from 'react';
 import {
   MONITOR_LIMIT,
   monitorRepository,
@@ -42,7 +48,9 @@ export function MonitorSetup({
   });
   const [input, setInput] = useState(''),
     [error, setError] = useState('');
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
+  const [copyStatus, setCopyStatus] = useState<
+    'idle' | 'copying' | 'copied' | 'failed'
+  >('idle');
   const copySequence = useRef(0);
   const [dragging, setDragging] = useState(''),
     [orderStatus, setOrderStatus] = useState('');
@@ -58,7 +66,11 @@ export function MonitorSetup({
     field,
     selected.length < MONITOR_LIMIT,
   );
-  const drag = useRef<{ repository: string; pointerId: number; index: number } | null>(null);
+  const drag = useRef<{
+    repository: string;
+    pointerId: number;
+    index: number;
+  } | null>(null);
   const available =
     selected.length < MONITOR_LIMIT
       ? visits.entries.filter((entry) => !selected.includes(entry.repository))
@@ -82,7 +94,9 @@ export function MonitorSetup({
     setCopyStatus('idle');
   }
   function addRepositories(repositories: readonly string[]) {
-    setSelected((names) => normalizeMonitorRepositories([...names, ...repositories]));
+    setSelected((names) =>
+      normalizeMonitorRepositories([...names, ...repositories]),
+    );
     setInput('');
     setError('');
     resetCopy();
@@ -166,7 +180,8 @@ export function MonitorSetup({
               last = controls[controls.length - 1];
             if (
               event.shiftKey &&
-              (document.activeElement === first || document.activeElement === dialog.current)
+              (document.activeElement === first ||
+                document.activeElement === dialog.current)
             ) {
               event.preventDefault();
               last.focus();
@@ -177,19 +192,31 @@ export function MonitorSetup({
           }
         }}
       >
-        <button className="close" aria-label="Close monitor setup" onClick={onClose}>
+        <button
+          className="close"
+          aria-label="Close monitor setup"
+          onClick={onClose}
+        >
           ×
         </button>
         <h2 id="monitor-setup-title">Split view</h2>
         <div className="monitor-setup-body" ref={scrollArea}>
-          <p>Watch up to {MONITOR_LIMIT} repositories side by side. Landscape works best.</p>
+          <p>
+            Watch up to {MONITOR_LIMIT} repositories side by side. Landscape
+            works best.
+          </p>
           <ol
             className="monitor-selected"
             ref={list}
             aria-label="Selected repositories"
             onPointerMove={(event) => {
               const current = drag.current;
-              if (!current || current.pointerId !== event.pointerId || !list.current) return;
+              if (
+                !current ||
+                current.pointerId !== event.pointerId ||
+                !list.current
+              )
+                return;
               const rows = [...list.current.children];
               let target = 0,
                 distance = Infinity;
@@ -234,17 +261,25 @@ export function MonitorSetup({
                       return;
                     event.preventDefault();
                     event.currentTarget.focus({ preventScroll: true });
-                    drag.current = { repository, pointerId: event.pointerId, index };
+                    drag.current = {
+                      repository,
+                      pointerId: event.pointerId,
+                      index,
+                    };
                     setDragging(repository);
                     setOrderStatus('');
                     list.current?.setPointerCapture(event.pointerId);
                   }}
                   onKeyDown={(event) => {
-                    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')
+                      return;
                     event.preventDefault();
                     const target = Math.max(
                       0,
-                      Math.min(selected.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)),
+                      Math.min(
+                        selected.length - 1,
+                        index + (event.key === 'ArrowDown' ? 1 : -1),
+                      ),
                     );
                     move(repository, target);
                     setOrderStatus(
@@ -260,7 +295,9 @@ export function MonitorSetup({
                     aria-hidden="true"
                   >
                     {[4, 9, 14].flatMap((y) =>
-                      [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />),
+                      [5, 11].map((x) => (
+                        <circle key={`${x}-${y}`} cx={x} cy={y} r="1.3" />
+                      )),
                     )}
                   </svg>
                 </button>
@@ -269,7 +306,9 @@ export function MonitorSetup({
                   type="button"
                   aria-label={`Remove ${repository} from monitor`}
                   onClick={() => {
-                    setSelected((names) => names.filter((name) => name !== repository));
+                    setSelected((names) =>
+                      names.filter((name) => name !== repository),
+                    );
                     setError('');
                     resetCopy();
                     setOrderStatus('');
@@ -280,7 +319,11 @@ export function MonitorSetup({
               </li>
             ))}
           </ol>
-          <div className="monitor-order-status" role="status" aria-live="polite">
+          <div
+            className="monitor-order-status"
+            role="status"
+            aria-live="polite"
+          >
             {orderStatus}
           </div>
           <div ref={addArea} className="monitor-owner-input">
@@ -357,14 +400,17 @@ export function MonitorSetup({
             </>
           )}
           <p className="monitor-share-note">
-            Shared links include repository and branch names, including private ones. Share with
-            care.
+            Shared links include repository and branch names, including private
+            ones. Share with care.
           </p>
           <div className="monitor-copy-status" role="status" aria-live="polite">
             {
-              { idle: '', copying: '', copied: 'Link copied.', failed: 'Could not copy link.' }[
-                copyStatus
-              ]
+              {
+                idle: '',
+                copying: '',
+                copied: 'Link copied.',
+                failed: 'Could not copy link.',
+              }[copyStatus]
             }
           </div>
         </div>
@@ -382,9 +428,12 @@ export function MonitorSetup({
             onClick={() => void copyLink()}
           >
             {
-              { idle: 'Copy link', copying: 'Copy link', copied: 'Copied!', failed: 'Copy failed' }[
-                copyStatus
-              ]
+              {
+                idle: 'Copy link',
+                copying: 'Copy link',
+                copied: 'Copied!',
+                failed: 'Copy failed',
+              }[copyStatus]
             }
           </button>
           <button

@@ -5,7 +5,9 @@ export const mergedCount = (counts: Record<string, number>, name: string) =>
   Object.hasOwn(counts, name) ? counts[name] : 0;
 export function priorityBranchNames(branches: Branch[], defaultBranch: string) {
   const existing = new Set(branches.map((b) => b.name));
-  return [...new Set(['main', 'master', defaultBranch])].filter((name) => existing.has(name));
+  return [...new Set(['main', 'master', defaultBranch])].filter((name) =>
+    existing.has(name),
+  );
 }
 export function preferredBranch(branches: Branch[], defaultBranch: string) {
   return priorityBranchNames(branches, defaultBranch)[0] || defaultBranch;

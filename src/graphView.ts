@@ -23,7 +23,11 @@ export function visibleGraphEdges(
         x: primary ? origin : from.x,
         y: from.y + (reverse ? -ROW / 2 : ROW / 2),
       };
-      if (Math.max(from.y, to.y) < top - ROW || Math.min(from.y, to.y) > bottom + ROW) continue;
+      if (
+        Math.max(from.y, to.y) < top - ROW ||
+        Math.min(from.y, to.y) > bottom + ROW
+      )
+        continue;
       edges.push({
         id: `${commit.sha}:${parent.sha}`,
         from,
@@ -45,17 +49,31 @@ export function commitVersionIcons(
       {
         text: '🚀',
         x: x - 20,
-        title: info.releases.map((release) => release.name || release.tag_name).join(' · '),
+        title: info.releases
+          .map((release) => release.name || release.tag_name)
+          .join(' · '),
       },
     ];
   if (info?.tags.length)
-    return [{ text: '🏷️', x: x - 20, title: info.tags.map((tag) => tag.name).join(' · ') }];
+    return [
+      {
+        text: '🏷️',
+        x: x - 20,
+        title: info.tags.map((tag) => tag.name).join(' · '),
+      },
+    ];
   return [];
 }
 export function visibleHistorySources(
   frontiers: readonly HistoryFrontier[],
   positions: ReadonlyMap<string, { x: number; y: number }>,
-  view: { left: number; top: number; width: number; height: number; inset: number },
+  view: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    inset: number;
+  },
   pending: readonly string[] = [],
 ) {
   if (view.width <= 0 || view.height <= view.inset) return [];
@@ -66,17 +84,30 @@ export function visibleHistorySources(
   const bottom = view.top + view.height;
   for (const frontier of frontiers) {
     const point = positions.get(frontier.sha);
-    if (!point || point.x < view.left || point.x > view.left + view.width || point.y > bottom)
+    if (
+      !point ||
+      point.x < view.left ||
+      point.x > view.left + view.width ||
+      point.y > bottom
+    )
       continue;
-    for (const source of frontier.sources) if (!excluded.has(source)) sources.add(source);
+    for (const source of frontier.sources)
+      if (!excluded.has(source)) sources.add(source);
   }
   return [...sources];
 }
-export function graphFrame(viewWidth: number, maxLane: number, narrow: boolean) {
+export function graphFrame(
+  viewWidth: number,
+  maxLane: number,
+  narrow: boolean,
+) {
   const naturalWidth = GRAPH_ORIGIN + maxLane * LANE_SPACING + 76;
   const laneSpacing = (available: number) =>
     maxLane > 0
-      ? Math.min(LANE_SPACING, Math.max(0, available - GRAPH_ORIGIN - 18) / maxLane)
+      ? Math.min(
+          LANE_SPACING,
+          Math.max(0, available - GRAPH_ORIGIN - 18) / maxLane,
+        )
       : LANE_SPACING;
   const gap = narrow ? 12 : 16,
     compactWidth = Math.min(viewWidth / 2, naturalWidth);
@@ -120,7 +151,11 @@ export function branchDisplayNames(names: readonly string[]) {
     }),
   );
 }
-export function branchLabelText(name: string, display: ReadonlyMap<string, string>, limit: number) {
+export function branchLabelText(
+  name: string,
+  display: ReadonlyMap<string, string>,
+  limit: number,
+) {
   const letters = Array.from(display.get(name) || name),
     available = Math.max(1, limit);
   if (letters.length <= available) return letters.join('');

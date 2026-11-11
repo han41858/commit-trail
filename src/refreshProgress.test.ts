@@ -8,16 +8,23 @@ test('the sweep follows elapsed time for all supported intervals', () => {
     const start = 1000,
       next = start + duration;
     for (const fraction of [0, 0.25, 0.5, 0.75, 1])
-      assert.deepEqual(refreshProgress(next, duration, start + duration * fraction), {
-        duration,
-        delay: fraction === 0 ? 0 : -duration * fraction,
-        offset: 100 * (1 - fraction),
-      });
+      assert.deepEqual(
+        refreshProgress(next, duration, start + duration * fraction),
+        {
+          duration,
+          delay: fraction === 0 ? 0 : -duration * fraction,
+          offset: 100 * (1 - fraction),
+        },
+      );
   }
 });
 
 test('future starts and overdue deadlines clamp to empty and full', () => {
-  assert.deepEqual(refreshProgress(90000, 60000, 0), { duration: 60000, delay: 0, offset: 100 });
+  assert.deepEqual(refreshProgress(90000, 60000, 0), {
+    duration: 60000,
+    delay: 0,
+    offset: 100,
+  });
   assert.deepEqual(refreshProgress(90000, 60000, 120000), {
     duration: 60000,
     delay: -60000,
@@ -52,9 +59,15 @@ test('manual completion and interval changes reset the sweep using actual loop d
   loop.configure('repo', true, 60000);
   loop.loaded();
   now += 15000;
-  assert.equal(refreshProgress(loop.getSnapshot().nextAt, 60000, now).offset, 75);
+  assert.equal(
+    refreshProgress(loop.getSnapshot().nextAt, 60000, now).offset,
+    75,
+  );
   await loop.refresh();
-  assert.equal(refreshProgress(loop.getSnapshot().nextAt, 60000, now).offset, 100);
+  assert.equal(
+    refreshProgress(loop.getSnapshot().nextAt, 60000, now).offset,
+    100,
+  );
   loop.configure('repo', true, 300000);
   assert.deepEqual(refreshProgress(loop.getSnapshot().nextAt, 300000, now), {
     duration: 300000,
@@ -62,7 +75,10 @@ test('manual completion and interval changes reset the sweep using actual loop d
     offset: 100,
   });
   now += 30000;
-  assert.equal(refreshProgress(loop.getSnapshot().nextAt, 300000, now).offset, 90);
+  assert.equal(
+    refreshProgress(loop.getSnapshot().nextAt, 300000, now).offset,
+    90,
+  );
   loop.stop();
 });
 test('animation alignment uses the committed deadline instead of restarting after a slow render', () => {

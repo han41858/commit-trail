@@ -2,7 +2,11 @@ import type { Branch, Commit } from './model';
 import type { ClosedPull } from './recommendations';
 import { debug, type DebugCycle } from './debug';
 import { requestActivity } from './requestActivity';
-export type BranchActivity = { ref: string; timestamp: string; activity_type: string };
+export type BranchActivity = {
+  ref: string;
+  timestamp: string;
+  activity_type: string;
+};
 export class GitHubError extends Error {
   constructor(
     message: string,
@@ -53,7 +57,9 @@ export async function github<T>(
       });
     } catch (e) {
       if (signal?.aborted) throw e;
-      throw new Error('Could not reach GitHub. Check your connection and retry.');
+      throw new Error(
+        'Could not reach GitHub. Check your connection and retry.',
+      );
     }
     probe?.response(r);
     if (r.status === 304 && cached) return cached;
@@ -65,11 +71,17 @@ export async function github<T>(
         try {
           const body = await r.json();
           rateMessage =
-            typeof body?.message === 'string' && /rate limit|abuse detection/i.test(body.message);
+            typeof body?.message === 'string' &&
+            /rate limit|abuse detection/i.test(body.message);
         } catch {
           /* Error bodies are never shown to users. */
         }
-        if (r.status === 429 || remaining === '0' || retry !== null || rateMessage) {
+        if (
+          r.status === 429 ||
+          remaining === '0' ||
+          retry !== null ||
+          rateMessage
+        ) {
           const reset = Number(r.headers.get('X-RateLimit-Reset')) * 1000;
           const retryTime =
             retry !== null
@@ -111,7 +123,9 @@ export async function github<T>(
     const link = r.headers.get('Link') || '';
     const last = link.match(/<([^>]+)>;\s*rel="last"/);
     const page = last
-      ? Number(new URL(last[1], 'https://api.github.com').searchParams.get('page'))
+      ? Number(
+          new URL(last[1], 'https://api.github.com').searchParams.get('page'),
+        )
       : NaN;
     const next = link.match(/<([^>]+)>;\s*rel="next"/);
     const cursor = next
@@ -135,7 +149,8 @@ export async function github<T>(
     };
   } catch (error) {
     probe?.finish(
-      signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')
+      signal?.aborted ||
+        (error instanceof DOMException && error.name === 'AbortError')
         ? 'cancelled'
         : 'failed',
     );
@@ -158,7 +173,12 @@ export const commitsPage = (
     token,
     signal,
   );
-export const branchesPage = (repo: string, page: number, token: string, signal?: AbortSignal) =>
+export const branchesPage = (
+  repo: string,
+  page: number,
+  token: string,
+  signal?: AbortSignal,
+) =>
   github<Branch[]>(
     `/repos/${repo}/branches?per_page=100&page=${page}`,
     token,
@@ -190,7 +210,12 @@ export async function branchByName(
     throw e;
   }
 }
-export const closedPullsPage = (repo: string, page: number, token: string, signal?: AbortSignal) =>
+export const closedPullsPage = (
+  repo: string,
+  page: number,
+  token: string,
+  signal?: AbortSignal,
+) =>
   github<ClosedPull[]>(
     `/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=${page}`,
     token,

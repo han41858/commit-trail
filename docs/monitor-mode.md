@@ -21,13 +21,13 @@ Owner만 입력하고 Enter 또는 **Add**를 누르면 일반 화면과 같은 
 
 ## URL 구성 공유와 복원
 
-| URL 예시 | 동작 |
-| --- | --- |
-| `/?repo=han41858/commit-trail` | 기존 단일 저장소 화면 |
-| `/?repo=han41858/commit-trail&repo=octocat/Hello-World` | URL 순서대로 두 저장소 분할 |
-| `/?repo=han41858/commit-trail&mode=monitor` | 한 저장소로 분할 모드 진입 |
+| URL 예시                                                                       | 동작                                    |
+| ------------------------------------------------------------------------------ | --------------------------------------- |
+| `/?repo=han41858/commit-trail`                                                 | 기존 단일 저장소 화면                   |
+| `/?repo=han41858/commit-trail&repo=octocat/Hello-World`                        | URL 순서대로 두 저장소 분할             |
+| `/?repo=han41858/commit-trail&mode=monitor`                                    | 한 저장소로 분할 모드 진입              |
 | `/?repo=han41858/commit-trail&repo=octocat/Hello-World&branch=dev&branch=main` | 각 저장소를 `dev`, `main` 기준으로 복원 |
-| `/?repo=han41858/commit-trail&repo=octocat/Hello-World&branch=&branch=main` | 첫 저장소는 자동 선택, 두 번째는 `main` |
+| `/?repo=han41858/commit-trail&repo=octocat/Hello-World&branch=&branch=main`    | 첫 저장소는 자동 선택, 두 번째는 `main` |
 
 - `repo` 파라미터가 두 개 이상이거나 `mode=monitor`이면 모니터 구성을 읽는다. 기존 파서로 주소를 정규화하고 소문자 변환·중복 제거 후 앞쪽의 유효한 저장소를 최대 32개까지 사용한다. 중복·잘못된 항목 제거 후 하나만 남아도 모니터 의도를 유지하며, 유효한 항목이 전혀 없으면 빈 일반 화면을 표시한다.
 - 파싱은 접근 권한을 확인하지 않는다. 실제 진입에서는 기존 모델로 각 저장소를 열고, 권한·404·네트워크 오류는 해당 열에만 표시한다. 첫 저장소가 실패해도 나머지 열은 동작하며 기존 공통 갱신으로 다시 시도한다. 부분 목록 밖의 URL·저장된 브랜치 후보에 한해서 기존 정확한 이름 조회를 재사용하며 공개 여부 확인용 추가 요청은 없다.
@@ -122,17 +122,17 @@ Owner만 입력하고 Enter 또는 **Add**를 누르면 일반 화면과 같은 
 
 ## 구현 파일
 
-| 파일 | 역할 |
-| --- | --- |
-| `MonitorRepositories.ts` | 이름 검증·최대 개수·순서 이동·저장·PAT 경계 |
-| `MonitorSetup.tsx` | 선택·드래그/키보드 정렬·링크 복사·포커스 |
-| `repositoryLocation.ts` | 순수 URL 파싱·정규화·공유 링크 생성 |
-| `useRepositoryLocation.ts` | 기존 history API로 모드/구성 탐색·popstate 복원 |
-| `MonitorSession.ts` | 기존 모델 재사용·독립 작업·공통 dispatch·공유 대기 |
-| `MonitorPane.tsx` | 추가 저장소 구독·독립 스크롤·앱의 단일 커밋 선택에 따른 상세 패널 |
-| `Graph.tsx` / `graphView.ts` | 일반/분할 공통 표시 정책·열 너비 기준 반응형·active 옵션 |
-| `RefreshButton.tsx` | 동일 SVG 진행 표시를 단일·분할 화면 수동 갱신 버튼에서 공유 |
-| `main.tsx` / `monitor.css` | 모드 연결·기존 단일 그래프 보존·반응형 배치 |
+| 파일                         | 역할                                                              |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `MonitorRepositories.ts`     | 이름 검증·최대 개수·순서 이동·저장·PAT 경계                       |
+| `MonitorSetup.tsx`           | 선택·드래그/키보드 정렬·링크 복사·포커스                          |
+| `repositoryLocation.ts`      | 순수 URL 파싱·정규화·공유 링크 생성                               |
+| `useRepositoryLocation.ts`   | 기존 history API로 모드/구성 탐색·popstate 복원                   |
+| `MonitorSession.ts`          | 기존 모델 재사용·독립 작업·공통 dispatch·공유 대기                |
+| `MonitorPane.tsx`            | 추가 저장소 구독·독립 스크롤·앱의 단일 커밋 선택에 따른 상세 패널 |
+| `Graph.tsx` / `graphView.ts` | 일반/분할 공통 표시 정책·열 너비 기준 반응형·active 옵션          |
+| `RefreshButton.tsx`          | 동일 SVG 진행 표시를 단일·분할 화면 수동 갱신 버튼에서 공유       |
+| `main.tsx` / `monitor.css`   | 모드 연결·기존 단일 그래프 보존·반응형 배치                       |
 
 ## 활성 헤더 정렬 검증 (2026-11-03, KST)
 

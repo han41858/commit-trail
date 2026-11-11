@@ -10,7 +10,11 @@ import {
   type BranchTrack,
   type Point,
 } from './branchLabels';
-import { branchLabelText, commitVersionIcons, type visibleGraphEdges } from './graphView';
+import {
+  branchLabelText,
+  commitVersionIcons,
+  type visibleGraphEdges,
+} from './graphView';
 import type { MonthMarker } from './monthMarkers';
 
 export type BranchBadge = Point & {
@@ -100,7 +104,10 @@ export function drawGraphCanvas(
       high = letters.length;
     while (low < high) {
       const middle = Math.ceil((low + high) / 2);
-      if (ctx.measureText(letters.slice(0, middle).join('') + '…').width <= messageWidth)
+      if (
+        ctx.measureText(letters.slice(0, middle).join('') + '…').width <=
+        messageWidth
+      )
         low = middle;
       else high = middle - 1;
     }
@@ -169,7 +176,9 @@ export function drawGraphCanvas(
     if (extra?.actions) {
       const summary = extra.actions,
         radius = c.sha === selected ? 10.5 : 7.5;
-      ctx.strokeStyle = style.getPropertyValue(`--action-${summary.state}`).trim();
+      ctx.strokeStyle = style
+        .getPropertyValue(`--action-${summary.state}`)
+        .trim();
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
@@ -186,14 +195,21 @@ export function drawGraphCanvas(
       ctx.globalAlpha = opacity;
       if (summary.state === 'running' && summary.ratio !== null) {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * summary.ratio);
+        ctx.arc(
+          p.x,
+          p.y,
+          radius,
+          -Math.PI / 2,
+          -Math.PI / 2 + Math.PI * 2 * summary.ratio,
+        );
         ctx.stroke();
       }
     }
     ctx.globalAlpha = opacity;
     ctx.font = '13px system-ui';
     ctx.textAlign = 'center';
-    for (const icon of commitVersionIcons(info?.get(c.sha), p.x)) ctx.fillText(icon.text, icon.x, p.y + 4);
+    for (const icon of commitVersionIcons(info?.get(c.sha), p.x))
+      ctx.fillText(icon.text, icon.x, p.y + 4);
     ctx.textAlign = 'left';
     ctx.fillStyle = text;
     ctx.globalAlpha = alpha('nodes', c.sha);
@@ -221,12 +237,16 @@ export function drawGraphCanvas(
   const labelRight = left + (showMessages ? messageX : branchWidth),
     nodeClearance = 15,
     maxTextWidth =
-      Math.min(narrow ? Math.min(116, view.width * 0.36) : 190, branchWidth - 16) - 12,
+      Math.min(
+        narrow ? Math.min(116, view.width * 0.36) : 190,
+        branchWidth - 16,
+      ) - 12,
     cache = new Map<string, { text: string; width: number }>();
   const badge = (name: string, x: number) => {
     // Match the 12px selected-ring obstacle plus its 3px gap and 8px left inset.
     const available =
-        Math.max(x - left - 8 - nodeClearance, labelRight - x - nodeClearance) - 12,
+        Math.max(x - left - 8 - nodeClearance, labelRight - x - nodeClearance) -
+        12,
       limitWidth = Math.min(maxTextWidth, available),
       key = `${name}\0${limitWidth}`,
       old = cache.get(key);
@@ -243,7 +263,12 @@ export function drawGraphCanvas(
   const hits: BranchBadge[] = [];
   ctx.save();
   ctx.beginPath();
-  ctx.rect(left, view.top + padding - 20, view.width, Math.max(0, view.height - padding - 28));
+  ctx.rect(
+    left,
+    view.top + padding - 20,
+    view.width,
+    Math.max(0, view.height - padding - 28),
+  );
   ctx.clip();
   for (const label of visibleBranchLabels(
     tracks,
@@ -251,7 +276,8 @@ export function drawGraphCanvas(
     view.top + view.height - 48,
     left,
     labelRight + 8,
-    (names, point) => Math.max(...names.map((name) => badge(name, point.x).width)),
+    (names, point) =>
+      Math.max(...names.map((name) => badge(name, point.x).width)),
     badgeHeight,
     badgeGap,
     labelObstacles,
@@ -261,7 +287,8 @@ export function drawGraphCanvas(
     const color = colors[(label.color ?? label.lane) % colors.length];
     if (label.names.length > 1) {
       ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.4 * Math.max(...label.names.map((name) => alpha('branches', name)));
+      ctx.globalAlpha =
+        0.4 * Math.max(...label.names.map((name) => alpha('branches', name)));
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x - 3, y + badgeHeight / 2);

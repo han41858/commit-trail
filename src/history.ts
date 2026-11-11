@@ -7,11 +7,25 @@ import {
   github,
   branchActivityPage,
 } from './api';
-import { preferredBranch, PullCounts, RECOMMENDATION_LIMIT } from './recommendations';
+import {
+  preferredBranch,
+  PullCounts,
+  RECOMMENDATION_LIMIT,
+} from './recommendations';
 import { HistoryCommitPages } from './HistoryCommitPages';
 import { GitHubReader } from './GitHubReader';
-import { commitAncestry, historyFrontiers, historyRange } from './historyTraversal';
-import { parseRepo, commitTime, type Branch, type Commit, type HistoryFrontier } from './model';
+import {
+  commitAncestry,
+  historyFrontiers,
+  historyRange,
+} from './historyTraversal';
+import {
+  parseRepo,
+  commitTime,
+  type Branch,
+  type Commit,
+  type HistoryFrontier,
+} from './model';
 import type { BranchSelections } from './BranchSelections';
 import { branchName } from './branchName';
 
@@ -78,11 +92,19 @@ const empty = (): HistorySnapshot => ({
   moreBranches: false,
   frontiers: [],
   pendingSources: [],
-  ranking: { counts: {}, scanned: 0, busy: false, complete: false, error: '', retryAt: null },
+  ranking: {
+    counts: {},
+    scanned: 0,
+    busy: false,
+    complete: false,
+    error: '',
+    retryAt: null,
+  },
   branchSearch: { busy: false, error: '' },
 });
 const accessFailure = (error: unknown) =>
-  error instanceof GitHubError && (!!error.retryAt || [401, 403, 429].includes(error.status));
+  error instanceof GitHubError &&
+  (!!error.retryAt || [401, 403, 429].includes(error.status));
 
 // Ref names never drive history loading. Repository activity supplies independent
 // live heads that cannot be discovered by following the selected head's parents.
@@ -114,7 +136,10 @@ export class History {
   private commitPages = new HistoryCommitPages();
   private sourceTasks = new Map<string, Promise<void>>();
   private failedSources = new Set<string>();
-  private discoveryTask: { signal: AbortSignal; promise: Promise<void> } | null = null;
+  private discoveryTask: {
+    signal: AbortSignal;
+    promise: Promise<void>;
+  } | null = null;
   private commits = new Map<string, Commit>();
   private started = false;
   private historyHead = '';
@@ -163,17 +188,27 @@ export class History {
   private current(signal: AbortSignal) {
     signal.throwIfAborted();
   }
-  private async run(task: (signal: AbortSignal) => Promise<void>, clearError = true) {
+  private async run(
+    task: (signal: AbortSignal) => Promise<void>,
+    clearError = true,
+  ) {
     const controller = new AbortController();
     this.controllers.add(controller);
     debug.bind(controller.signal, this.debugInitial);
-    this.publish({ busy: true, ...(clearError ? { error: '', retryAt: null } : {}) });
+    this.publish({
+      busy: true,
+      ...(clearError ? { error: '', retryAt: null } : {}),
+    });
     try {
       await task(controller.signal);
     } catch (error) {
       if (!controller.signal.aborted) {
-        const retryAt = error instanceof GitHubError ? error.retryAt || null : null;
-        if (!this.snapshot.error || (retryAt || 0) > (this.snapshot.retryAt || 0))
+        const retryAt =
+          error instanceof GitHubError ? error.retryAt || null : null;
+        if (
+          !this.snapshot.error ||
+          (retryAt || 0) > (this.snapshot.retryAt || 0)
+        )
           this.publish({ error: (error as Error).message, retryAt });
       }
     } finally {
@@ -217,8 +252,20 @@ export class History {
     this.nextPage = 0;
     this.forwardWindow = [];
   }
-  private fetchCommits(ref: string, page: number, signal: AbortSignal, since?: number) {
-    return this.commitPages.get(this.snapshot.repo, ref, page, this.token, signal, since);
+  private fetchCommits(
+    ref: string,
+    page: number,
+    signal: AbortSignal,
+    since?: number,
+  ) {
+    return this.commitPages.get(
+      this.snapshot.repo,
+      ref,
+      page,
+      this.token,
+      signal,
+      since,
+    );
   }
   clear = () => {
     this.requestedBranch = undefined;
@@ -268,7 +315,9 @@ export class History {
     const range = this.historyRange();
     if (range && this.activityNeeded(range))
       frontiers.push({ sha: range.anchor, sources: ['activity'] });
-    const commits = changed ? [...this.commits.values()] : this.snapshot.commits;
+    const commits = changed
+      ? [...this.commits.values()]
+      : this.snapshot.commits;
     debug.bindGraph(commits, cycle);
     this.publish({ ...patch, ...(changed ? { commits } : {}), frontiers });
   }
@@ -279,7 +328,9 @@ export class History {
     let result = first;
     if (this.snapshot.reverse) {
       if (first.next && !first.lastPage)
-        throw new Error('GitHub did not provide the oldest history page. Please retry.');
+        throw new Error(
+          'GitHub did not provide the oldest history page. Please retry.',
+        );
       const last = first.lastPage || 1;
       if (last > 1) {
         result = await this.fetchCommits(this.historyHead, last, signal);
@@ -290,7 +341,9 @@ export class History {
     }
     this.publish({ baseHead: this.historyHead });
     if (this.historyHead)
-      this.addRefs([{ name: this.snapshot.base, commit: { sha: this.historyHead } }]);
+      this.addRefs([
+        { name: this.snapshot.base, commit: { sha: this.historyHead } },
+      ]);
     this.started = true;
     this.integrate(result.data);
     await this.discoverActive(signal);
@@ -299,13 +352,18 @@ export class History {
     return historyRange(this.commits, this.historyHead, this.forwardWindow);
   }
   private activityNeeded(range: { min: number; max: number }) {
-    if (this.snapshot.discoveryError || (this.snapshot.reverse && this.nextPage > 0)) return false;
+    if (
+      this.snapshot.discoveryError ||
+      (this.snapshot.reverse && this.nextPage > 0)
+    )
+      return false;
     if (
       [...this.activity].some(
         ([name, time]) =>
           name !== this.snapshot.base &&
           !this.deletedRefs.has(name) &&
-          (this.admitted.get(name) === undefined || range.min < this.admitted.get(name)!) &&
+          (this.admitted.get(name) === undefined ||
+            range.min < this.admitted.get(name)!) &&
           time >= range.min &&
           (!this.snapshot.reverse || time <= range.max),
       )
@@ -314,7 +372,8 @@ export class History {
     return this.activityNext && this.oldestActivity >= range.min;
   }
   private async discoverActive(signal: AbortSignal) {
-    if (this.discoveryTask && !this.discoveryTask.signal.aborted) return this.discoveryTask.promise;
+    if (this.discoveryTask && !this.discoveryTask.signal.aborted)
+      return this.discoveryTask.promise;
     const task = { signal, promise: this.performDiscovery(signal) };
     this.discoveryTask = task;
     try {
@@ -336,14 +395,17 @@ export class History {
           signal,
         );
         this.current(signal);
-        if (!Array.isArray(result.data)) throw new Error('Recent branch activity is unavailable.');
+        if (!Array.isArray(result.data))
+          throw new Error('Recent branch activity is unavailable.');
         if (
           result.next &&
           (!result.nextCursor ||
             result.nextCursor === this.activityCursor ||
             this.activityRequested.has(result.nextCursor))
         )
-          throw new Error('GitHub branch activity pagination did not advance. Please retry.');
+          throw new Error(
+            'GitHub branch activity pagination did not advance. Please retry.',
+          );
         this.activityRequested.add(this.activityCursor ?? '');
         this.activityCursor = result.nextCursor;
         this.activityNext = result.next;
@@ -352,14 +414,21 @@ export class History {
           if (!Number.isFinite(time)) continue;
           this.oldestActivity = Math.min(this.oldestActivity, time);
           if (
-            !['push', 'pr_merge', 'merge_queue_merge', 'force_push', 'branch_creation'].includes(
-              event.activity_type,
-            ) ||
+            ![
+              'push',
+              'pr_merge',
+              'merge_queue_merge',
+              'force_push',
+              'branch_creation',
+            ].includes(event.activity_type) ||
             !event.ref.startsWith('refs/heads/')
           )
             continue;
           const name = event.ref.slice('refs/heads/'.length);
-          this.activity.set(name, Math.max(this.activity.get(name) ?? -Infinity, time));
+          this.activity.set(
+            name,
+            Math.max(this.activity.get(name) ?? -Infinity, time),
+          );
         }
       }
       const candidates = [...this.activity]
@@ -367,7 +436,8 @@ export class History {
           ([name, time]) =>
             name !== this.snapshot.base &&
             !this.deletedRefs.has(name) &&
-            (this.admitted.get(name) === undefined || range.min < this.admitted.get(name)!) &&
+            (this.admitted.get(name) === undefined ||
+              range.min < this.admitted.get(name)!) &&
             time >= range.min &&
             (!this.snapshot.reverse || time <= range.max),
         )
@@ -380,19 +450,30 @@ export class History {
           try {
             ref =
               this.snapshot.branches.find((branch) => branch.name === name) ??
-              (await branchByName(this.snapshot.repo, name, this.token, signal));
+              (await branchByName(
+                this.snapshot.repo,
+                name,
+                this.token,
+                signal,
+              ));
             this.current(signal);
             if (ref) {
               if (!this.acceptRef(ref, refreshVersion)) return;
               this.addRefs([ref]);
               if (!this.commits.has(ref.commit.sha)) {
-                const result = await this.fetchCommits(ref.commit.sha, 1, signal, range.min);
+                const result = await this.fetchCommits(
+                  ref.commit.sha,
+                  1,
+                  signal,
+                  range.min,
+                );
                 this.current(signal);
                 if (!this.acceptRef(ref, refreshVersion)) return;
                 // A fresh push of an ancient head must not inject that old history.
                 const recent = result.data.filter(
                   (commit) =>
-                    !Number.isFinite(commitTime(commit)) || commitTime(commit) >= range.min,
+                    !Number.isFinite(commitTime(commit)) ||
+                    commitTime(commit) >= range.min,
                 );
                 for (const commit of recent) this.sideCommits.add(commit.sha);
                 this.integrate(recent);
@@ -423,7 +504,8 @@ export class History {
       if (signal.aborted) return;
       this.publish({
         discoveryError: (error as Error).message,
-        discoveryRetryAt: error instanceof GitHubError ? error.retryAt || null : null,
+        discoveryRetryAt:
+          error instanceof GitHubError ? error.retryAt || null : null,
       });
     }
     if (!signal.aborted) this.integrate([]);
@@ -452,7 +534,9 @@ export class History {
   private acceptRef(ref: Branch, refreshVersion: number) {
     // A completed refresh supersedes lookups that started against older refs.
     if (refreshVersion === this.snapshot.refreshVersion) return true;
-    const current = this.snapshot.branches.find((branch) => branch.name === ref.name);
+    const current = this.snapshot.branches.find(
+      (branch) => branch.name === ref.name,
+    );
     if (current?.commit.sha === ref.commit.sha) return true;
     if (!current) {
       this.deletedRefs.add(ref.name);
@@ -461,7 +545,10 @@ export class History {
     }
     return false;
   }
-  private async fetchRefs(signal: AbortSignal, pending?: ReturnType<typeof branchesPage>) {
+  private async fetchRefs(
+    signal: AbortSignal,
+    pending?: ReturnType<typeof branchesPage>,
+  ) {
     const refreshVersion = this.snapshot.refreshVersion;
     const result = await (pending ??
       branchesPage(this.snapshot.repo, this.refsPage + 1, this.token, signal));
@@ -471,9 +558,16 @@ export class History {
     this.refsNext = result.next;
     if (!result.next) this.catalogComplete = true;
     // Ref pagination enriches labels/picker choices without fetching any commits.
-    this.addRefs(result.data.filter((ref) => ref.name !== this.snapshot.base || !this.started));
+    this.addRefs(
+      result.data.filter(
+        (ref) => ref.name !== this.snapshot.base || !this.started,
+      ),
+    );
   }
-  refresh = (cycle?: DebugCycle, kind: 'manual' | 'auto' = 'manual'): Promise<HistoryRefresh> => {
+  refresh = (
+    cycle?: DebugCycle,
+    kind: 'manual' | 'auto' = 'manual',
+  ): Promise<HistoryRefresh> => {
     if (this.refreshing) {
       debug.cache('other', cycle, 'shared');
       return this.refreshing;
@@ -485,7 +579,10 @@ export class History {
     // back ref sync; only an unestablished base traversal does.
     if (!this.snapshot.meta || this.loadingBase) return Promise.resolve({});
     if (this.snapshot.retryAt && this.snapshot.retryAt > Date.now())
-      return Promise.resolve({ error: this.snapshot.error, retryAt: this.snapshot.retryAt });
+      return Promise.resolve({
+        error: this.snapshot.error,
+        retryAt: this.snapshot.retryAt,
+      });
     if (!this.started) {
       if (!this.snapshot.error) return Promise.resolve({});
       const generation = this.generation,
@@ -525,21 +622,26 @@ export class History {
       if (this.refreshing === task) this.refreshing = null;
     });
     this.refreshing = task;
-    return task.then((result) => (generation === this.generation ? result : {}));
+    return task.then((result) =>
+      generation === this.generation ? result : {},
+    );
   };
   private async refreshCurrent(
     cycle: DebugCycle | undefined,
     kind: 'manual' | 'auto',
   ): Promise<HistoryRefresh> {
-    const reader = this.refreshReader ?? (this.refreshReader = new GitHubReader(this.token));
+    const reader =
+      this.refreshReader ?? (this.refreshReader = new GitHubReader(this.token));
     const signal = reader.controller.signal,
       repo = this.snapshot.repo;
     debug.bind(signal, cycle);
     try {
       const meta = (await reader.get<Meta>(`/repos/${repo}`)).data;
       signal.throwIfAborted();
-      if (typeof meta.private === 'boolean') this.onRepositoryMetadata?.(repo, meta.private, false);
-      const pushed = typeof meta.pushed_at === 'string' ? meta.pushed_at : undefined;
+      if (typeof meta.private === 'boolean')
+        this.onRepositoryMetadata?.(repo, meta.private, false);
+      const pushed =
+        typeof meta.pushed_at === 'string' ? meta.pushed_at : undefined;
       // Anonymous 304 responses still consume the rate limit. An automatic cycle
       // stops here until the repository reports a push; manual refresh reads everything.
       if (
@@ -552,7 +654,10 @@ export class History {
         if (this.snapshot.refreshError) this.publish({ refreshError: '' });
         return { repository: 'unchanged' };
       }
-      const scan = this.branchScan ?? { page: 1, refs: new Map<string, Branch>() };
+      const scan = this.branchScan ?? {
+        page: 1,
+        refs: new Map<string, Branch>(),
+      };
       this.branchScan = scan;
       let complete = false;
       for (let count = 0; count < 3; count++) {
@@ -563,7 +668,8 @@ export class History {
           true,
         );
         signal.throwIfAborted();
-        if (!Array.isArray(result.data)) throw new Error('Branch refresh returned invalid data.');
+        if (!Array.isArray(result.data))
+          throw new Error('Branch refresh returned invalid data.');
         for (const ref of result.data) scan.refs.set(ref.name, ref);
         scan.page++;
         if (!result.next) {
@@ -574,15 +680,20 @@ export class History {
       if (!complete) {
         this.publish({
           refreshError: '',
-          refreshNotice: 'Branch list is partial; deletion detection waits for all pages.',
+          refreshNotice:
+            'Branch list is partial; deletion detection waits for all pages.',
         });
         return { repository: 'changed' };
       }
-      const previous = new Map(this.snapshot.branches.map((ref) => [ref.name, ref]));
+      const previous = new Map(
+        this.snapshot.branches.map((ref) => [ref.name, ref]),
+      );
       const pinned = this.snapshot.reverse && this.nextPage > 0;
       const changed = [...scan.refs.values()].filter(
         (ref) =>
-          (ref.name === this.snapshot.base || previous.has(ref.name) || this.catalogComplete) &&
+          (ref.name === this.snapshot.base ||
+            previous.has(ref.name) ||
+            this.catalogComplete) &&
           previous.get(ref.name)?.commit.sha !== ref.commit.sha,
       );
       const results = await Promise.allSettled(
@@ -593,8 +704,16 @@ export class History {
               debug.cache('commits', cycle);
               return [] as Commit[];
             }
-            const since = ref.name === this.snapshot.base ? undefined : this.historyRange()?.min;
-            const result = await this.fetchCommits(ref.commit.sha, 1, signal, since);
+            const since =
+              ref.name === this.snapshot.base
+                ? undefined
+                : this.historyRange()?.min;
+            const result = await this.fetchCommits(
+              ref.commit.sha,
+              1,
+              signal,
+              since,
+            );
             signal.throwIfAborted();
             const data = result.data.filter(
               (commit) =>
@@ -611,23 +730,32 @@ export class History {
       for (const result of results)
         if (result.status === 'fulfilled')
           for (const commit of result.value)
-            if (!this.commits.has(commit.sha)) this.commits.set(commit.sha, commit);
+            if (!this.commits.has(commit.sha))
+              this.commits.set(commit.sha, commit);
       const refs = [...scan.refs.values()];
       const base = scan.refs.get(this.snapshot.base);
       if (base && !pinned) this.historyHead = base.commit.sha;
       const refsChanged =
         refs.length !== previous.size ||
-        refs.some((ref) => previous.get(ref.name)?.commit.sha !== ref.commit.sha);
+        refs.some(
+          (ref) => previous.get(ref.name)?.commit.sha !== ref.commit.sha,
+        );
       const patch: Partial<HistorySnapshot> = {
         refreshVersion: this.snapshot.refreshVersion + 1,
         meta:
-          meta.default_branch !== this.snapshot.meta?.default_branch ? meta : this.snapshot.meta,
+          meta.default_branch !== this.snapshot.meta?.default_branch
+            ? meta
+            : this.snapshot.meta,
         baseHead: this.historyHead,
         ...(refsChanged ? { branches: refs } : {}),
         refreshError: '',
-        refreshNotice: base ? '' : 'Selected branch was deleted; showing cached history.',
+        refreshNotice: base
+          ? ''
+          : 'Selected branch was deleted; showing cached history.',
       };
-      const removed = [...previous.values()].filter((ref) => !scan.refs.has(ref.name));
+      const removed = [...previous.values()].filter(
+        (ref) => !scan.refs.has(ref.name),
+      );
       for (const { name } of removed) {
         this.deletedRefs.add(name);
         this.activity.delete(name);
@@ -651,11 +779,14 @@ export class History {
             this.sideCommits.delete(sha);
           }
       } else if (base)
-        patch.refreshNotice = 'Some branch ancestry is not loaded; cached commits are retained.';
+        patch.refreshNotice =
+          'Some branch ancestry is not loaded; cached commits are retained.';
       if (partial && base && !pinned && removed.length) {
         // Retire deleted paths even when another catalog head or parent is unknown.
         // Prior heads of surviving refs protect their cached history across gaps.
-        const surviving = [...previous.values()].filter((ref) => scan.refs.has(ref.name));
+        const surviving = [...previous.values()].filter((ref) =>
+          scan.refs.has(ref.name),
+        );
         const protectedCommits = commitAncestry(
           this.commits,
           [...refs, ...surviving].map((ref) => ref.commit.sha),
@@ -673,7 +804,8 @@ export class History {
       this.integrate([], patch, cycle);
       // Branch and Actions responses can lag behind a push. Trust a push time only
       // after a second full refresh has seen the same value.
-      this.syncedPush = pushed !== undefined && pushed === this.seenPush ? pushed : undefined;
+      this.syncedPush =
+        pushed !== undefined && pushed === this.seenPush ? pushed : undefined;
       this.seenPush = pushed;
       return { repository: 'changed' };
     } catch (error) {
@@ -687,31 +819,58 @@ export class History {
       return { error: message, retryAt };
     }
   }
-  private async initialBase(requested: string | undefined, signal: AbortSignal) {
+  private async initialBase(
+    requested: string | undefined,
+    signal: AbortSignal,
+  ) {
     const saved = this.branchSelections?.get(this.snapshot.repo);
     for (const name of new Set([branchName(requested), saved])) {
       if (!name) continue;
       let ref = this.snapshot.branches.find((branch) => branch.name === name);
       if (!ref && this.refsNext) {
-        ref = (await branchByName(this.snapshot.repo, name, this.token, signal)) ?? undefined;
+        ref =
+          (await branchByName(this.snapshot.repo, name, this.token, signal)) ??
+          undefined;
         this.current(signal);
         if (ref) this.addRefs([ref]);
       }
       if (ref) return ref.name;
-      if (name === saved) this.branchSelections?.forget(this.snapshot.repo, name);
+      if (name === saved)
+        this.branchSelections?.forget(this.snapshot.repo, name);
     }
-    for (const name of new Set(['main', 'master', this.snapshot.meta?.default_branch || ''])) {
-      if (!name || this.snapshot.branches.some((branch) => branch.name === name)) continue;
+    for (const name of new Set([
+      'main',
+      'master',
+      this.snapshot.meta?.default_branch || '',
+    ])) {
+      if (
+        !name ||
+        this.snapshot.branches.some((branch) => branch.name === name)
+      )
+        continue;
       if (this.refsNext) {
-        const ref = await branchByName(this.snapshot.repo, name, this.token, signal);
+        const ref = await branchByName(
+          this.snapshot.repo,
+          name,
+          this.token,
+          signal,
+        );
         this.current(signal);
         this.checkedRefs.set(name, ref);
         if (ref) this.addRefs([ref]);
       }
     }
-    return preferredBranch(this.snapshot.branches, this.snapshot.meta?.default_branch || '');
+    return preferredBranch(
+      this.snapshot.branches,
+      this.snapshot.meta?.default_branch || '',
+    );
   }
-  open = async (value: string, token = this.token, cycle?: DebugCycle, requested?: string) => {
+  open = async (
+    value: string,
+    token = this.token,
+    cycle?: DebugCycle,
+    requested?: string,
+  ) => {
     let repo: string;
     try {
       repo = parseRepo(value);
@@ -746,8 +905,10 @@ export class History {
         throw error;
       }
       this.current(signal);
-      if (typeof meta.private === 'boolean') this.onRepositoryMetadata?.(repo, meta.private, true);
-      this.seenPush = typeof meta.pushed_at === 'string' ? meta.pushed_at : undefined;
+      if (typeof meta.private === 'boolean')
+        this.onRepositoryMetadata?.(repo, meta.private, true);
+      this.seenPush =
+        typeof meta.pushed_at === 'string' ? meta.pushed_at : undefined;
       this.publish({ meta, base: meta.default_branch });
       await this.fetchRefs(signal, refs);
       const base = await this.initialBase(this.requestedBranch, signal);
@@ -781,7 +942,8 @@ export class History {
   };
   restoreBase = async (requested?: string) => {
     this.restoreController?.abort();
-    if (!this.started) return this.open(this.snapshot.repo, this.token, undefined, requested);
+    if (!this.started)
+      return this.open(this.snapshot.repo, this.token, undefined, requested);
     this.pendingRestore = { branch: requested };
     const controller = new AbortController();
     this.restoreController = controller;
@@ -827,7 +989,8 @@ export class History {
   };
   private async checkRankedRefs(signal: AbortSignal) {
     const names = Object.keys(this.pulls.counts).sort(
-      (a, b) => this.pulls.counts[b] - this.pulls.counts[a] || a.localeCompare(b),
+      (a, b) =>
+        this.pulls.counts[b] - this.pulls.counts[a] || a.localeCompare(b),
     );
     let checked = 0,
       valid = 0;
@@ -847,7 +1010,12 @@ export class History {
       }
       if (checked >= 5) break;
       const refreshVersion = this.snapshot.refreshVersion;
-      const ref = await branchByName(this.snapshot.repo, name, this.token, signal);
+      const ref = await branchByName(
+        this.snapshot.repo,
+        name,
+        this.token,
+        signal,
+      );
       this.current(signal);
       checked++;
       if (ref && !this.acceptRef(ref, refreshVersion)) continue;
@@ -869,7 +1037,14 @@ export class History {
       return;
     const controller = new AbortController();
     this.rankingController = controller;
-    this.publish({ ranking: { ...this.snapshot.ranking, busy: true, error: '', retryAt: null } });
+    this.publish({
+      ranking: {
+        ...this.snapshot.ranking,
+        busy: true,
+        error: '',
+        retryAt: null,
+      },
+    });
     try {
       for (let i = 0; i < 3 && this.pullsNext; i++) {
         const result = await closedPullsPage(
@@ -892,7 +1067,8 @@ export class History {
       }
       await this.checkRankedRefs(controller.signal);
       const names = Object.keys(this.pulls.counts).sort(
-        (a, b) => this.pulls.counts[b] - this.pulls.counts[a] || a.localeCompare(b),
+        (a, b) =>
+          this.pulls.counts[b] - this.pulls.counts[a] || a.localeCompare(b),
       );
       let valid = 0,
         unverified = false;
@@ -908,7 +1084,10 @@ export class History {
         }
       }
       this.publish({
-        ranking: { ...this.snapshot.ranking, complete: !this.pullsNext && !unverified },
+        ranking: {
+          ...this.snapshot.ranking,
+          complete: !this.pullsNext && !unverified,
+        },
       });
     } catch (e) {
       if (!controller.signal.aborted)
@@ -939,10 +1118,20 @@ export class History {
     this.publish({ branchSearch: { busy: true, error: '' } });
     try {
       const refreshVersion = this.snapshot.refreshVersion;
-      const ref = await branchByName(this.snapshot.repo, name, this.token, controller.signal);
+      const ref = await branchByName(
+        this.snapshot.repo,
+        name,
+        this.token,
+        controller.signal,
+      );
       this.current(controller.signal);
       if (!ref || !this.acceptRef(ref, refreshVersion)) {
-        this.publish({ branchSearch: { busy: false, error: 'No branch with that exact name.' } });
+        this.publish({
+          branchSearch: {
+            busy: false,
+            error: 'No branch with that exact name.',
+          },
+        });
         return false;
       }
       this.addRefs([ref]);
@@ -951,11 +1140,15 @@ export class History {
       return true;
     } catch (e) {
       if (!controller.signal.aborted)
-        this.publish({ branchSearch: { busy: false, error: (e as Error).message } });
+        this.publish({
+          branchSearch: { busy: false, error: (e as Error).message },
+        });
       return false;
     } finally {
       if (this.searchController === controller && !controller.signal.aborted)
-        this.publish({ branchSearch: { ...this.snapshot.branchSearch, busy: false } });
+        this.publish({
+          branchSearch: { ...this.snapshot.branchSearch, busy: false },
+        });
     }
   };
   loadBranches = async () => {
@@ -972,7 +1165,11 @@ export class History {
       }
       if (source.startsWith('page:')) {
         if (source !== `page:${this.nextPage}` || this.nextPage < 1) return;
-        const result = await this.fetchCommits(this.historyHead, this.nextPage, signal);
+        const result = await this.fetchCommits(
+          this.historyHead,
+          this.nextPage,
+          signal,
+        );
         this.current(signal);
         this.nextPage--;
         this.forwardWindow = result.data;
@@ -981,8 +1178,15 @@ export class History {
         if (this.commits.has(source)) return;
         const result = await this.fetchCommits(source, 1, signal);
         this.current(signal);
-        if (this.snapshot.frontiers.some((frontier) => frontier.sources.includes(source))) {
-          if (!result.data.some((commit) => commit.sha === source) && !this.commits.has(source))
+        if (
+          this.snapshot.frontiers.some((frontier) =>
+            frontier.sources.includes(source),
+          )
+        ) {
+          if (
+            !result.data.some((commit) => commit.sha === source) &&
+            !this.commits.has(source)
+          )
             throw new Error(
               'GitHub did not return the requested commit. Retry to continue this branch.',
             );
@@ -998,7 +1202,9 @@ export class History {
         !accessFailure(error) &&
         source !== 'activity' &&
         !source.startsWith('page:') &&
-        !this.snapshot.frontiers.some((frontier) => frontier.sources.includes(source))
+        !this.snapshot.frontiers.some((frontier) =>
+          frontier.sources.includes(source),
+        )
       ) {
         this.failedSources.delete(source);
         return;
@@ -1030,28 +1236,47 @@ export class History {
     return task;
   }
   loadMore = async (sources?: string[]) => {
-    if (this.snapshot.error || !this.snapshot.meta || !this.started || !this.snapshot.more) return;
+    if (
+      this.snapshot.error ||
+      !this.snapshot.meta ||
+      !this.started ||
+      !this.snapshot.more
+    )
+      return;
     const generation = this.generation;
-    const pending = new Set(this.snapshot.frontiers.flatMap((frontier) => frontier.sources));
+    const pending = new Set(
+      this.snapshot.frontiers.flatMap((frontier) => frontier.sources),
+    );
     // Capture all visible cursors now. The pool preserves them even after scrolling.
-    const targets = [...new Set(sources?.length ? sources : pending)].filter((source) =>
-      pending.has(source),
+    const targets = [...new Set(sources?.length ? sources : pending)].filter(
+      (source) => pending.has(source),
     );
     await Promise.all(targets.map((source) => this.scheduleSource(source)));
-    if (generation !== this.generation || this.snapshot.error || targets.includes('activity'))
+    if (
+      generation !== this.generation ||
+      this.snapshot.error ||
+      targets.includes('activity')
+    )
       return;
     const range = this.historyRange();
-    if (range && this.activityNeeded(range)) await this.scheduleSource('activity');
+    if (range && this.activityNeeded(range))
+      await this.scheduleSource('activity');
   };
   retry = async () => {
-    if (this.restoreController && !this.restoreController.signal.aborted) return;
+    if (this.restoreController && !this.restoreController.signal.aborted)
+      return;
     if (this.snapshot.busy || (this.snapshot.retryAt || 0) > Date.now()) return;
     if (this.pendingRestore) {
       await this.restoreBase(this.pendingRestore.branch);
       return;
     }
     if (!this.snapshot.meta) {
-      await this.open(this.snapshot.repo, this.token, undefined, this.requestedBranch);
+      await this.open(
+        this.snapshot.repo,
+        this.token,
+        undefined,
+        this.requestedBranch,
+      );
       return;
     }
     this.publish({ error: '', retryAt: null });
@@ -1072,6 +1297,8 @@ export class History {
       }, false);
       return;
     }
-    await this.loadMore(this.failedSources.size ? [...this.failedSources] : undefined);
+    await this.loadMore(
+      this.failedSources.size ? [...this.failedSources] : undefined,
+    );
   };
 }

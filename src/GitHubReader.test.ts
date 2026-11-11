@@ -10,9 +10,15 @@ test('conditional requests reuse 304 data, pagination and ETag without reading a
       calls++;
       if (calls === 1)
         return new Response('[1]', {
-          headers: { ETag: '"a"', Link: '<https://api.github.com/page2>; rel="next"' },
+          headers: {
+            ETag: '"a"',
+            Link: '<https://api.github.com/page2>; rel="next"',
+          },
         });
-      assert.equal((init?.headers as Record<string, string>)['If-None-Match'], '"a"');
+      assert.equal(
+        (init?.headers as Record<string, string>)['If-None-Match'],
+        '"a"',
+      );
       return new Response(null, { status: 304 });
     };
     const a = await reader.get('/repos/a/b/tags');
@@ -32,7 +38,10 @@ test('duplicate fetches share one request and rate limits prevent early retries'
   try {
     globalThis.fetch = async () => {
       calls++;
-      return new Response('{}', { status: 429, headers: { 'Retry-After': '30' } });
+      return new Response('{}', {
+        status: 429,
+        headers: { 'Retry-After': '30' },
+      });
     };
     await Promise.allSettled([reader.get('/x'), reader.get('/x')]);
     assert.equal(calls, 1);

@@ -39,7 +39,8 @@ async function using(
         status: failure,
         headers: failure === 429 ? { 'Retry-After': '60' } : {},
       });
-    if (path.endsWith('/branches')) return json([{ name: 'main', commit: { sha: 'head' } }]);
+    if (path.endsWith('/branches'))
+      return json([{ name: 'main', commit: { sha: 'head' } }]);
     if (path.endsWith('/commits'))
       return json([
         {
@@ -64,9 +65,17 @@ async function using(
           html_url: '',
         })),
       });
-    if (['/tags', '/releases', '/activity'].some((suffix) => path.endsWith(suffix)))
+    if (
+      ['/tags', '/releases', '/activity'].some((suffix) =>
+        path.endsWith(suffix),
+      )
+    )
       return json([]);
-    return json({ default_branch: 'main', private: false, pushed_at: remote.pushedAt });
+    return json({
+      default_branch: 'main',
+      private: false,
+      pushed_at: remote.pushedAt,
+    });
   };
   const history = new History(),
     info = new CommitInfoStore(),
@@ -111,14 +120,22 @@ test('anonymous manual refresh and authenticated automatic refresh always read e
     await history.open('a/one');
     await info.open('a/one', '');
     await cycle(() => group.refreshPrimary('auto'));
-    assert.deepEqual(await cycle(() => group.refreshPrimary('auto')), ['/repos/a/one']);
-    assert.deepEqual(await cycle(() => group.refreshPrimary('manual')), full('a/one'));
+    assert.deepEqual(await cycle(() => group.refreshPrimary('auto')), [
+      '/repos/a/one',
+    ]);
+    assert.deepEqual(
+      await cycle(() => group.refreshPrimary('manual')),
+      full('a/one'),
+    );
   });
   await using(async ({ group, history, info, cycle }) => {
     await history.open('a/one', 'token');
     await info.open('a/one', 'token');
     for (let count = 0; count < 3; count++)
-      assert.deepEqual(await cycle(() => group.refreshPrimary('auto')), full('a/one'));
+      assert.deepEqual(
+        await cycle(() => group.refreshPrimary('auto')),
+        full('a/one'),
+      );
   });
 });
 test('an unfinished workflow keeps only Actions polling while the repository is unchanged', async () => {
@@ -128,10 +145,19 @@ test('an unfinished workflow keeps only Actions polling while the repository is 
     await info.open('a/one', '');
     const auto = () => cycle(() => group.refreshPrimary('auto'));
     await auto();
-    assert.deepEqual(await auto(), ['/repos/a/one', '/repos/a/one/actions/runs']);
+    assert.deepEqual(await auto(), [
+      '/repos/a/one',
+      '/repos/a/one/actions/runs',
+    ]);
     remote.runs = [{ id: 1, status: 'completed', conclusion: 'success' }];
-    assert.deepEqual(await auto(), ['/repos/a/one', '/repos/a/one/actions/runs']);
-    assert.equal(info.getSnapshot().bySha.get('head')?.actions?.state, 'success');
+    assert.deepEqual(await auto(), [
+      '/repos/a/one',
+      '/repos/a/one/actions/runs',
+    ]);
+    assert.equal(
+      info.getSnapshot().bySha.get('head')?.actions?.state,
+      'success',
+    );
     assert.deepEqual(await auto(), ['/repos/a/one']);
   });
 });
@@ -170,7 +196,9 @@ test('a rate limit on the repository read starts no follow-up Actions request', 
     await info.open('a/one', '');
     await cycle(() => group.refreshPrimary('auto'));
     remote.failures.set('/repos/a/one', 429);
-    assert.deepEqual(await cycle(() => group.refreshPrimary('auto')), ['/repos/a/one']);
+    assert.deepEqual(await cycle(() => group.refreshPrimary('auto')), [
+      '/repos/a/one',
+    ]);
     assert.equal(group.canRequest(), false);
   });
   await using(async ({ group, remote, cycle }) => {

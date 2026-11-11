@@ -2,8 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { checkTokenAccess } from './tokenAccess';
 
-const response = (data: unknown, status = 200, headers?: Record<string, string>) =>
-  new Response(JSON.stringify(data), { status, headers });
+const response = (
+  data: unknown,
+  status = 200,
+  headers?: Record<string, string>,
+) => new Response(JSON.stringify(data), { status, headers });
 async function using(
   handler: (url: URL) => Response | Promise<Response>,
   check: (requests: URL[]) => Promise<void>,
@@ -15,7 +18,10 @@ async function using(
       const url = new URL(String(input));
       requests.push(url);
       assert.equal(url.origin, 'https://api.github.com');
-      assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer test-token');
+      assert.equal(
+        (init?.headers as Record<string, string>).Authorization,
+        'Bearer test-token',
+      );
       assert.equal(init?.method, undefined);
       return handler(url);
     };
@@ -28,18 +34,29 @@ test('private repository checks each feature and reads actual reported OAuth sco
   await using(
     (url) =>
       url.pathname === '/user'
-        ? response({ login: 'tester' }, 200, { 'X-OAuth-Scopes': 'repo, read:user' })
+        ? response({ login: 'tester' }, 200, {
+            'X-OAuth-Scopes': 'repo, read:user',
+          })
         : url.pathname === '/repos/a/b'
           ? response({ private: true })
           : response([]),
     async (requests) => {
-      const report = await checkTokenAccess('a/b', 'test-token', new AbortController().signal);
+      const report = await checkTokenAccess(
+        'a/b',
+        'test-token',
+        new AbortController().signal,
+      );
       assert.equal(report.login, 'tester');
       assert.equal(report.privateRepo, true);
       assert.deepEqual(report.scopes, ['repo', 'read:user']);
-      assert.ok(Object.values(report.checks).every((check) => check.status === 'available'));
+      assert.ok(
+        Object.values(report.checks).every(
+          (check) => check.status === 'available',
+        ),
+      );
       assert.equal(requests.length, 5);
-      for (const url of requests.slice(2)) assert.equal(url.searchParams.get('per_page'), '1');
+      for (const url of requests.slice(2))
+        assert.equal(url.searchParams.get('per_page'), '1');
     },
   );
 });
@@ -47,12 +64,18 @@ test('public access is kept distinct from a fine-grained token grant; required-p
   await using(
     (url) =>
       url.pathname === '/user'
-        ? response({ login: 'tester' }, 200, { 'X-Accepted-GitHub-Permissions': 'contents=read' })
+        ? response({ login: 'tester' }, 200, {
+            'X-Accepted-GitHub-Permissions': 'contents=read',
+          })
         : url.pathname === '/repos/a/b'
           ? response({ private: false })
           : response([]),
     async () => {
-      const report = await checkTokenAccess('a/b', 'test-token', new AbortController().signal);
+      const report = await checkTokenAccess(
+        'a/b',
+        'test-token',
+        new AbortController().signal,
+      );
       assert.equal(report.privateRepo, false);
       assert.equal(report.scopes, undefined);
       assert.equal(report.checks.contents.status, 'available');
@@ -72,7 +95,11 @@ test('optional feature denials and temporary errors do not change other access r
               ? response({}, 403)
               : response([]),
     async () => {
-      const report = await checkTokenAccess('a/b', 'test-token', new AbortController().signal);
+      const report = await checkTokenAccess(
+        'a/b',
+        'test-token',
+        new AbortController().signal,
+      );
       assert.equal(report.checks.contents.status, 'available');
       assert.equal(report.checks.pulls.status, 'unknown');
       assert.equal(report.checks.actions.status, 'denied');
@@ -83,20 +110,39 @@ test('invalid or expired token stops repository probes and does not expose respo
   await using(
     () => response({ message: 'secret test-token' }, 401),
     async (requests) => {
-      const report = await checkTokenAccess('a/b', 'test-token', new AbortController().signal);
+      const report = await checkTokenAccess(
+        'a/b',
+        'test-token',
+        new AbortController().signal,
+      );
       assert.equal(requests.length, 1);
-      assert.ok(Object.values(report.checks).every((check) => check.status === 'invalid'));
+      assert.ok(
+        Object.values(report.checks).every(
+          (check) => check.status === 'invalid',
+        ),
+      );
       assert.doesNotMatch(JSON.stringify(report), /secret|test-token/);
     },
   );
 });
 test('repository selection or visibility failure is access blocked rather than an invalid token', async () => {
   await using(
-    (url) => (url.pathname === '/user' ? response({ login: 'tester' }) : response({}, 404)),
+    (url) =>
+      url.pathname === '/user'
+        ? response({ login: 'tester' })
+        : response({}, 404),
     async (requests) => {
-      const report = await checkTokenAccess('a/b', 'test-token', new AbortController().signal);
+      const report = await checkTokenAccess(
+        'a/b',
+        'test-token',
+        new AbortController().signal,
+      );
       assert.equal(report.login, 'tester');
-      assert.ok(Object.values(report.checks).every((check) => check.status === 'denied'));
+      assert.ok(
+        Object.values(report.checks).every(
+          (check) => check.status === 'denied',
+        ),
+      );
       assert.equal(requests.length, 2);
     },
   );
@@ -105,9 +151,17 @@ test('primary and secondary limits remain unverified and expose a retry deadline
   await using(
     () => response({}, 403, { 'Retry-After': '90' }),
     async () => {
-      const report = await checkTokenAccess('a/b', 'test-token', new AbortController().signal);
+      const report = await checkTokenAccess(
+        'a/b',
+        'test-token',
+        new AbortController().signal,
+      );
       assert.ok(report.retryAt > Date.now());
-      assert.ok(Object.values(report.checks).every((check) => check.status === 'limited'));
+      assert.ok(
+        Object.values(report.checks).every(
+          (check) => check.status === 'limited',
+        ),
+      );
     },
   );
 });
@@ -115,10 +169,18 @@ test('no token sends no requests; no repository validates identity without claim
   await using(
     () => response({ login: 'tester' }),
     async (requests) => {
-      const empty = await checkTokenAccess('a/b', '', new AbortController().signal);
+      const empty = await checkTokenAccess(
+        'a/b',
+        '',
+        new AbortController().signal,
+      );
       assert.equal(requests.length, 0);
       assert.equal(empty.checks.contents.status, 'unchecked');
-      const user = await checkTokenAccess('', 'test-token', new AbortController().signal);
+      const user = await checkTokenAccess(
+        '',
+        'test-token',
+        new AbortController().signal,
+      );
       assert.equal(requests.length, 1);
       assert.equal(user.login, 'tester');
       assert.equal(user.checks.actions.status, 'unchecked');

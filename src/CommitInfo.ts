@@ -35,7 +35,8 @@ export type JobInfo = {
   complete: boolean;
   next: number;
 };
-export type ActionState = 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped';
+export type ActionState =
+  'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped';
 export type ActionSummary = {
   state: ActionState;
   done: number | null;
@@ -50,12 +51,15 @@ export type CommitInfo = {
 };
 export const attempt = (run: ActionRun) => run.run_attempt || 1;
 export const activeRun = (run: ActionRun) =>
-  ['queued', 'pending', 'waiting', 'requested', 'in_progress'].includes(run.status || '');
+  ['queued', 'pending', 'waiting', 'requested', 'in_progress'].includes(
+    run.status || '',
+  );
 export function newerRun(old: ActionRun | undefined, next: ActionRun) {
   return (
     !old ||
     attempt(next) > attempt(old) ||
-    (attempt(next) === attempt(old) && Date.parse(next.updated_at) >= Date.parse(old.updated_at))
+    (attempt(next) === attempt(old) &&
+      Date.parse(next.updated_at) >= Date.parse(old.updated_at))
   );
 }
 const runJobs = (run: ActionRun, info: JobInfo) => [
@@ -74,13 +78,16 @@ export function actionSummary(
   details: ReadonlyMap<number, JobInfo>,
 ): ActionSummary | null {
   const byId = new Map<number, ActionRun>();
-  for (const run of input) if (newerRun(byId.get(run.id), run)) byId.set(run.id, run);
+  for (const run of input)
+    if (newerRun(byId.get(run.id), run)) byId.set(run.id, run);
   const runs = [...byId.values()];
   if (!runs.length) return null;
   const failed = runs.some(
     (run) =>
       run.status === 'completed' &&
-      ['failure', 'timed_out', 'startup_failure'].includes(run.conclusion || ''),
+      ['failure', 'timed_out', 'startup_failure'].includes(
+        run.conclusion || '',
+      ),
   );
   const successful =
     runs.some((run) => run.conclusion === 'success') &&
@@ -97,23 +104,36 @@ export function actionSummary(
       ? 'failure'
       : successful
         ? 'success'
-        : runs.every((run) => run.status === 'completed' && run.conclusion === 'cancelled')
+        : runs.every(
+              (run) =>
+                run.status === 'completed' && run.conclusion === 'cancelled',
+            )
           ? 'cancelled'
           : 'skipped';
   let done = 0,
     total = 0;
   for (const run of runs) {
     const info = details.get(run.id);
-    if (!info || !info.complete || info.attempt !== attempt(run) || info.total < 0)
+    if (
+      !info ||
+      !info.complete ||
+      info.attempt !== attempt(run) ||
+      info.total < 0
+    )
       return { state, done: null, total: null, ratio: null };
     const jobs = runJobs(run, info);
     if (
       jobs.length !== info.total ||
       jobs.some(
         (job) =>
-          !['completed', 'queued', 'waiting', 'pending', 'requested', 'in_progress'].includes(
-            job.status,
-          ),
+          ![
+            'completed',
+            'queued',
+            'waiting',
+            'pending',
+            'requested',
+            'in_progress',
+          ].includes(job.status),
       )
     )
       return { state, done: null, total: null, ratio: null };
@@ -127,7 +147,12 @@ export function completedJobCount(
   details: ReadonlyMap<number, JobInfo>,
 ): { completed: number; total: number } | null {
   const summary = actionSummary([run], details);
-  if (summary?.done === null || summary?.done === undefined || summary.total === null) return null;
+  if (
+    summary?.done === null ||
+    summary?.done === undefined ||
+    summary.total === null
+  )
+    return null;
   return { completed: summary.done, total: summary.total };
 }
 export const actionText = (state: ActionState) =>
@@ -168,14 +193,21 @@ const finalRunStatuses: Record<string, RunStatus> = {
 };
 export function runStatus(run: ActionRun): RunStatus {
   if (run.status === 'completed')
-    return finalRunStatuses[run.conclusion || ''] || { icon: 'unknown', label: 'Unknown result' };
-  if (run.status === 'in_progress') return { icon: 'running', label: 'In progress' };
+    return (
+      finalRunStatuses[run.conclusion || ''] || {
+        icon: 'unknown',
+        label: 'Unknown result',
+      }
+    );
+  if (run.status === 'in_progress')
+    return { icon: 'running', label: 'In progress' };
   return activeRun(run)
     ? { icon: 'queued', label: 'Queued / waiting' }
     : { icon: 'unknown', label: 'Unknown state' };
 }
 function elapsed(start: number, end: number): string | null {
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start)
+    return null;
   const seconds = Math.floor((end - start) / 1000),
     hours = Math.floor(seconds / 3600),
     minutes = Math.floor(seconds / 60) % 60;
@@ -184,14 +216,24 @@ function elapsed(start: number, end: number): string | null {
 export function runElapsed(run: ActionRun, now = Date.now()): string | null {
   const start = Date.parse(run.run_started_at || '');
   // A completed run's last status update is the available run-level end time.
-  const end = run.status === 'completed' ? Date.parse(run.updated_at) : activeRun(run) ? now : NaN;
+  const end =
+    run.status === 'completed'
+      ? Date.parse(run.updated_at)
+      : activeRun(run)
+        ? now
+        : NaN;
   return elapsed(start, end);
 }
-export function actionsElapsed(input: readonly ActionRun[], now = Date.now()): string | null {
+export function actionsElapsed(
+  input: readonly ActionRun[],
+  now = Date.now(),
+): string | null {
   const byId = new Map<number, ActionRun>();
-  for (const run of input) if (newerRun(byId.get(run.id), run)) byId.set(run.id, run);
+  for (const run of input)
+    if (newerRun(byId.get(run.id), run)) byId.set(run.id, run);
   const runs = [...byId.values()];
-  if (!runs.length || runs.some((run) => runElapsed(run, now) === null)) return null;
+  if (!runs.length || runs.some((run) => runElapsed(run, now) === null))
+    return null;
   const start = Math.min(...runs.map((run) => Date.parse(run.run_started_at!)));
   const end = runs.some(activeRun)
     ? now

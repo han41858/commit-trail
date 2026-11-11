@@ -13,7 +13,13 @@ export function branchName(value: unknown): string | undefined {
   if (
     value
       .split('/')
-      .some((part) => !part || part.startsWith('.') || part.endsWith('.') || part.endsWith('.lock'))
+      .some(
+        (part) =>
+          !part ||
+          part.startsWith('.') ||
+          part.endsWith('.') ||
+          part.endsWith('.lock'),
+      )
   )
     return;
   return value;

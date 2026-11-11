@@ -6,7 +6,11 @@ type Fades = Record<Kind, Map<string, Fade>>;
 type Elements = Record<Kind, Pick<ReadonlySet<string>, 'has' | 'size'>>;
 const GRAPH_OPACITY_DURATION = 140;
 const kinds: Kind[] = ['nodes', 'edges', 'branches'];
-const emptyFades = (): Fades => ({ nodes: new Map(), edges: new Map(), branches: new Map() });
+const emptyFades = (): Fades => ({
+  nodes: new Map(),
+  edges: new Map(),
+  branches: new Map(),
+});
 const progress = (elapsed: number) => {
   const value = Math.max(0, Math.min(1, elapsed / GRAPH_OPACITY_DURATION));
   return value * value * (3 - 2 * value);
@@ -27,7 +31,9 @@ export class GraphOpacity {
     if (focus === this.focus && elements === this.elements) return;
     const initial = this.elements === null;
     const commonTo = focus ? 0.25 : 1;
-    const commonFrom = initial ? commonTo : this.interpolate(this.background, now);
+    const commonFrom = initial
+      ? commonTo
+      : this.interpolate(this.background, now);
     const next = emptyFades();
     const retained = emptyFades();
     let changed = this.background.to !== commonTo;
@@ -65,12 +71,16 @@ export class GraphOpacity {
           if (!highlighted) retainedUnfocused++;
         }
       }
-      if (elements[kind].size > focused + nextUnfocused) nextBackgroundVisible = true;
-      if (elements[kind].size > focused + retainedUnfocused) retainedBackgroundVisible = true;
+      if (elements[kind].size > focused + nextUnfocused)
+        nextBackgroundVisible = true;
+      if (elements[kind].size > focused + retainedUnfocused)
+        retainedBackgroundVisible = true;
     }
     this.focus = focus;
     this.elements = elements;
-    this.backgroundVisible = changed ? nextBackgroundVisible : retainedBackgroundVisible;
+    this.backgroundVisible = changed
+      ? nextBackgroundVisible
+      : retainedBackgroundVisible;
     if (changed) {
       this.background = { from: commonFrom, to: commonTo };
       this.fades = next;
@@ -90,12 +100,18 @@ export class GraphOpacity {
   value(kind: Kind, id: string, now: number) {
     const fade = this.fades[kind].get(id);
     if (fade) return this.interpolate(fade, now);
-    return this.focus?.[kind].has(id) ? 1 : this.interpolate(this.background, now);
+    return this.focus?.[kind].has(id)
+      ? 1
+      : this.interpolate(this.background, now);
   }
 
   active(now: number) {
-    const backgroundMoving = this.backgroundVisible && this.background.from !== this.background.to;
-    if (now - this.started >= GRAPH_OPACITY_DURATION || (!backgroundMoving && !this.moving)) {
+    const backgroundMoving =
+      this.backgroundVisible && this.background.from !== this.background.to;
+    if (
+      now - this.started >= GRAPH_OPACITY_DURATION ||
+      (!backgroundMoving && !this.moving)
+    ) {
       for (const kind of kinds) this.fades[kind].clear();
       this.background = { from: this.background.to, to: this.background.to };
       this.moving = false;

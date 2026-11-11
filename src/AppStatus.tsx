@@ -24,7 +24,9 @@ export function AppStatus({
   return (
     <footer className="graph-status" aria-live="polite">
       <span>{state.commits.length.toLocaleString()} commits</span>
-      <LoadingIndicator busy={state.busy || extras.busy || refreshState.running} />
+      <LoadingIndicator
+        busy={state.busy || extras.busy || refreshState.running}
+      />
       {state.discoveryError && (
         <button
           className="discovery-retry"
@@ -41,7 +43,11 @@ export function AppStatus({
         (refreshRetrySeconds > 0 ||
           !!refreshState.error ||
           refreshState.lastCompletedAt !== null) && (
-          <span className="refresh-status" role="status" title={refreshState.error || undefined}>
+          <span
+            className="refresh-status"
+            role="status"
+            title={refreshState.error || undefined}
+          >
             {refreshRetrySeconds
               ? anonymous
                 ? 'Rate limit · token needed'
@@ -54,7 +60,10 @@ export function AppStatus({
           </span>
         )}
       {Object.keys(extras.errors).length > 0 && (
-        <span className="metadata-error" title={Object.values(extras.errors).join(' · ')}>
+        <span
+          className="metadata-error"
+          title={Object.values(extras.errors).join(' · ')}
+        >
           Metadata unavailable
         </span>
       )}

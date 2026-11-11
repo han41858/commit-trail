@@ -1,4 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { OwnerRepositoryScroll } from './OwnerRepositoryScroll';
 import type { OwnerRepositories } from './OwnerRepositories';
 import { LoadingIndicator } from './LoadingIndicator';
@@ -39,7 +46,9 @@ export function OwnerRepositoryPicker({
   const touchY = useRef<number | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const loadButton = useRef<HTMLButtonElement>(null);
-  const focusAfterLoad = useRef<{ owner: string; ids: Set<number> } | null>(null);
+  const focusAfterLoad = useRef<{ owner: string; ids: Set<number> } | null>(
+    null,
+  );
   const listId = useId();
   const headingId = useId();
   const hintId = useId();
@@ -55,9 +64,12 @@ export function OwnerRepositoryPicker({
   const hasHint = more || failed.length > 0 || snapshot.busy;
   const canLoadMore =
     !snapshot.busy &&
-    sources.some((source) =>
-      (source.more || !!source.error) && !source.busy && source.wait === 0 &&
-      (source.retryAt === null || source.retryAt <= Date.now()),
+    sources.some(
+      (source) =>
+        (source.more || !!source.error) &&
+        !source.busy &&
+        source.wait === 0 &&
+        (source.retryAt === null || source.retryAt <= Date.now()),
     );
   const search = query.trim().toLowerCase();
   // Keep the control visible while a first-page retry clears its error in flight.
@@ -77,8 +89,11 @@ export function OwnerRepositoryPicker({
     (multiple
       ? !isPending(repository) && (disabled || choices.length >= limit)
       : disabled);
-  const selectable = shown.filter((repository) => !isBlocked(repository.full_name));
-  const selected = selectable.find((repository) => repository.id === active) ?? selectable[0];
+  const selectable = shown.filter(
+    (repository) => !isBlocked(repository.full_name),
+  );
+  const selected =
+    selectable.find((repository) => repository.id === active) ?? selectable[0];
   const activeId = selected ? `${listId}-${selected.id}` : undefined;
 
   function toggle(repository: string) {
@@ -86,7 +101,9 @@ export function OwnerRepositoryPicker({
     setPending((names) => {
       const next = names.filter((name) => !isExcluded(name));
       if (next.some((name) => name.toLowerCase() === repository.toLowerCase()))
-        return next.filter((name) => name.toLowerCase() !== repository.toLowerCase());
+        return next.filter(
+          (name) => name.toLowerCase() !== repository.toLowerCase(),
+        );
       if (disabled || next.length >= limit) return next;
       return [...next, repository];
     });
@@ -97,7 +114,9 @@ export function OwnerRepositoryPicker({
     if (!repository) return;
     scrollIntent.current = false;
     setActive(repository.id);
-    document.getElementById(`${listId}-${repository.id}`)?.focus({ preventScroll: true });
+    document
+      .getElementById(`${listId}-${repository.id}`)
+      ?.focus({ preventScroll: true });
   }
 
   function focusLoadMore() {
@@ -122,12 +141,16 @@ export function OwnerRepositoryPicker({
     if (!pendingFocus || snapshot.busy) return;
     focusAfterLoad.current = null;
     if (pendingFocus.owner !== snapshot.owner) return;
-    const firstNew = selectable.find((repository) => !pendingFocus.ids.has(repository.id));
+    const firstNew = selectable.find(
+      (repository) => !pendingFocus.ids.has(repository.id),
+    );
     scrollIntent.current = false;
     if (firstNew) {
       setActive(firstNew.id);
       if (multiple)
-        document.getElementById(`${listId}-${firstNew.id}`)?.focus({ preventScroll: true });
+        document
+          .getElementById(`${listId}-${firstNew.id}`)
+          ?.focus({ preventScroll: true });
       else field.current?.focus({ preventScroll: true });
     } else if (showLoadMore && canLoadMore) loadButton.current?.focus();
     else field.current?.focus({ preventScroll: true });
@@ -147,13 +170,18 @@ export function OwnerRepositoryPicker({
     const viewport = window.visualViewport;
     const anchor = element.parentElement;
     let scrollArea = inline ? anchor : null;
-    while (scrollArea && !/(auto|scroll)/.test(getComputedStyle(scrollArea).overflowY))
+    while (
+      scrollArea &&
+      !/(auto|scroll)/.test(getComputedStyle(scrollArea).overflowY)
+    )
       scrollArea = scrollArea.parentElement;
     const visibleBounds = () => {
       const viewportTop = viewport?.offsetTop || 0;
-      const viewportBottom = viewportTop + (viewport?.height || window.innerHeight);
+      const viewportBottom =
+        viewportTop + (viewport?.height || window.innerHeight);
       if (!scrollArea) return { top: viewportTop, bottom: viewportBottom };
-      const innerTop = scrollArea.getBoundingClientRect().top + scrollArea.clientTop;
+      const innerTop =
+        scrollArea.getBoundingClientRect().top + scrollArea.clientTop;
       return {
         top: Math.max(viewportTop, innerTop),
         bottom: Math.min(viewportBottom, innerTop + scrollArea.clientHeight),
@@ -166,13 +194,18 @@ export function OwnerRepositoryPicker({
         const rect = anchor.getBoundingClientRect();
         const availableWidth = Math.max(0, width - 16);
         const panelWidth = Math.min(rect.width, availableWidth);
-        const x = Math.max(left + 8, Math.min(rect.left, left + width - panelWidth - 8));
+        const x = Math.max(
+          left + 8,
+          Math.min(rect.left, left + width - panelWidth - 8),
+        );
         element.style.maxWidth = `${availableWidth}px`;
         element.style.left = `${x - rect.left}px`;
       }
       const bounds = visibleBounds();
       const available =
-        bounds.bottom - Math.max(bounds.top, element.getBoundingClientRect().top) - 8;
+        bounds.bottom -
+        Math.max(bounds.top, element.getBoundingClientRect().top) -
+        8;
       element.style.maxHeight = `${Math.max(0, Math.min(380, available))}px`;
     };
     const fit = () => {
@@ -200,7 +233,8 @@ export function OwnerRepositoryPicker({
   }, [inline, snapshot.owner]);
 
   useEffect(() => {
-    if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+    if (activeId)
+      document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
   }, [activeId]);
 
   useEffect(() => {
@@ -256,7 +290,9 @@ export function OwnerRepositoryPicker({
   if (search) empty = 'No matching repositories in the loaded pages.';
   else if (snapshot.busy) empty = 'Loading repositories…';
   else if (failed.length) empty = 'No repositories loaded.';
-  else if (more) empty = 'No repositories for this owner in the loaded pages. Scroll down to continue.';
+  else if (more)
+    empty =
+      'No repositories for this owner in the loaded pages. Scroll down to continue.';
 
   return (
     <section
@@ -277,10 +313,17 @@ export function OwnerRepositoryPicker({
     >
       <div className="owner-picker-heading">
         <strong id={headingId}>
-          <span className="owner-picker-heading-name">Repositories for {snapshot.owner}</span>{' '}
-          <span>({snapshot.repositories.length.toLocaleString()}{more ? '+' : ''})</span>
+          <span className="owner-picker-heading-name">
+            Repositories for {snapshot.owner}
+          </span>{' '}
+          <span>
+            ({snapshot.repositories.length.toLocaleString()}
+            {more ? '+' : ''})
+          </span>
         </strong>
-        {snapshot.busy && <LoadingIndicator busy label="Loading repositories" />}
+        {snapshot.busy && (
+          <LoadingIndicator busy label="Loading repositories" />
+        )}
         {!inline && (
           <button
             type="button"
@@ -324,14 +367,24 @@ export function OwnerRepositoryPicker({
               return;
             }
             if (multiple) {
-              focusChoice(event.key === 'ArrowDown' ? 0 : selectable.length - 1);
+              focusChoice(
+                event.key === 'ArrowDown' ? 0 : selectable.length - 1,
+              );
               return;
             }
-            const current = selectable.findIndex((repository) => repository.id === selected?.id);
-            if (event.key === 'ArrowDown' && current === selectable.length - 1 && focusLoadMore())
+            const current = selectable.findIndex(
+              (repository) => repository.id === selected?.id,
+            );
+            if (
+              event.key === 'ArrowDown' &&
+              current === selectable.length - 1 &&
+              focusLoadMore()
+            )
               return;
             const next =
-              (current + (event.key === 'ArrowDown' ? 1 : -1) + selectable.length) %
+              (current +
+                (event.key === 'ArrowDown' ? 1 : -1) +
+                selectable.length) %
               selectable.length;
             setActive(selectable[next].id);
           } else if (event.key === 'Enter') {
@@ -347,8 +400,13 @@ export function OwnerRepositoryPicker({
       <div className="owner-picker-content" {...(inline ? scrollEvents : {})}>
         {hasHint && (
           <small id={hintId} className="owner-picker-hint">
-            {more || failed.length ? (search ? 'Clear filter to load more' : 'Scroll down or Load more') : ''}
-            {snapshot.busy && `${more || failed.length ? ' · ' : ''}Loading repositories…`}
+            {more || failed.length
+              ? search
+                ? 'Clear filter to load more'
+                : 'Scroll down or Load more'
+              : ''}
+            {snapshot.busy &&
+              `${more || failed.length ? ' · ' : ''}Loading repositories…`}
           </small>
         )}
         <div
@@ -362,7 +420,11 @@ export function OwnerRepositoryPicker({
             onKeyDown={(event) => {
               if (!multiple || event.nativeEvent.isComposing) return;
               const target = event.target;
-              if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') return;
+              if (
+                !(target instanceof HTMLInputElement) ||
+                target.type !== 'checkbox'
+              )
+                return;
               const current = selectable.findIndex(
                 (repository) => `${listId}-${repository.id}` === target.id,
               );
@@ -370,10 +432,16 @@ export function OwnerRepositoryPicker({
               if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault();
                 event.stopPropagation();
-                if (event.key === 'ArrowDown' && current === selectable.length - 1 && focusLoadMore())
+                if (
+                  event.key === 'ArrowDown' &&
+                  current === selectable.length - 1 &&
+                  focusLoadMore()
+                )
                   return;
                 focusChoice(
-                  (current + (event.key === 'ArrowDown' ? 1 : -1) + selectable.length) %
+                  (current +
+                    (event.key === 'ArrowDown' ? 1 : -1) +
+                    selectable.length) %
                     selectable.length,
                 );
               } else if (event.key === 'Enter') {
@@ -393,7 +461,9 @@ export function OwnerRepositoryPicker({
                     <small>{repository.private ? 'Private' : 'Public'}</small>
                   </span>
                   {repository.description && (
-                    <span className="owner-repository-description">{repository.description}</span>
+                    <span className="owner-repository-description">
+                      {repository.description}
+                    </span>
                   )}
                   {added && <small>Already added</small>}
                 </>
@@ -408,7 +478,8 @@ export function OwnerRepositoryPicker({
                     data-disabled={blocked}
                     title={repository.full_name}
                     onPointerDown={(event) => {
-                      if (event.target instanceof HTMLInputElement && !blocked) return;
+                      if (event.target instanceof HTMLInputElement && !blocked)
+                        return;
                       // Block the dialog's pointer focus; let native label activation
                       // focus/toggle the checkbox without inheriting keyboard focus styling.
                       event.preventDefault();
@@ -491,10 +562,13 @@ export function OwnerRepositoryPicker({
           <button
             type="button"
             className="primary"
-            disabled={disabled || choices.length === 0 || choices.length > limit}
+            disabled={
+              disabled || choices.length === 0 || choices.length > limit
+            }
             onClick={() => onSelectMany(choices)}
           >
-            Add {choices.length} {choices.length === 1 ? 'repository' : 'repositories'}
+            Add {choices.length}{' '}
+            {choices.length === 1 ? 'repository' : 'repositories'}
           </button>
         </div>
       )}

@@ -25,7 +25,10 @@ test('scrolling requires downward movement near the bottom and a ready source', 
   assert.equal(paging.move(500), 500);
   assert.equal(paging.move(500), 0);
   assert.equal(paging.move(400), -100);
-  assert.equal(paging.request({ ...empty, scrollHeight: 2000 }, 30, true, false, 0), false);
+  assert.equal(
+    paging.request({ ...empty, scrollHeight: 2000 }, 30, true, false, 0),
+    false,
+  );
   assert.equal(paging.request(empty, 30, false, false, 500), false);
   assert.equal(paging.request(empty, -30, true, false, 1000), false);
   assert.equal(paging.request(empty, 30, true, false, 1500), true);

@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { GRAPH_COLOR_COUNT } from './graphPalette';
 
-const stylesheet = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
+const stylesheet = readFileSync(
+  new URL('./style.css', import.meta.url),
+  'utf8',
+);
 const themes = [
   { name: 'dark', selector: '.app', badgeTint: 0.08 },
   { name: 'light', selector: ".app[data-theme='light']", badgeTint: 0.06 },
@@ -14,7 +17,10 @@ const themeTokens = (selector: string) => {
   assert.ok(start >= 0, `Missing ${selector} theme`);
   const block = stylesheet.slice(start, stylesheet.indexOf('}', start));
   return new Map(
-    [...block.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2]]),
+    [...block.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((match) => [
+      match[1],
+      match[2],
+    ]),
   );
 };
 
@@ -22,12 +28,17 @@ type Rgb = [number, number, number];
 
 const rgb = (hex: string): Rgb => {
   assert.match(hex, /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i);
-  const full = hex.length === 4 ? hex.slice(1).replace(/./g, '$&$&') : hex.slice(1);
-  return [0, 2, 4].map((offset) => parseInt(full.slice(offset, offset + 2), 16) / 255) as Rgb;
+  const full =
+    hex.length === 4 ? hex.slice(1).replace(/./g, '$&$&') : hex.slice(1);
+  return [0, 2, 4].map(
+    (offset) => parseInt(full.slice(offset, offset + 2), 16) / 255,
+  ) as Rgb;
 };
 
 const blend = (foreground: Rgb, background: Rgb, alpha: number): Rgb =>
-  foreground.map((channel, index) => channel * alpha + background[index] * (1 - alpha)) as Rgb;
+  foreground.map(
+    (channel, index) => channel * alpha + background[index] * (1 - alpha),
+  ) as Rgb;
 
 const luminance = (color: Rgb) => {
   const linear = color.map((channel) =>
@@ -51,7 +62,10 @@ test('both CSS themes provide the complete shared graph palette without duplicat
       Array.from({ length: GRAPH_COLOR_COUNT }, (_, index) => `graph-${index}`),
       `${theme.name} palette indices must match the renderer and color allocator`,
     );
-    assert.equal(new Set(palette.map(([, color]) => color)).size, GRAPH_COLOR_COUNT);
+    assert.equal(
+      new Set(palette.map(([, color]) => color)).size,
+      GRAPH_COLOR_COUNT,
+    );
     for (const [, color] of palette) rgb(color);
   }
 });
@@ -64,7 +78,11 @@ test('added graph colors retain readable text contrast on the app and tinted bra
     for (const index of [6, 7]) {
       const color = rgb(tokens.get(`graph-${index}`)!);
       // Canvas badges paint the surface at 35%, then the branch color at 6% or 8%.
-      const badge = blend(color, blend(surface, background, 0.35), theme.badgeTint);
+      const badge = blend(
+        color,
+        blend(surface, background, 0.35),
+        theme.badgeTint,
+      );
       for (const [name, target] of [
         ['app', background],
         ['badge', badge],
