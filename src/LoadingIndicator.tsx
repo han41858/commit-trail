@@ -10,7 +10,10 @@ export function LoadingIndicator({
   repository?: string;
   label?: string;
 }) {
-  const snapshot = useCallback(() => requestActivity.getSnapshot(repository), [repository]);
+  const snapshot = useCallback(
+    () => requestActivity.getSnapshot(repository),
+    [repository],
+  );
   const active = useSyncExternalStore(requestActivity.subscribe, snapshot);
   if (!busy && !active) return null;
   const speed = active > 8 ? 'fast' : active > 4 ? 'medium' : 'slow';

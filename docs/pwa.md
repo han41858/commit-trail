@@ -25,16 +25,16 @@ Commit Trail을 모바일과 데스크톱에 설치할 수 있는 Progressive We
 
 Web App Manifest를 구성합니다.
 
-| 속성 | 설정 |
-|---|---|
-| name | Commit Trail |
-| short_name | Commit Trail |
-| id | `/` |
-| start_url | `/` |
-| scope | `/` |
-| display | `standalone` |
-| orientation | 제한 없음 |
-| theme_color | 기존 UI 테마와 일치 |
+| 속성             | 설정                  |
+| ---------------- | --------------------- |
+| name             | Commit Trail          |
+| short_name       | Commit Trail          |
+| id               | `/`                   |
+| start_url        | `/`                   |
+| scope            | `/`                   |
+| display          | `standalone`          |
+| orientation      | 제한 없음             |
+| theme_color      | 기존 UI 테마와 일치   |
 | background_color | 기존 앱 배경색과 일치 |
 
 - 앱 이름과 아이콘은 기존 Commit Trail 브랜드 사용
@@ -212,11 +212,11 @@ PWA 설치 여부가 인증 권한이나 GitHub API 호출 제한에 영향을 �
 
 기존 GitHub–Vercel Git Integration 배포 정책을 유지합니다.
 
-| 브랜치 | 배포 환경 |
-|---|---|
-| feature/*, fix/* 등 | Preview |
-| dev | Preview |
-| main | Production |
+| 브랜치              | 배포 환경  |
+| ------------------- | ---------- |
+| feature/_, fix/_ 등 | Preview    |
+| dev                 | Preview    |
+| main                | Production |
 
 - 브랜치별 Preview 자동 배포 유지
 - main 병합 시 Production 자동 배포 유지
@@ -340,17 +340,17 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 다음은 초기 PWA 구현 시점의 검증 기록이다. 테스트 개수도 당시 기준이다. 로컬 Chromium의 일반 프로필과 실제 Service Worker·Cache Storage를 사용했다. API만 모킹했으며 Vercel과 같은 CSP·응답 헤더를 로컬 정적 서버에 적용했다.
 
-| 항목 | 확인 결과 |
-| --- | --- |
-| 자동 테스트 / 빌드 | 앱 207개 통과, TypeScript·Vite·Workbox 빌드 성공 |
-| 설치 조건 | Manifest 파싱 오류 0건, Chromium 설치 가능 조건 오류 0건, 고정 app ID 확인 |
-| 정적 캐시 | 중복 없는 12개 리소스, API URL·Authorization·합성 비공개 응답·PAT 저장 0건 |
-| 오프라인 재실행 | 쿼리·기존 토큰 정책 유지, 셸·지연 로딩 디버그 패널 실행, 미조회 Git 데이터 0개, 복구 후 기존 Retry 정상 |
-| 실패한 배포 | 새 정적 자산 503으로 SW 설치 실패를 재현, 기존 앱 셸·그래프 유지 및 불필요한 업데이트 안내 없음 |
-| 사용자 확인 | 새 버전 대기 중 화면 유지, Later 후 같은 버전 재안내 없음, 적용한 창만 새 버전으로 재실행 |
-| 여러 창 | 다른 창의 업데이트로 강제 새로고침 없음, 각 창에서 선택하여 적용, 쿼리·fragment 유지 |
-| 캐시 정리·분리 | 업데이트 후 오래된 자산·실패한 설치의 임시 항목 정리, 서로 다른 포트의 캐시·토큰·설치 ID 분리 |
-| 화면 | 세로·가로 Canvas 리사이즈, 작은 콘텐츠 뷰포트 입력, 59px/34px 및 가로 44px/21px Safe Area 에뮬레이션, 가로 문서 넘침 없음 |
+| 항목               | 확인 결과                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| 자동 테스트 / 빌드 | 앱 207개 통과, TypeScript·Vite·Workbox 빌드 성공                                                                          |
+| 설치 조건          | Manifest 파싱 오류 0건, Chromium 설치 가능 조건 오류 0건, 고정 app ID 확인                                                |
+| 정적 캐시          | 중복 없는 12개 리소스, API URL·Authorization·합성 비공개 응답·PAT 저장 0건                                                |
+| 오프라인 재실행    | 쿼리·기존 토큰 정책 유지, 셸·지연 로딩 디버그 패널 실행, 미조회 Git 데이터 0개, 복구 후 기존 Retry 정상                   |
+| 실패한 배포        | 새 정적 자산 503으로 SW 설치 실패를 재현, 기존 앱 셸·그래프 유지 및 불필요한 업데이트 안내 없음                           |
+| 사용자 확인        | 새 버전 대기 중 화면 유지, Later 후 같은 버전 재안내 없음, 적용한 창만 새 버전으로 재실행                                 |
+| 여러 창            | 다른 창의 업데이트로 강제 새로고침 없음, 각 창에서 선택하여 적용, 쿼리·fragment 유지                                      |
+| 캐시 정리·분리     | 업데이트 후 오래된 자산·실패한 설치의 임시 항목 정리, 서로 다른 포트의 캐시·토큰·설치 ID 분리                             |
+| 화면               | 세로·가로 Canvas 리사이즈, 작은 콘텐츠 뷰포트 입력, 59px/34px 및 가로 44px/21px Safe Area 에뮬레이션, 가로 문서 넘침 없음 |
 
 초기 구현 검증에서는 Production 배포·실기기 설치를 확인하지 않았다. 아래 배포 후 확인 기록과 구분하며, Chromium 에뮬레이션을 실기기 검증으로 취급하지 않는다. 보호된 Preview는 먼저 Vercel 인증을 완료해야 하며 그 결과가 익명 Production 접근을 입증하지 않는다.
 
@@ -391,9 +391,13 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 ```js
 const registration = await navigator.serviceWorker.getRegistration('/');
-if (registration?.scope === `${location.origin}/`) await registration.unregister();
+if (registration?.scope === `${location.origin}/`)
+  await registration.unregister();
 for (const name of await caches.keys()) {
-  if (name.startsWith('workbox-precache-') && name.endsWith(`-${location.origin}/`)) {
+  if (
+    name.startsWith('workbox-precache-') &&
+    name.endsWith(`-${location.origin}/`)
+  ) {
     await caches.delete(name);
   }
 }

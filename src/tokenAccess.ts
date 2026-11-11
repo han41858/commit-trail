@@ -23,8 +23,13 @@ export const tokenFeatures = [
     path: '/actions/runs?per_page=1',
   },
 ] as const;
-export type AccessStatus = 'unchecked' | 'available' | 'denied' | 'invalid' | 'limited' | 'unknown';
-export type AccessCheck = { status: AccessStatus; message: string; retryAt?: number };
+export type AccessStatus =
+  'unchecked' | 'available' | 'denied' | 'invalid' | 'limited' | 'unknown';
+export type AccessCheck = {
+  status: AccessStatus;
+  message: string;
+  retryAt?: number;
+};
 export type TokenAccess = {
   login: string;
   scopes?: string[];
@@ -57,11 +62,20 @@ function failure(error: unknown): AccessCheck {
     if (error.status === 401)
       return { status: 'invalid', message: 'The token is invalid or expired.' };
     if (error.status === 403)
-      return { status: 'denied', message: 'Check permissions and repository policies.' };
+      return {
+        status: 'denied',
+        message: 'Check permissions and repository policies.',
+      };
     if (error.status === 404)
-      return { status: 'denied', message: 'Repository unavailable to this token.' };
+      return {
+        status: 'denied',
+        message: 'Repository unavailable to this token.',
+      };
   }
-  return { status: 'unknown', message: 'Could not verify access. Please retry.' };
+  return {
+    status: 'unknown',
+    message: 'Could not verify access. Please retry.',
+  };
 }
 function allFailed(report: TokenAccess, error: unknown): TokenAccess {
   const check = failure(error);
@@ -91,9 +105,14 @@ export async function checkTokenAccess(
   }
   if (!repo) return report;
   try {
-    const { data } = await github<{ private: boolean }>(`/repos/${repo}`, token, signal);
+    const { data } = await github<{ private: boolean }>(
+      `/repos/${repo}`,
+      token,
+      signal,
+    );
     signal.throwIfAborted();
-    report.privateRepo = typeof data.private === 'boolean' ? data.private : null;
+    report.privateRepo =
+      typeof data.private === 'boolean' ? data.private : null;
   } catch (error) {
     signal.throwIfAborted();
     return allFailed(report, error);

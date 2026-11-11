@@ -124,5 +124,9 @@ test('unsupported or unavailable updates do not start activation or notification
   );
   await updates.apply();
   assert.equal(calls, 0);
-  assert.deepEqual(updates.getSnapshot(), { visible: false, applying: false, error: '' });
+  assert.deepEqual(updates.getSnapshot(), {
+    visible: false,
+    applying: false,
+    error: '',
+  });
 });

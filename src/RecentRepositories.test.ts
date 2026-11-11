@@ -31,7 +31,11 @@ const setup = (entries: unknown = [], allowPrivate = () => true) => {
   const storage = new MemoryStorage();
   storage.data.set(RECENT_REPOSITORIES_KEY, JSON.stringify(entries));
   let now = 1000;
-  const store = new RecentRepositories({ storage: () => storage, now: () => now++, allowPrivate });
+  const store = new RecentRepositories({
+    storage: () => storage,
+    now: () => now++,
+    allowPrivate,
+  });
   return { store, storage };
 };
 
@@ -105,27 +109,51 @@ test('timestamp validation rejects nonfinite and unsafe dates and keeps equal-da
   );
 });
 test('search is a local case-insensitive substring match and supports GitHub URL input', () => {
-  const entries = [row('angular/angular'), row('han41858/commit-trail'), row('other/project')];
+  const entries = [
+    row('angular/angular'),
+    row('han41858/commit-trail'),
+    row('other/project'),
+  ];
   assert.deepEqual(matchingRecentRepositories(entries, ''), entries);
   assert.deepEqual(matchingRecentRepositories(entries, 'TRAIL'), [entries[1]]);
   assert.deepEqual(matchingRecentRepositories(entries, '41858'), [entries[1]]);
-  assert.deepEqual(matchingRecentRepositories(entries, 'https://github.com/ANGULAR/angular.git/'), [
-    entries[0],
-  ]);
+  assert.deepEqual(
+    matchingRecentRepositories(
+      entries,
+      'https://github.com/ANGULAR/angular.git/',
+    ),
+    [entries[0]],
+  );
   assert.deepEqual(matchingRecentRepositories(entries, ':debug'), []);
 });
 test('the unchanged current address shows all recent visits in visit order, while other input is filtered', () => {
-  const entries = [row('angular/angular'), row('han41858/commit-trail'), row('other/project')];
+  const entries = [
+    row('angular/angular'),
+    row('han41858/commit-trail'),
+    row('other/project'),
+  ];
   assert.deepEqual(
-    matchingRecentRepositories(entries, 'han41858/commit-trail', 'han41858/commit-trail'),
+    matchingRecentRepositories(
+      entries,
+      'han41858/commit-trail',
+      'han41858/commit-trail',
+    ),
     entries,
   );
-  assert.deepEqual(matchingRecentRepositories(entries, 'angular', 'han41858/commit-trail'), [
-    entries[0],
-  ]);
-  assert.deepEqual(matchingRecentRepositories(entries, 'han41858/commit-trail'), [entries[1]]);
   assert.deepEqual(
-    matchingRecentRepositories(entries, 'missing/repo', 'han41858/commit-trail'),
+    matchingRecentRepositories(entries, 'angular', 'han41858/commit-trail'),
+    [entries[0]],
+  );
+  assert.deepEqual(
+    matchingRecentRepositories(entries, 'han41858/commit-trail'),
+    [entries[1]],
+  );
+  assert.deepEqual(
+    matchingRecentRepositories(
+      entries,
+      'missing/repo',
+      'han41858/commit-trail',
+    ),
     [],
   );
 });
@@ -151,15 +179,18 @@ test('the same PAT and construction after reload do not erase private visits', (
   const writes = storage.writes;
   store.authenticationChanged('same-pat', 'same-pat');
   assert.equal(storage.writes, writes);
-  assert.deepEqual(new RecentRepositories({ storage: () => storage }).getSnapshot().entries, [
-    row('private/repository', 'private'),
-  ]);
+  assert.deepEqual(
+    new RecentRepositories({ storage: () => storage }).getSnapshot().entries,
+    [row('private/repository', 'private')],
+  );
 });
 test('a private repository can register again after authentication changes', () => {
   const { store } = setup([row('old/repo', 'private')]);
   store.authenticationChanged('old-pat', 'new-pat');
   store.record('new/repo', true);
-  assert.deepEqual(store.getSnapshot().entries, [row('new/repo', 'private', 1000)]);
+  assert.deepEqual(store.getSnapshot().entries, [
+    row('new/repo', 'private', 1000),
+  ]);
 });
 test('visibility is supplied by metadata, including public repositories opened with a PAT', () => {
   const { store } = setup();
@@ -173,7 +204,10 @@ test('visibility is supplied by metadata, including public repositories opened w
   assert.equal(store.getSnapshot().entries[0].visibility, 'public');
 });
 test('refresh updates known visibility but never re-adds deleted entries or changes visit time', () => {
-  const { store, storage } = setup([row('a/one', 'public', 100), row('a/two', 'public', 90)]);
+  const { store, storage } = setup([
+    row('a/one', 'public', 100),
+    row('a/two', 'public', 90),
+  ]);
   const writes = storage.writes;
   store.repositoryMetadata('a/one', false, false);
   assert.equal(storage.writes, writes);
@@ -186,10 +220,15 @@ test('refresh updates known visibility but never re-adds deleted entries or chan
   store.repositoryMetadata('a/one', true, false);
   assert.deepEqual(store.getSnapshot().entries, []);
   store.repositoryMetadata('a/one', true, true);
-  assert.deepEqual(store.getSnapshot().entries, [row('a/one', 'private', 1000)]);
+  assert.deepEqual(store.getSnapshot().entries, [
+    row('a/one', 'private', 1000),
+  ]);
 });
 test('touching the current repository preserves the latest known visibility without a request', () => {
-  const { store } = setup([row('a/one', 'public', 10), row('a/two', 'public', 20)]);
+  const { store } = setup([
+    row('a/one', 'public', 10),
+    row('a/two', 'public', 20),
+  ]);
   store.updateVisibility('a/one', true);
   store.touch('a/one');
   assert.deepEqual(store.getSnapshot().entries, [
@@ -242,7 +281,10 @@ test('unavailable storage disables only the history store and never throws', () 
 });
 test('write failures hide the feature and remove stale private data when removal remains available', () => {
   const memory = new MemoryStorage();
-  memory.data.set(RECENT_REPOSITORIES_KEY, JSON.stringify([row('private/old', 'private')]));
+  memory.data.set(
+    RECENT_REPOSITORIES_KEY,
+    JSON.stringify([row('private/old', 'private')]),
+  );
   const store = new RecentRepositories({
     storage: () => ({
       getItem: memory.getItem,
@@ -263,7 +305,10 @@ test('an outdated authentication context cannot show or append private visits fr
     [row('public/one'), row('private/old', 'private', 90)],
     () => allowed,
   );
-  const other = new RecentRepositories({ storage: () => storage, now: () => 200 });
+  const other = new RecentRepositories({
+    storage: () => storage,
+    now: () => 200,
+  });
   other.authenticationChanged('old', 'new');
   other.record('private/new', true);
   allowed = false;
@@ -275,7 +320,11 @@ test('an outdated authentication context cannot show or append private visits fr
   assert.ok(storage.getItem(RECENT_REPOSITORIES_KEY)!.includes('private/new'));
   allowed = true;
   store.reload();
-  assert.ok(store.getSnapshot().entries.some((entry) => entry.repository === 'private/new'));
+  assert.ok(
+    store
+      .getSnapshot()
+      .entries.some((entry) => entry.repository === 'private/new'),
+  );
 });
 test('mutations re-read shared storage so stale snapshots cannot resurrect deleted private visits', () => {
   const { store, storage } = setup([row('private/old', 'private')]);

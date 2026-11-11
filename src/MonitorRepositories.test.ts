@@ -58,7 +58,8 @@ test('monitor names normalize URLs and case, preserve order and deduplicate', ()
     ]),
     ['owner/repo', 'other/two', 'other/three', 'other/four', 'other/five'],
   );
-  for (const value of [null, {}, 'bad']) assert.deepEqual(normalizeMonitorRepositories(value), []);
+  for (const value of [null, {}, 'bad'])
+    assert.deepEqual(normalizeMonitorRepositories(value), []);
 });
 test('32 distinct valid repositories survive normalization and storage, with overflow discarded after deduplication', () => {
   const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
@@ -70,15 +71,23 @@ test('32 distinct valid repositories survive normalization and storage, with ove
   ];
   assert.deepEqual(normalizeMonitorRepositories(input), names);
   const { store, data, options } = setup();
-  store.set(input.filter((value): value is string => typeof value === 'string'));
+  store.set(
+    input.filter((value): value is string => typeof value === 'string'),
+  );
   assert.deepEqual(store.getSnapshot(), names);
   assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), names);
   assert.deepEqual(new MonitorRepositories(options).getSnapshot(), names);
-  assert.deepEqual(moveMonitorRepository(names, names[31], 0), [names[31], ...names.slice(0, 31)]);
+  assert.deepEqual(moveMonitorRepository(names, names[31], 0), [
+    names[31],
+    ...names.slice(0, 31),
+  ]);
 });
 test('existing one-to-four repository selections restore without migration', () => {
   for (const count of [1, 2, 3, 4]) {
-    const names = Array.from({ length: count }, (_, index) => `owner/repo-${index}`);
+    const names = Array.from(
+      { length: count },
+      (_, index) => `owner/repo-${index}`,
+    );
     const { store, data } = setup(names);
     assert.deepEqual(store.getSnapshot(), names);
     assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), names);
@@ -88,7 +97,10 @@ test('a new 32-name incoming selection keeps a reobserved public name from the p
   const { store, publicNames, allow } = setup([]);
   allow(false);
   const prior = Array.from({ length: 32 }, (_, index) => `prior/repo-${index}`);
-  const incoming = [prior[0], ...Array.from({ length: 31 }, (_, index) => `next/repo-${index}`)];
+  const incoming = [
+    prior[0],
+    ...Array.from({ length: 31 }, (_, index) => `next/repo-${index}`),
+  ];
   for (const name of [...prior, ...incoming]) {
     publicNames.push(name);
     publicNames.splice(0, Math.max(0, publicNames.length - 10));
@@ -108,7 +120,10 @@ test('32 confirmed public selections survive eviction from ten recent visits wit
   }
   assert.deepEqual(store.getSnapshot(), names);
   assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), names);
-  assert.deepEqual(JSON.parse(data.get(MONITOR_PUBLIC_REPOSITORIES_KEY)!), names);
+  assert.deepEqual(
+    JSON.parse(data.get(MONITOR_PUBLIC_REPOSITORIES_KEY)!),
+    names,
+  );
   assert.deepEqual(new MonitorRepositories(options).getSnapshot(), names);
   store.authenticationChanged('old-token', '');
   assert.deepEqual(store.getSnapshot(), names);
@@ -117,7 +132,10 @@ test('32 confirmed public selections survive eviction from ten recent visits wit
   const publicOnly = names.slice(0, 31);
   assert.deepEqual(store.getSnapshot(), publicOnly);
   assert.deepEqual(new MonitorRepositories(options).getSnapshot(), publicOnly);
-  assert.deepEqual(JSON.parse(data.get(MONITOR_PUBLIC_REPOSITORIES_KEY)!), publicOnly);
+  assert.deepEqual(
+    JSON.parse(data.get(MONITOR_PUBLIC_REPOSITORIES_KEY)!),
+    publicOnly,
+  );
   assert.ok(!data.get(MONITOR_PUBLIC_REPOSITORIES_KEY)!.includes('old-token'));
 });
 test('moving monitor repositories changes order without mutating, duplicating or removing selections', () => {
@@ -145,14 +163,23 @@ test('keyboard moves clamp at either end and invalid or unchanged moves preserve
     ['a/one', NaN],
   ] as const)
     assert.equal(moveMonitorRepository(names, repository, to), names);
-  assert.deepEqual(moveMonitorRepository(names, 'a/one', 999), ['b/two', 'a/one']);
+  assert.deepEqual(moveMonitorRepository(names, 'a/one', 999), [
+    'b/two',
+    'a/one',
+  ]);
 });
 test('only names are persisted and a new instance restores the chosen order', () => {
   const { store, data, options } = setup([]);
   store.set(['B/Two', 'A/One']);
-  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), ['b/two', 'a/one']);
+  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), [
+    'b/two',
+    'a/one',
+  ]);
   assert.equal(data.get('unrelated'), 'keep');
-  assert.deepEqual(new MonitorRepositories(options).getSnapshot(), ['b/two', 'a/one']);
+  assert.deepEqual(new MonitorRepositories(options).getSnapshot(), [
+    'b/two',
+    'a/one',
+  ]);
 });
 test('first PAT, replacement and removal keep known public monitor names and discard private or unclassified names', () => {
   for (const [previous, next] of [
@@ -163,35 +190,55 @@ test('first PAT, replacement and removal keep known public monitor names and dis
     const { store, data } = setup();
     store.authenticationChanged(previous, next);
     assert.deepEqual(store.getSnapshot(), ['public/one']);
-    assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), ['public/one']);
+    assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), [
+      'public/one',
+    ]);
     assert.equal(data.get('unrelated'), 'keep');
   }
 });
 test('the same PAT and its restoration preserve the saved monitor selection', () => {
   const { store, options } = setup();
   store.authenticationChanged('same', 'same');
-  assert.deepEqual(store.getSnapshot(), ['public/one', 'private/one', 'unknown/one']);
-  assert.deepEqual(new MonitorRepositories(options).getSnapshot(), store.getSnapshot());
+  assert.deepEqual(store.getSnapshot(), [
+    'public/one',
+    'private/one',
+    'unknown/one',
+  ]);
+  assert.deepEqual(
+    new MonitorRepositories(options).getSnapshot(),
+    store.getSnapshot(),
+  );
 });
 test('unauthenticated names persist only after public metadata has confirmed them', () => {
   const { store, data, publicNames, allow } = setup([]);
   allow(false);
   store.set(['new/public', 'public/one', 'new/unknown']);
-  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), ['public/one']);
+  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), [
+    'public/one',
+  ]);
   publicNames.push('new/public');
   store.reconcile();
   assert.deepEqual(store.getSnapshot(), ['new/public', 'public/one']);
-  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), ['new/public', 'public/one']);
+  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), [
+    'new/public',
+    'public/one',
+  ]);
 });
 test('an outdated authentication tab hides private names and cannot overwrite the current selection', () => {
   const { store, data, allow, write } = setup();
   allow(false);
   write(false);
-  data.set(MONITOR_REPOSITORIES_KEY, JSON.stringify(['public/one', 'private/new']));
+  data.set(
+    MONITOR_REPOSITORIES_KEY,
+    JSON.stringify(['public/one', 'private/new']),
+  );
   store.reload();
   assert.deepEqual(store.getSnapshot(), ['public/one']);
   store.reconcile();
-  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), ['public/one', 'private/new']);
+  assert.deepEqual(JSON.parse(data.get(MONITOR_REPOSITORIES_KEY)!), [
+    'public/one',
+    'private/new',
+  ]);
 });
 test('invalid storage data is sanitized, storage errors leave in-memory monitoring available', () => {
   const { data, options } = setup();

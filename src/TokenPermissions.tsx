@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { checkTokenAccess, tokenFeatures, uncheckedAccess, type AccessStatus } from './tokenAccess';
+import {
+  checkTokenAccess,
+  tokenFeatures,
+  uncheckedAccess,
+  type AccessStatus,
+} from './tokenAccess';
 import { useRetryCountdown, retryLabel } from './useRetryCountdown';
 
 const labels: Record<AccessStatus, string> = {
@@ -47,7 +52,10 @@ export function TokenPermissions({
       })
       .catch(() => {
         if (!controller.signal.aborted)
-          setReport({ ...uncheckedAccess(), message: 'Could not verify access. Please retry.' });
+          setReport({
+            ...uncheckedAccess(),
+            message: 'Could not verify access. Please retry.',
+          });
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
@@ -62,7 +70,11 @@ export function TokenPermissions({
         ? 'Choose a repository to check access.'
         : report.message;
   return (
-    <section className="token-access" aria-label="Token permissions" aria-busy={busy}>
+    <section
+      className="token-access"
+      aria-label="Token permissions"
+      aria-busy={busy}
+    >
       <div className="token-access-heading">
         <h3>Permissions</h3>
         <button
@@ -101,7 +113,11 @@ export function TokenPermissions({
                 </td>
                 <td>
                   {busy ? (
-                    <span className="loading-spinner" role="status" aria-label="Checking access" />
+                    <span
+                      className="loading-spinner"
+                      role="status"
+                      aria-label="Checking access"
+                    />
                   ) : (
                     <span
                       className={`permission-state permission-${check.status}`}

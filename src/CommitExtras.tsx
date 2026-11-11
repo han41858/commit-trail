@@ -9,15 +9,25 @@ import {
   completedJobCount,
 } from './CommitInfo';
 import { ActionStatusIcon } from './ActionStatusIcon';
-const link = (url: string) => (url.startsWith('https://github.com/') ? url : '#');
+const link = (url: string) =>
+  url.startsWith('https://github.com/') ? url : '#';
 const date = (value?: string | null) =>
-  value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : null;
-export function CommitExtras({ sha, info }: { sha: string; info: InfoSnapshot }) {
+  value && Number.isFinite(Date.parse(value))
+    ? new Date(value).toLocaleString()
+    : null;
+export function CommitExtras({
+  sha,
+  info,
+}: {
+  sha: string;
+  info: InfoSnapshot;
+}) {
   const data = info.bySha.get(sha),
     summary = data?.actions;
   const [now, setNow] = useState(() => Date.now());
   const ticking = !!data?.runs.some(
-    (run) => activeRun(run) && Number.isFinite(Date.parse(run.run_started_at || '')),
+    (run) =>
+      activeRun(run) && Number.isFinite(Date.parse(run.run_started_at || '')),
   );
   useEffect(() => {
     if (!ticking) return;
@@ -42,7 +52,12 @@ export function CommitExtras({ sha, info }: { sha: string; info: InfoSnapshot })
           </span>
           <div className="tag-list">
             {data.tags.map((tag) => (
-              <a href={link(tag.url)} key={tag.name} target="_blank" rel="noreferrer">
+              <a
+                href={link(tag.url)}
+                key={tag.name}
+                target="_blank"
+                rel="noreferrer"
+              >
                 {tag.name}
               </a>
             ))}
@@ -55,7 +70,11 @@ export function CommitExtras({ sha, info }: { sha: string; info: InfoSnapshot })
             const name = release.name?.trim() || release.tag_name,
               meta = [
                 name !== release.tag_name ? release.tag_name : '',
-                release.draft ? 'Draft' : release.prerelease ? 'Pre-release' : '',
+                release.draft
+                  ? 'Draft'
+                  : release.prerelease
+                    ? 'Pre-release'
+                    : '',
                 date(release.published_at),
               ]
                 .filter(Boolean)
@@ -66,7 +85,11 @@ export function CommitExtras({ sha, info }: { sha: string; info: InfoSnapshot })
                   <span className="version-icon" aria-hidden="true">
                     🚀
                   </span>
-                  <a href={link(release.html_url)} target="_blank" rel="noreferrer">
+                  <a
+                    href={link(release.html_url)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     {name}
                   </a>
                 </div>
@@ -79,14 +102,17 @@ export function CommitExtras({ sha, info }: { sha: string; info: InfoSnapshot })
       <section aria-label="GitHub Actions">
         <h3 className="actions-heading">
           Actions
-          {summary && ['running', 'queued'].includes(summary.state) && summary.ratio !== null && (
-            <span
-              className="actions-job-summary"
-              aria-label={`${summary.done} of ${summary.total} jobs completed`}
-            >
-              {summary.done}/{summary.total} jobs ({Math.floor(summary.ratio * 100)}%)
-            </span>
-          )}
+          {summary &&
+            ['running', 'queued'].includes(summary.state) &&
+            summary.ratio !== null && (
+              <span
+                className="actions-job-summary"
+                aria-label={`${summary.done} of ${summary.total} jobs completed`}
+              >
+                {summary.done}/{summary.total} jobs (
+                {Math.floor(summary.ratio * 100)}%)
+              </span>
+            )}
           {elapsed && (
             <span
               className="actions-elapsed"
@@ -114,16 +140,28 @@ export function CommitExtras({ sha, info }: { sha: string; info: InfoSnapshot })
             <div className="run-info" key={run.id}>
               <div className="run-heading">
                 <ActionStatusIcon status={status} />
-                <a href={link(run.html_url)} title={name} target="_blank" rel="noreferrer">
+                <a
+                  href={link(run.html_url)}
+                  title={name}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   {name}
                 </a>
                 {activeRun(run) && (
-                  <span className="run-job-count" aria-label={jobLabel} title={jobLabel}>
+                  <span
+                    className="run-job-count"
+                    aria-label={jobLabel}
+                    title={jobLabel}
+                  >
                     {jobs ? `${jobs.completed}/${jobs.total}` : '?/?'}
                   </span>
                 )}
               </div>
-              <small className="run-elapsed" title={`Elapsed ${duration} · Attempt ${runAttempt}`}>
+              <small
+                className="run-elapsed"
+                title={`Elapsed ${duration} · Attempt ${runAttempt}`}
+              >
                 {duration} · Attempt {runAttempt}
               </small>
             </div>

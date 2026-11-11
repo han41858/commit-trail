@@ -41,7 +41,9 @@ export class RefreshLoop {
   private pending: Promise<void> | null = null;
   private completions = new Set<Promise<boolean>>();
   constructor(
-    private readonly update: (kind: 'manual' | 'auto') => Promise<RefreshResult>,
+    private readonly update: (
+      kind: 'manual' | 'auto',
+    ) => Promise<RefreshResult>,
     private readonly active = () => true,
     private readonly clock: RefreshClock = systemClock,
   ) {}
@@ -56,7 +58,12 @@ export class RefreshLoop {
     this.state = { ...this.state, ...patch };
     for (const fn of this.listeners) fn();
   }
-  configure(scope: string, enabled: boolean, interval: number, waitForInitialLoad = false) {
+  configure(
+    scope: string,
+    enabled: boolean,
+    interval: number,
+    waitForInitialLoad = false,
+  ) {
     if (scope !== this.scope) {
       this.generation++;
       this.pending = null;
@@ -81,7 +88,8 @@ export class RefreshLoop {
   loaded() {
     if (
       this.scope &&
-      (this.state.waitingForInitialLoad || this.state.lastCompletedAt === null) &&
+      (this.state.waitingForInitialLoad ||
+        this.state.lastCompletedAt === null) &&
       !this.pending &&
       !this.completions.size
     ) {
@@ -147,27 +155,36 @@ export class RefreshLoop {
     const generation = this.generation;
     this.clock.clear(this.timer);
     const task = Promise.resolve()
-      .then(() => (generation === this.generation ? this.update(kind) : ({} as RefreshResult)))
+      .then(() =>
+        generation === this.generation
+          ? this.update(kind)
+          : ({} as RefreshResult),
+      )
       .then((result) => {
         if (generation !== this.generation) return;
         this.publish({
           error: result.error || '',
           retryAt: result.retryAt || 0,
-          ...(result.completion === undefined ? { lastCompletedAt: this.clock.now() } : {}),
+          ...(result.completion === undefined
+            ? { lastCompletedAt: this.clock.now() }
+            : {}),
           nextAt: this.state.waitingForInitialLoad
             ? 0
             : result.retryAt && result.retryAt > this.clock.now()
               ? result.retryAt
               : this.clock.now() + this.interval,
         });
-        if (result.completion) this.trackCompletion(result.completion, generation);
+        if (result.completion)
+          this.trackCompletion(result.completion, generation);
       })
       .catch((error) => {
         if (generation === this.generation)
           this.publish({
             error: error instanceof Error ? error.message : 'Refresh failed.',
             lastCompletedAt: this.clock.now(),
-            nextAt: this.state.waitingForInitialLoad ? 0 : this.clock.now() + this.interval,
+            nextAt: this.state.waitingForInitialLoad
+              ? 0
+              : this.clock.now() + this.interval,
           });
       })
       .finally(() => {

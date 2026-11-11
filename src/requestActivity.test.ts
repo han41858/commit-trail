@@ -74,7 +74,10 @@ test('real API accounting includes response-body parsing and extracts only the r
   const response = new Response('[]');
   t.mock.method(response, 'json', () => body);
   const fetch = t.mock.method(globalThis, 'fetch', async () => response);
-  const request = github('/repos/Owner/One/actions/runs?branch=Feature%2FPrivate', '');
+  const request = github(
+    '/repos/Owner/One/actions/runs?branch=Feature%2FPrivate',
+    '',
+  );
   try {
     await tick();
     assert.equal(requestActivity.getSnapshot(), 1);
@@ -91,10 +94,17 @@ test('real API accounting includes response-body parsing and extracts only the r
 test('304, HTTP failure and network failure all release their repository counts', async (t) => {
   const fetch = t.mock.method(globalThis, 'fetch');
   const cached = { data: ['cached'], next: false, etag: '"test"' };
-  fetch.mock.mockImplementation(async () => new Response(null, { status: 304 }));
-  assert.equal(await github('/repos/owner/one/tags', '', undefined, cached), cached);
+  fetch.mock.mockImplementation(
+    async () => new Response(null, { status: 304 }),
+  );
+  assert.equal(
+    await github('/repos/owner/one/tags', '', undefined, cached),
+    cached,
+  );
   assert.equal(requestActivity.getSnapshot('owner/one'), 0);
-  fetch.mock.mockImplementation(async () => new Response('{}', { status: 500 }));
+  fetch.mock.mockImplementation(
+    async () => new Response('{}', { status: 500 }),
+  );
   await assert.rejects(github('/repos/owner/one/tags', ''));
   assert.equal(requestActivity.getSnapshot('owner/one'), 0);
   fetch.mock.mockImplementation(async () => {

@@ -2,7 +2,10 @@ import { commitTime, type Commit } from './model';
 
 export type MonthMarker = { sha: string; label: string };
 type MonthCommit = { commit: Commit; time: number; date: Date };
-export function monthMarkers(ordered: Commit[], spine: Set<string>): MonthMarker[] {
+export function monthMarkers(
+  ordered: Commit[],
+  spine: Set<string>,
+): MonthMarker[] {
   const hasSpine = ordered.some((commit) => spine.has(commit.sha));
   const calendar = new Map<number, MonthCommit>(),
     context = new Map<number, MonthCommit>();
@@ -16,7 +19,11 @@ export function monthMarkers(ordered: Commit[], spine: Set<string>): MonthMarker
       first = calendar.get(key),
       base = context.get(key);
     // A SHA tie-break keeps the anchor stable when equal timestamps are reversed.
-    if (!first || time < first.time || (time === first.time && commit.sha < first.commit.sha))
+    if (
+      !first ||
+      time < first.time ||
+      (time === first.time && commit.sha < first.commit.sha)
+    )
       calendar.set(key, entry);
     if ((!hasSpine || spine.has(commit.sha)) && (!base || time < base.time))
       context.set(key, entry);
@@ -34,6 +41,8 @@ export function monthMarkers(ordered: Commit[], spine: Set<string>): MonthMarker
     );
   }
   return ordered.flatMap((commit) =>
-    markers.has(commit.sha) ? [{ sha: commit.sha, label: markers.get(commit.sha)! }] : [],
+    markers.has(commit.sha)
+      ? [{ sha: commit.sha, label: markers.get(commit.sha)! }]
+      : [],
   );
 }

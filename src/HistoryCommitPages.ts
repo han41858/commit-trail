@@ -45,7 +45,8 @@ export class HistoryCommitPages {
           immutable &&
           page === 1 &&
           since === undefined &&
-          (!Array.isArray(result.data) || !result.data.some((commit) => commit.sha === ref))
+          (!Array.isArray(result.data) ||
+            !result.data.some((commit) => commit.sha === ref))
         )
           throw new Error(
             'GitHub did not return the requested commit. Retry to continue this branch.',

@@ -45,7 +45,10 @@ export class CommitInfoStore {
   private releases = new Map<number, ReleaseInfo>();
   private runs = new Map<number, ActionRun>();
   private jobs = new Map<number, JobInfo>();
-  private seenCatalog = { tags: new Set<string>(), releases: new Set<string>() };
+  private seenCatalog = {
+    tags: new Set<string>(),
+    releases: new Set<string>(),
+  };
   private scanning = { tags: false, releases: false };
   private loadedPages = { tags: 1, releases: 1 };
   private recentRuns = new Set<number>();
@@ -68,7 +71,8 @@ export class CommitInfoStore {
     return [...this.releases.values()].some(
       (release) =>
         !this.tags.has(release.tag_name) &&
-        (this.resolvedRevision !== this.catalogRevision || !this.triedTags.has(release.tag_name)),
+        (this.resolvedRevision !== this.catalogRevision ||
+          !this.triedTags.has(release.tag_name)),
     );
   }
   subscribe = (fn: () => void) => {
@@ -103,7 +107,8 @@ export class CommitInfoStore {
         if (tag) get(tag.sha).releases.push(release);
       }
       for (const run of this.runs.values()) get(run.head_sha).runs.push(run);
-      for (const info of map.values()) info.actions = actionSummary(info.runs, this.jobs);
+      for (const info of map.values())
+        info.actions = actionSummary(info.runs, this.jobs);
       bySha = map;
     }
     const unresolved = this.needsReleaseResolution();
@@ -166,7 +171,11 @@ export class CommitInfoStore {
     this.publish();
     if (repo) await this.refresh(false, undefined, cycle);
   };
-  private async guard(kind: string, reader: GitHubReader, work: () => Promise<void>) {
+  private async guard(
+    kind: string,
+    reader: GitHubReader,
+    work: () => Promise<void>,
+  ) {
     try {
       await work();
       if (reader === this.reader) {
@@ -181,7 +190,9 @@ export class CommitInfoStore {
           errors: {
             ...this.state.errors,
             [kind]:
-              error instanceof GitHubError && error.status === 403 && !error.retryAt
+              error instanceof GitHubError &&
+              error.status === 403 &&
+              !error.retryAt
                 ? `Needs ${kind === 'actions' || kind.startsWith('jobs:') || kind.startsWith('run:') ? 'Actions' : 'Contents'}: Read-only.`
                 : (error as Error).message,
           },
@@ -196,7 +207,12 @@ export class CommitInfoStore {
     this.catalogRevision++;
     return true;
   }
-  private catalog(kind: 'tags' | 'releases', page: number, keys: string[], next: boolean) {
+  private catalog(
+    kind: 'tags' | 'releases',
+    page: number,
+    keys: string[],
+    next: boolean,
+  ) {
     if (page === 1) {
       this.seenCatalog[kind].clear();
       this.scanning[kind] = true;
@@ -208,7 +224,8 @@ export class CommitInfoStore {
           if (!this.seenCatalog.tags.has(key)) this.tags.delete(key);
       } else
         for (const key of this.releases.keys())
-          if (!this.seenCatalog.releases.has(String(key))) this.releases.delete(key);
+          if (!this.seenCatalog.releases.has(String(key)))
+            this.releases.delete(key);
       this.scanning[kind] = false;
     }
   }
@@ -239,18 +256,23 @@ export class CommitInfoStore {
       this.runs.set(run.id, run);
     }
   }
-  private async page(kind: Kind, page: number, reader: GitHubReader, cycle?: DebugCycle) {
+  private async page(
+    kind: Kind,
+    page: number,
+    reader: GitHubReader,
+    cycle?: DebugCycle,
+  ) {
     const base = `/repos/${this.state.repo}`,
       path = kind === 'actions' ? `${base}/actions/runs` : `${base}/${kind}`;
-    if (kind !== 'actions') this.loadedPages[kind] = Math.max(this.loadedPages[kind], page);
+    if (kind !== 'actions')
+      this.loadedPages[kind] = Math.max(this.loadedPages[kind], page);
     if (kind === 'tags') {
-      const result = await reader.get<{ name: string; commit: { sha: string } }[]>(
-        `${path}?per_page=100&page=${page}`,
-        false,
-        cycle,
-      );
+      const result = await reader.get<
+        { name: string; commit: { sha: string } }[]
+      >(`${path}?per_page=100&page=${page}`, false, cycle);
       reader.controller.signal.throwIfAborted();
-      if (!Array.isArray(result.data)) throw new Error('Tag metadata is unavailable.');
+      if (!Array.isArray(result.data))
+        throw new Error('Tag metadata is unavailable.');
       const changed = this.changedPage(`tags:${page}`, result.data);
       this.catalog(
         'tags',
@@ -268,7 +290,8 @@ export class CommitInfoStore {
         cycle,
       );
       reader.controller.signal.throwIfAborted();
-      if (!Array.isArray(result.data)) throw new Error('Release metadata is unavailable.');
+      if (!Array.isArray(result.data))
+        throw new Error('Release metadata is unavailable.');
       const changed = this.changedPage(`releases:${page}`, result.data);
       this.catalog(
         'releases',
@@ -288,9 +311,13 @@ export class CommitInfoStore {
       reader.controller.signal.throwIfAborted();
       if (!Array.isArray(result.data.workflow_runs))
         throw new Error('Actions history is unavailable.');
-      if (page === 1) this.recentRuns = new Set(result.data.workflow_runs.map((run) => run.id));
+      if (page === 1)
+        this.recentRuns = new Set(
+          result.data.workflow_runs.map((run) => run.id),
+        );
       this.upsert(result.data.workflow_runs);
-      if (page > 1 || this.next.actions <= 1) this.next.actions = result.next ? page + 1 : 0;
+      if (page > 1 || this.next.actions <= 1)
+        this.next.actions = result.next ? page + 1 : 0;
     }
   }
   private async versions(
@@ -300,7 +327,8 @@ export class CommitInfoStore {
     cycle?: DebugCycle,
   ) {
     if (more) {
-      if (this.next[kind]) await this.page(kind, this.next[kind], reader, cycle);
+      if (this.next[kind])
+        await this.page(kind, this.next[kind], reader, cycle);
       return;
     }
     // Revalidate only catalog pages the user has loaded; details stay cached.
@@ -335,7 +363,11 @@ export class CommitInfoStore {
       this.triedTags.clear();
       this.resolvedRevision = this.catalogRevision;
     }
-    const names = [...new Set([...this.releases.values()].map((release) => release.tag_name))]
+    const names = [
+        ...new Set(
+          [...this.releases.values()].map((release) => release.tag_name),
+        ),
+      ]
         .filter(
           (name) =>
             !this.tags.has(name) &&
@@ -377,7 +409,10 @@ export class CommitInfoStore {
           reader.controller.signal.throwIfAborted();
           if (object.type === 'commit') {
             this.addTag(name, object.sha);
-            this.releaseRefs.set(name, { revision: this.catalogRevision, sha: object.sha });
+            this.releaseRefs.set(name, {
+              revision: this.catalogRevision,
+              sha: object.sha,
+            });
           }
         } catch (error) {
           if (error instanceof GitHubError && error.status === 404) return;
@@ -387,7 +422,12 @@ export class CommitInfoStore {
       }),
     );
   }
-  private fetchJobs(run: ActionRun, reader: GitHubReader, force: boolean, cycle?: DebugCycle) {
+  private fetchJobs(
+    run: ActionRun,
+    reader: GitHubReader,
+    force: boolean,
+    cycle?: DebugCycle,
+  ) {
     const key = `${run.id}:${attempt(run)}`,
       pending = this.jobRequests.get(key);
     if (pending) {
@@ -400,13 +440,17 @@ export class CommitInfoStore {
       return Promise.resolve();
     }
     const task = this.guard(`jobs:${run.id}`, reader, async () => {
-      const resume = old?.attempt === attempt(run) && !old.complete && old.next > 1;
+      const resume =
+        old?.attempt === attempt(run) && !old.complete && old.next > 1;
       const all = new Map((resume ? old.jobs : []).map((job) => [job.id, job]));
       let page = resume ? old.next : 1,
         total = 0,
         next = true;
       for (let count = 0; count < 5 && next; count++) {
-        const result = await reader.get<{ total_count: number; jobs: ActionJob[] }>(
+        const result = await reader.get<{
+          total_count: number;
+          jobs: ActionJob[];
+        }>(
           `/repos/${this.state.repo}/actions/runs/${run.id}/attempts/${attempt(run)}/jobs?per_page=100&page=${page}`,
           false,
           cycle,
@@ -448,13 +492,17 @@ export class CommitInfoStore {
       tasks: Promise<void>[] = [];
     if (this.state.errors.actions) return;
     for (const sha of targets) {
-      const runs = [...this.runs.values()].filter((run) => run.head_sha === sha);
+      const runs = [...this.runs.values()].filter(
+        (run) => run.head_sha === sha,
+      );
       if (!runs.some(activeRun)) continue;
       // An active commit needs every workflow's denominator. Completed snapshots
       // are filled once and then reused while only active jobs keep polling.
       for (const run of runs)
         if (activeRun(run) || run.status === 'completed')
-          tasks.push(this.fetchJobs(run, reader, activeRun(run) && force, cycle));
+          tasks.push(
+            this.fetchJobs(run, reader, activeRun(run) && force, cycle),
+          );
     }
     await Promise.all(tasks);
   }
@@ -471,7 +519,12 @@ export class CommitInfoStore {
       this.publish();
     }
   };
-  inspect = (sha: string, force = false, withJobs = true, cycle?: DebugCycle) => {
+  inspect = (
+    sha: string,
+    force = false,
+    withJobs = true,
+    cycle?: DebugCycle,
+  ) => {
     const changed = this.selected !== sha;
     this.selected = sha;
     const pending = this.lookups.get(sha);
@@ -488,7 +541,8 @@ export class CommitInfoStore {
     const reader = this.reader,
       base = `/repos/${this.state.repo}`;
     const task = this.guard('actions', reader, async () => {
-      if (force || !this.lookupSeen.has(sha)) this.lookupSeen.set(sha, new Set());
+      if (force || !this.lookupSeen.has(sha))
+        this.lookupSeen.set(sha, new Set());
       const seen = this.lookupSeen.get(sha)!;
       let next = true,
         page = force ? 1 : this.lookupNext.get(sha) || 1;
@@ -501,7 +555,9 @@ export class CommitInfoStore {
         reader.controller.signal.throwIfAborted();
         if (!Array.isArray(result.data.workflow_runs))
           throw new Error('Actions history is unavailable.');
-        const runs = result.data.workflow_runs.filter((run) => run.head_sha === sha);
+        const runs = result.data.workflow_runs.filter(
+          (run) => run.head_sha === sha,
+        );
         for (const run of runs) seen.add(run.id);
         this.upsert(runs);
         next = result.next;
@@ -517,7 +573,11 @@ export class CommitInfoStore {
       }
     })
       .then(async () => {
-        if (withJobs && reader === this.reader && !reader.controller.signal.aborted)
+        if (
+          withJobs &&
+          reader === this.reader &&
+          !reader.controller.signal.aborted
+        )
           await this.ensureJobs(false, cycle);
       })
       .finally(() => {
@@ -563,10 +623,13 @@ export class CommitInfoStore {
             )
           : undefined;
         if (!skip('tags') && (!more || this.next.tags))
-          await this.guard('tags', reader, () => this.versions('tags', more, reader, cycle));
+          await this.guard('tags', reader, () =>
+            this.versions('tags', more, reader, cycle),
+          );
         if (reader !== this.reader) return {};
         await Promise.all([
-          ...(!skip('releases') && (!more || this.next.releases || this.needsReleaseResolution())
+          ...(!skip('releases') &&
+          (!more || this.next.releases || this.needsReleaseResolution())
             ? [
                 this.guard('releases', reader, async () => {
                   await this.versions('releases', more, reader, cycle);

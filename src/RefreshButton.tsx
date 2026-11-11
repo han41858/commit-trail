@@ -16,7 +16,11 @@ function RefreshFill({
 }: Pick<Props, 'nextAt' | 'interval' | 'sweeping'>) {
   const circle = useRef<SVGCircleElement>(null);
   const active =
-    sweeping && Number.isFinite(nextAt) && nextAt > 0 && Number.isFinite(interval) && interval > 0;
+    sweeping &&
+    Number.isFinite(nextAt) &&
+    nextAt > 0 &&
+    Number.isFinite(interval) &&
+    interval > 0;
   useLayoutEffect(() => {
     if (!active) return;
     // Align after DOM commit, rather than starting a fresh animation after a slow
@@ -27,11 +31,17 @@ function RefreshFill({
         ?.getAnimations()
         .find(
           (animation) =>
-            animation instanceof CSSAnimation && animation.animationName === 'refresh-sweep',
+            animation instanceof CSSAnimation &&
+            animation.animationName === 'refresh-sweep',
         );
       if (!animation) return;
       const timelineNow = performance.now(),
-        start = refreshAnimationStart(nextAt, interval, Date.now(), timelineNow);
+        start = refreshAnimationStart(
+          nextAt,
+          interval,
+          Date.now(),
+          timelineNow,
+        );
       if (start !== null) animation.startTime = start;
     };
     align();
@@ -68,7 +78,13 @@ function RefreshFill({
     </svg>
   );
 }
-export function RefreshButton({ nextAt, interval, sweeping, disabled, onRefresh }: Props) {
+export function RefreshButton({
+  nextAt,
+  interval,
+  sweeping,
+  disabled,
+  onRefresh,
+}: Props) {
   return (
     <button
       className="refresh-button"

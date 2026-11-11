@@ -23,14 +23,21 @@ export function MonitorControls({
   onExit: () => void;
 }) {
   return (
-    <header className="monitor-controls" aria-label="Repository monitor controls">
+    <header
+      className="monitor-controls"
+      aria-label="Repository monitor controls"
+    >
       <RefreshTimer
         nextAt={Math.max(refreshState.nextAt, monitorState.retryAt)}
         interval={seconds * 1000}
-        sweeping={autoRefresh && !refreshState.waitingForInitialLoad && !limited}
+        sweeping={
+          autoRefresh && !refreshState.waitingForInitialLoad && !limited
+        }
         running={monitorState.running.size > 0}
         paused={!autoRefresh || limited}
-        disabled={refreshState.waitingForInitialLoad || limited || refreshState.running}
+        disabled={
+          refreshState.waitingForInitialLoad || limited || refreshState.running
+        }
         onRefresh={onRefresh}
       />
       <MonitorReorder entries={monitorState.entries} onReorder={onReorder} />

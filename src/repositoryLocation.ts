@@ -25,7 +25,10 @@ function normalize(
     if (names.length === MONITOR_LIMIT) break;
   }
   while (selected.length && !selected.at(-1)) selected.pop();
-  return { repositories: names, ...(selected.length ? { branches: selected } : {}) };
+  return {
+    repositories: names,
+    ...(selected.length ? { branches: selected } : {}),
+  };
 }
 export function readRepositoryLocation(value: string): RepositoryLocation {
   const url = new URL(value),
@@ -57,7 +60,8 @@ export function repositoryLocationURL(
       configuration.mode === 'single' ? 1 : undefined,
     ),
     branches = normalized.branches?.slice(0, repositories.length);
-  if (share && !['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported app URL.');
+  if (share && !['http:', 'https:'].includes(url.protocol))
+    throw new Error('Unsupported app URL.');
   if (share) {
     url.username = '';
     url.password = '';
@@ -68,8 +72,10 @@ export function repositoryLocationURL(
     url.searchParams.delete('mode');
     url.searchParams.delete('branch');
   }
-  for (const repository of repositories) url.searchParams.append('repo', repository);
-  for (const branch of branches || []) url.searchParams.append('branch', branch || '');
+  for (const repository of repositories)
+    url.searchParams.append('repo', repository);
+  for (const branch of branches || [])
+    url.searchParams.append('branch', branch || '');
   if (configuration.mode === 'monitor' && repositories.length === 1)
     url.searchParams.set('mode', 'monitor');
   return url;
@@ -81,5 +87,9 @@ export function monitorShareURL(
 ) {
   if (!normalize(repositories).repositories.length)
     throw new Error('Select a repository to share.');
-  return repositoryLocationURL(value, { mode: 'monitor', repositories, branches }, true).href;
+  return repositoryLocationURL(
+    value,
+    { mode: 'monitor', repositories, branches },
+    true,
+  ).href;
 }

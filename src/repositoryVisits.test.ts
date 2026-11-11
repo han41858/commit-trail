@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { History } from './history';
 import { RecentRepositories } from './RecentRepositories';
 
-const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
+const response = (value: unknown, status = 200) =>
+  new Response(JSON.stringify(value), { status });
 const commit = {
   sha: 'head',
   parents: [],
@@ -16,8 +17,15 @@ const commit = {
 };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function using(
-  handler: (url: URL, init?: RequestInit) => Response | Promise<Response> | undefined,
-  check: (history: History, recent: RecentRepositories, requests: URL[]) => Promise<void>,
+  handler: (
+    url: URL,
+    init?: RequestInit,
+  ) => Response | Promise<Response> | undefined,
+  check: (
+    history: History,
+    recent: RecentRepositories,
+    requests: URL[],
+  ) => Promise<void>,
 ) {
   const original = globalThis.fetch,
     requests: URL[] = [],
@@ -61,13 +69,17 @@ async function using(
 
 test('metadata success records URL opens and explicit reopens without waiting for commit loading', async () => {
   await using(
-    (url) => (url.pathname.endsWith('/commits') ? response({}, 403) : undefined),
+    (url) =>
+      url.pathname.endsWith('/commits') ? response({}, 403) : undefined,
     async (history, recent, requests) => {
       await history.open('https://github.com/Owner/Repo.git');
       assert.deepEqual(recent.getSnapshot().entries, [
         { repository: 'owner/repo', visibility: 'public', visitedAt: 100 },
       ]);
-      assert.equal(requests.filter((url) => url.pathname === '/repos/Owner/Repo').length, 1);
+      assert.equal(
+        requests.filter((url) => url.pathname === '/repos/Owner/Repo').length,
+        1,
+      );
       assert.ok(history.getSnapshot().error);
       await history.open('other/repo');
       await history.open('OWNER/REPO');
@@ -107,7 +119,9 @@ test('public/private status comes from metadata and is not inferred from the pre
       await history.open('public/repo', 'test-only-token');
       await history.open('private/repo', 'test-only-token');
       assert.deepEqual(
-        recent.getSnapshot().entries.map((entry) => [entry.repository, entry.visibility]),
+        recent
+          .getSnapshot()
+          .entries.map((entry) => [entry.repository, entry.visibility]),
         [
           ['private/repo', 'private'],
           ['public/repo', 'public'],
@@ -126,7 +140,10 @@ test('unknown metadata visibility is not guessed and failed refreshes preserve v
   await using(
     (url) =>
       url.pathname === '/repos/a/repo'
-        ? response(fail ? {} : { default_branch: 'main', private: true }, fail ? 401 : 200)
+        ? response(
+            fail ? {} : { default_branch: 'main', private: true },
+            fail ? 401 : 200,
+          )
         : url.pathname === '/repos/unknown/repo'
           ? response({ default_branch: 'main' })
           : undefined,

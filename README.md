@@ -51,7 +51,7 @@ Choose **Split view** to select repositories. Drag a header handle to reorder co
 
 Portrait Split view emphasizes the DAG. Landscape can show one-line commit messages when column width and lane spacing allow; tap a node for full details in either orientation. The same layout works in the browser and installed PWA.
 
-*Actual browser captures with public GitHub data. Mobile uses viewport emulation. [Capture details](docs/images/README.md).*
+_Actual browser captures with public GitHub data. Mobile uses viewport emulation. [Capture details](docs/images/README.md)._
 
 ## Getting started
 
@@ -67,13 +67,13 @@ Use **Options** to choose a theme and refresh interval; your choices are remembe
 
 Shared links restore the view when opened or reloaded, with repositories arranged left to right in URL order:
 
-| Query | View |
-| --- | --- |
-| `?repo=owner/repo` | Single repository |
-| `?repo=owner/repo&branch=Feature%2FFix` | Single repository on `Feature/Fix` |
-| `?repo=owner/repo&repo=other/repo` | Two-repository Split view |
+| Query                                                     | View                                         |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `?repo=owner/repo`                                        | Single repository                            |
+| `?repo=owner/repo&branch=Feature%2FFix`                   | Single repository on `Feature/Fix`           |
+| `?repo=owner/repo&repo=other/repo`                        | Two-repository Split view                    |
 | `?repo=owner/repo&repo=other/repo&branch=main&branch=dev` | Split view on `main` and `dev`, respectively |
-| `?repo=owner/repo&mode=monitor` | One-repository Split view |
+| `?repo=owner/repo&mode=monitor`                           | One-repository Split view                    |
 
 **Copy link** includes confirmed current branches in repository order. Repeated `branch` values match repeated `repo` values by position; use an empty `branch=` for an unspecified middle repository. Links contain no PAT, but **private repository and branch names are visible in the URL**. Access still uses the recipient's own token. See the [Split view guide](docs/monitor-mode.md) for details.
 
@@ -81,11 +81,11 @@ Shared links restore the view when opened or reloaded, with repositories arrange
 
 Public repositories work without a token. For private repositories or higher API limits, create a **fine-grained personal access token** for the repositories you choose, then apply it in **Token**.
 
-| Permission | Access | Used for |
-| --- | --- | --- |
-| Contents | Read-only | Commits, branches, tags and releases |
-| Pull requests | Read-only | PR-based branch suggestions |
-| Actions | Read-only | Workflow runs and jobs |
+| Permission    | Access    | Used for                             |
+| ------------- | --------- | ------------------------------------ |
+| Contents      | Read-only | Commits, branches, tags and releases |
+| Pull requests | Read-only | PR-based branch suggestions          |
+| Actions       | Read-only | Workflow runs and jobs               |
 
 The token is saved in this browser's localStorage and sent only to `api.github.com`. **Remove token & clear history** removes the saved token and displayed history. See the [technical guide](docs/technical-guide.md#use) for access checks, rate limits and storage behavior.
 

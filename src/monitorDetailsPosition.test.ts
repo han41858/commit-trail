@@ -61,16 +61,26 @@ test('notices lift every column and reduce maximum height by the same distance',
     assert.equal(raised.width, before.width);
     assert.equal(raised.bottom, 692);
     assert.equal(raised.maxHeight, before.maxHeight - 100);
-    assert.equal(raised.bottom - raised.maxHeight, before.bottom - before.maxHeight);
+    assert.equal(
+      raised.bottom - raised.maxHeight,
+      before.bottom - before.maxHeight,
+    );
     assert.ok(raised.bottom - raised.maxHeight >= bounds.top);
     assert.deepEqual(monitorDetailsFrame(anchor, bounds, 900), before);
   }
 });
 
 test('a tall wrapped notice cannot produce a negative panel height', () => {
-  const frame = monitorDetailsFrame({ left: 195, width: 195 }, {
-    left: 0, right: 390, top: 136, bottom: 844,
-  }, 140);
+  const frame = monitorDetailsFrame(
+    { left: 195, width: 195 },
+    {
+      left: 0,
+      right: 390,
+      top: 136,
+      bottom: 844,
+    },
+    140,
+  );
   assert.equal(frame.maxHeight, 0);
   assert.ok(frame.bottom >= 136);
 });

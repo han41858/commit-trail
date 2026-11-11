@@ -4,7 +4,9 @@ import { lowercaseRepoInput } from './model';
 // using their existing parser, including its validation and normalization rules.
 export function ownerFromInput(value: string) {
   const owner = value.trim().toLowerCase();
-  return /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/.test(owner) ? owner : null;
+  return /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/.test(owner)
+    ? owner
+    : null;
 }
 
 type TextField = {
@@ -22,7 +24,10 @@ export function lowercaseField(field: TextField) {
     const { selectionStart: start, selectionEnd: end } = field;
     field.value = value;
     if (start !== null && end !== null)
-      field.setSelectionRange(Math.min(start, value.length), Math.min(end, value.length));
+      field.setSelectionRange(
+        Math.min(start, value.length),
+        Math.min(end, value.length),
+      );
   }
   return value;
 }

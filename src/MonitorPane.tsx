@@ -1,4 +1,10 @@
-import { memo, useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
 import type { Commit } from './model';
 import type { HistorySnapshot } from './history';
 import type { InfoSnapshot } from './CommitInfoStore';
@@ -36,7 +42,9 @@ export function MonitorStatus({
       />
       {limited ? (
         <p role="status">
-          {anonymous ? 'GitHub rate limit · token needed' : 'GitHub rate limit · waiting to retry'}
+          {anonymous
+            ? 'GitHub rate limit · token needed'
+            : 'GitHub rate limit · waiting to retry'}
         </p>
       ) : error ? (
         <p role="alert">{error}</p>
@@ -67,7 +75,10 @@ export const MonitorPane = memo(function MonitorPane({
   onSelect: (repository: string, commit: Commit) => void;
   onClose: () => void;
 }) {
-  const state = useSyncExternalStore(entry.history.subscribe, entry.history.getSnapshot),
+  const state = useSyncExternalStore(
+      entry.history.subscribe,
+      entry.history.getSnapshot,
+    ),
     extras = useSyncExternalStore(entry.info.subscribe, entry.info.getSnapshot);
   const pane = useRef<HTMLElement>(null),
     details = useRef<HTMLElement>(null);
@@ -136,7 +147,11 @@ export const MonitorPane = memo(function MonitorPane({
         />
       ) : (
         <div className="monitor-empty" role="status">
-          {state.busy ? 'Loading…' : state.error ? 'Repository unavailable' : 'No commits'}
+          {state.busy
+            ? 'Loading…'
+            : state.error
+              ? 'Repository unavailable'
+              : 'No commits'}
         </div>
       )}
       {selected && (

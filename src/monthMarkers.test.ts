@@ -4,8 +4,15 @@ import { execFileSync } from 'node:child_process';
 import { monthMarkers } from './monthMarkers';
 import { layout, type Commit } from './model';
 const localDay = (value: string) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`).toISOString() : value;
-const c = (sha: string, date?: string, parent?: string, authorDate?: string): Commit => ({
+  /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T12:00:00`).toISOString()
+    : value;
+const c = (
+  sha: string,
+  date?: string,
+  parent?: string,
+  authorDate?: string,
+): Commit => ({
   sha,
   parents: parent ? [{ sha: parent }] : [],
   commit: {
@@ -40,7 +47,10 @@ test('month and year markers use the same month-start commits in both directions
 });
 
 test('a partial month never labels its latest or partially loaded oldest commit as the month start', () => {
-  const first = [c('late', '2026-10-31', 'middle'), c('middle', '2026-10-20', 'early')];
+  const first = [
+    c('late', '2026-10-31', 'middle'),
+    c('middle', '2026-10-20', 'early'),
+  ];
   const all = [
     ...first,
     c('early', '2026-10-01', 'september'),
@@ -49,7 +59,9 @@ test('a partial month never labels its latest or partially loaded oldest commit 
   const spine = new Set(all.map((commit) => commit.sha));
   assert.deepEqual(monthMarkers(first, spine), []);
   assert.deepEqual(monthMarkers(all.slice(0, 3), spine), []);
-  assert.deepEqual(monthMarkers(all, spine), [{ sha: 'early', label: '2026.10' }]);
+  assert.deepEqual(monthMarkers(all, spine), [
+    { sha: 'early', label: '2026.10' },
+  ]);
 });
 
 test('the earliest available commit in the month is used when there was no commit on the first', () => {
@@ -58,9 +70,10 @@ test('the earliest available commit in the month is used when there was no commi
     c('start', '2026-03-04', 'prev'),
     c('prev', '2026-02-28', 'missing'),
   ];
-  assert.deepEqual(monthMarkers(commits, new Set(commits.map((commit) => commit.sha))), [
-    { sha: 'start', label: '2026.03' },
-  ]);
+  assert.deepEqual(
+    monthMarkers(commits, new Set(commits.map((commit) => commit.sha))),
+    [{ sha: 'start', label: '2026.03' }],
+  );
 });
 
 test('a merged side branch supplies the first commit of the month in both Older and Newer views', () => {
@@ -69,7 +82,13 @@ test('a merged side branch supplies the first commit of the month in both Older 
     later = c('side-later', '2026-11-01T01:30:00', 'side-first');
   const merge = c('merge', '2026-11-01T02:07:51', 'previous');
   merge.parents.push({ sha: 'side-later' });
-  const commits = [c('head', '2026-11-01T09:00:00', 'merge'), merge, later, first, previous],
+  const commits = [
+      c('head', '2026-11-01T09:00:00', 'merge'),
+      merge,
+      later,
+      first,
+      previous,
+    ],
     before = JSON.stringify(commits),
     dag = layout(commits, new Map(), 'head');
   assert.equal(dag.spine.has(first.sha), false);
@@ -78,7 +97,10 @@ test('a merged side branch supplies the first commit of the month in both Older 
     { sha: 'previous', label: '2026.10' },
   ];
   assert.deepEqual(monthMarkers(dag.ordered, dag.spine), expected);
-  assert.deepEqual(monthMarkers([...dag.ordered].reverse(), dag.spine), [...expected].reverse());
+  assert.deepEqual(
+    monthMarkers([...dag.ordered].reverse(), dag.spine),
+    [...expected].reverse(),
+  );
   assert.equal(JSON.stringify(commits), before);
 });
 
@@ -89,15 +111,24 @@ test('loading an earlier side-branch commit moves a confirmed month boundary in 
       c('previous', '2026-10-31'),
     ],
     spine = new Set(['head', 'previous']);
-  const next = [...first.slice(0, 2), c('side-first', '2026-11-01', 'previous'), first[2]];
+  const next = [
+    ...first.slice(0, 2),
+    c('side-first', '2026-11-01', 'previous'),
+    first[2],
+  ];
   for (const reverse of [false, true]) {
-    const order = (commits: Commit[]) => (reverse ? [...commits].reverse() : commits);
+    const order = (commits: Commit[]) =>
+      reverse ? [...commits].reverse() : commits;
     assert.equal(
-      monthMarkers(order(first), spine).find((marker) => marker.label === '2026.11')?.sha,
+      monthMarkers(order(first), spine).find(
+        (marker) => marker.label === '2026.11',
+      )?.sha,
       'side-later',
     );
     assert.equal(
-      monthMarkers(order(next), spine).find((marker) => marker.label === '2026.11')?.sha,
+      monthMarkers(order(next), spine).find(
+        (marker) => marker.label === '2026.11',
+      )?.sha,
       'side-first',
     );
   }
@@ -113,7 +144,8 @@ test('equal earliest timestamps select the same commit when the display directio
     spine = new Set(['head', 'previous']);
   for (const order of [commits, [...commits].reverse()])
     assert.equal(
-      monthMarkers(order, spine).find((marker) => marker.label === '2026.11')?.sha,
+      monthMarkers(order, spine).find((marker) => marker.label === '2026.11')
+        ?.sha,
       'side-a',
     );
 });
@@ -125,10 +157,13 @@ test('markers prefer committer time, fall back to valid author time, and ignore 
     c('missing'),
     c('bad', 'invalid', undefined, 'invalid'),
   ];
-  assert.deepEqual(monthMarkers(commits, new Set(commits.map((commit) => commit.sha))), [
-    { sha: 'committer', label: '2026.02' },
-    { sha: 'invalid', label: '2026.01' },
-  ]);
+  assert.deepEqual(
+    monthMarkers(commits, new Set(commits.map((commit) => commit.sha))),
+    [
+      { sha: 'committer', label: '2026.02' },
+      { sha: 'invalid', label: '2026.01' },
+    ],
+  );
 });
 
 for (const [zone, monthStart, yearStart, offsetMonth] of [
@@ -159,7 +194,12 @@ for (const [zone, monthStart, yearStart, offsetMonth] of [
       c('root', '2026-11-15T12:00:00Z'),
     ];
     const offset = [
-      c('offset', '2026-03-01T00:30:00+02:00', undefined, '2020-01-01T12:00:00Z'),
+      c(
+        'offset',
+        '2026-03-01T00:30:00+02:00',
+        undefined,
+        '2020-01-01T12:00:00Z',
+      ),
       c('fallback', 'invalid', undefined, '2026-01-15T12:00:00Z'),
       c('missing'),
     ];
@@ -182,7 +222,13 @@ for (const [zone, monthStart, yearStart, offsetMonth] of [
     const result = JSON.parse(
       execFileSync(
         process.execPath,
-        ['--import', import.meta.resolve('tsx'), '--input-type=module', '--eval', script],
+        [
+          '--import',
+          import.meta.resolve('tsx'),
+          '--input-type=module',
+          '--eval',
+          script,
+        ],
         { encoding: 'utf8', env: { ...process.env, TZ: zone } },
       ),
     );
@@ -217,8 +263,14 @@ test('out-of-order timestamps cannot create duplicate monthly labels', () => {
   const spine = new Set(commits.map((commit) => commit.sha));
   const actual = monthMarkers(commits, spine);
   assert.equal(actual.filter((marker) => marker.label === '2026.01').length, 1);
-  assert.equal(actual.find((marker) => marker.label === '2026.01')?.sha, 'jan1');
-  assert.deepEqual(monthMarkers([...commits].reverse(), spine), [...actual].reverse());
+  assert.equal(
+    actual.find((marker) => marker.label === '2026.01')?.sha,
+    'jan1',
+  );
+  assert.deepEqual(
+    monthMarkers([...commits].reverse(), spine),
+    [...actual].reverse(),
+  );
 });
 
 test('pagination preserves already confirmed month starts', () => {
@@ -227,9 +279,15 @@ test('pagination preserves already confirmed month starts', () => {
     c('first', '2026-03-01', 'prev'),
     c('prev', '2026-02-28', 'earlier'),
   ];
-  const next = [...first, c('earlier', '2026-02-01', 'root'), c('root', '2026-01-31')];
+  const next = [
+    ...first,
+    c('earlier', '2026-02-01', 'root'),
+    c('root', '2026-01-31'),
+  ];
   const spine = new Set(next.map((commit) => commit.sha));
-  assert.deepEqual(monthMarkers(first, spine), [{ sha: 'first', label: '2026.03' }]);
+  assert.deepEqual(monthMarkers(first, spine), [
+    { sha: 'first', label: '2026.03' },
+  ]);
   assert.deepEqual(monthMarkers(next, spine), [
     { sha: 'first', label: '2026.03' },
     { sha: 'earlier', label: '2026.02' },

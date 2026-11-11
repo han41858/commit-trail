@@ -30,17 +30,24 @@ export function graphColors(
     new Map(),
     baseHead,
   );
-  const paths = graphPaths(canonical.ordered, branches, baseHead, defaultBranch);
+  const paths = graphPaths(
+    canonical.ordered,
+    branches,
+    baseHead,
+    defaultBranch,
+  );
   const neighbors = pathNeighbors(canonical.ordered, canonical.lanes, paths);
   const names = new Map<string, string>();
   for (const ref of [...branches].sort((a, b) => compare(a.name, b.name))) {
     const owner = paths.branches.get(ref.name);
     // A ref in the middle of a path is an alias, not a new path or color seed.
-    if (owner === ref.commit.sha && !names.has(owner)) names.set(owner, ref.name);
+    if (owner === ref.commit.sha && !names.has(owner))
+      names.set(owner, ref.name);
   }
   const assignments = new Map<string, number>();
   const starts = new Map<string, string>();
-  for (const commit of canonical.ordered) starts.set(paths.nodes.get(commit.sha)!, commit.sha);
+  for (const commit of canonical.ordered)
+    starts.set(paths.nodes.get(commit.sha)!, commit.sha);
   const priority = [...paths.heads.keys()].sort(
     (a, b) =>
       Number(b === paths.reference) - Number(a === paths.reference) ||
@@ -48,27 +55,31 @@ export function graphColors(
       compare(a, b),
   );
   for (const owner of priority) {
-    const preferred = owner === paths.reference ? 0 : preferredColor(names.get(owner) ?? owner);
+    const preferred =
+      owner === paths.reference ? 0 : preferredColor(names.get(owner) ?? owner);
     const candidates =
       preferred === 0
         ? [0]
         : [
             ...Array.from(
               { length: GRAPH_COLOR_COUNT - 1 },
-              (_, offset) => 1 + ((preferred - 1 + offset) % (GRAPH_COLOR_COUNT - 1)),
+              (_, offset) =>
+                1 + ((preferred - 1 + offset) % (GRAPH_COLOR_COUNT - 1)),
             ),
             0,
           ];
     const conflicts = new Map<number, number>();
     for (const neighbor of neighbors.get(owner) ?? []) {
       const color = assignments.get(neighbor);
-      if (color !== undefined) conflicts.set(color, (conflicts.get(color) ?? 0) + 1);
+      if (color !== undefined)
+        conflicts.set(color, (conflicts.get(color) ?? 0) + 1);
     }
     // Never recolor an earlier path. With more than eight neighbors, reuse the
     // least-conflicting candidate; a finite palette cannot guarantee uniqueness.
     let color = candidates[0];
     for (const candidate of candidates)
-      if ((conflicts.get(candidate) ?? 0) < (conflicts.get(color) ?? 0)) color = candidate;
+      if ((conflicts.get(candidate) ?? 0) < (conflicts.get(color) ?? 0))
+        color = candidate;
     assignments.set(owner, color);
   }
   const colors = (owners: ReadonlyMap<string, string>) =>
@@ -83,7 +94,11 @@ export function graphColors(
 
 // Include joins and neighboring concurrently occupied canonical lanes. Each
 // edge reserves its owning lane; real fork/merge endpoints connect both paths.
-function pathNeighbors(ordered: Commit[], lanes: ReadonlyMap<string, number>, paths: GraphPaths) {
+function pathNeighbors(
+  ordered: Commit[],
+  lanes: ReadonlyMap<string, number>,
+  paths: GraphPaths,
+) {
   const neighbors = new Map<string, Set<string>>();
   const connect = (a: string, b: string) => {
     if (a === b) return;
@@ -158,15 +173,20 @@ function pathNeighbors(ordered: Commit[], lanes: ReadonlyMap<string, number>, pa
           if (compare(owners[middle], owner) < 0) low = middle + 1;
           else high = middle;
         }
-        if (counts.has(owner) && owners[low] !== owner) owners.splice(low, 0, owner);
-        else if (!counts.has(owner) && owners[low] === owner) owners.splice(low, 1);
-        if (low > 0 && low < owners.length) connect(owners[low - 1], owners[low]);
+        if (counts.has(owner) && owners[low] !== owner)
+          owners.splice(low, 0, owner);
+        else if (!counts.has(owner) && owners[low] === owner)
+          owners.splice(low, 1);
+        if (low > 0 && low < owners.length)
+          connect(owners[low - 1], owners[low]);
         if (low + 1 < owners.length) connect(owners[low], owners[low + 1]);
       }
       occupants.set(lane, owners);
       const index = position(lane);
-      if (owners.length && occupied[index] !== lane) occupied.splice(index, 0, lane);
-      else if (!owners.length && occupied[index] === lane) occupied.splice(index, 1);
+      if (owners.length && occupied[index] !== lane)
+        occupied.splice(index, 0, lane);
+      else if (!owners.length && occupied[index] === lane)
+        occupied.splice(index, 1);
     }
     const pairs = new Set<number>();
     for (const lane of changed.keys()) {

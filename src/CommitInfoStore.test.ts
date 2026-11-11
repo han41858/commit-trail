@@ -30,8 +30,10 @@ async function using(
       requests.push(url);
       const result = await handler(url);
       if (result) return result;
-      if (url.pathname.endsWith('/actions/runs')) return response({ workflow_runs: [] });
-      if (url.pathname.endsWith('/tags') || url.pathname.endsWith('/releases')) return response([]);
+      if (url.pathname.endsWith('/actions/runs'))
+        return response({ workflow_runs: [] });
+      if (url.pathname.endsWith('/tags') || url.pathname.endsWith('/releases'))
+        return response([]);
       throw new Error('Unexpected metadata request ' + url.pathname);
     };
     await check(store, requests);
@@ -98,7 +100,10 @@ test('tags and releases paginate, deduplicate and resolve nested annotated tags 
           .tags.filter((t) => t.name === 'v1').length,
         1,
       );
-      assert.equal(requests.filter((u) => u.pathname.endsWith('/git/tags/t2')).length, 1);
+      assert.equal(
+        requests.filter((u) => u.pathname.endsWith('/git/tags/t2')).length,
+        1,
+      );
     },
   );
 });
@@ -149,7 +154,8 @@ test('metadata refresh switches the graph version icon without discarding detail
                 {
                   text: expected[phase],
                   x: 28,
-                  title: phase === 1 ? 'Version 1 · Alias release' : 'v1 · alias',
+                  title:
+                    phase === 1 ? 'Version 1 · Alias release' : 'v1 · alias',
                 },
               ]
             : [],
@@ -176,7 +182,8 @@ test('completed runs stop Job requests; a new attempt resumes tracking with late
   let current = run(1);
   await using(
     (url) => {
-      if (url.pathname.endsWith('/actions/runs')) return response({ workflow_runs: [current] });
+      if (url.pathname.endsWith('/actions/runs'))
+        return response({ workflow_runs: [current] });
       if (url.pathname.endsWith('/jobs'))
         return response({
           total_count: 2,
@@ -202,13 +209,17 @@ test('completed runs stop Job requests; a new attempt resumes tracking with late
       await store.open('a/b', '');
       await store.inspect('a');
       assert.equal(store.getSnapshot().bySha.get('a')!.actions!.ratio, 0.5);
-      const count = () => requests.filter((u) => u.pathname.endsWith('/jobs')).length;
+      const count = () =>
+        requests.filter((u) => u.pathname.endsWith('/jobs')).length;
       const before = count();
       current = run(1, 'completed');
       await store.refresh();
       await store.refresh();
       assert.equal(count(), before);
-      assert.equal(store.getSnapshot().bySha.get('a')!.actions!.state, 'success');
+      assert.equal(
+        store.getSnapshot().bySha.get('a')!.actions!.state,
+        'success',
+      );
       current = run(1, 'in_progress', 2);
       await store.refresh();
       assert.ok(count() > before);
@@ -221,7 +232,9 @@ test('past commits use exact head_sha lookup; mismatching PR merge SHA is never 
   await using(
     (url) =>
       url.searchParams.has('head_sha')
-        ? response({ workflow_runs: [run(3, 'completed', 1, 'temporary-merge')] })
+        ? response({
+            workflow_runs: [run(3, 'completed', 1, 'temporary-merge')],
+          })
         : undefined,
     async (store, requests) => {
       await store.open('a/b', '');
@@ -279,7 +292,8 @@ test('partial or failed version lists retain cached tags until the full catalog 
       if (!url.pathname.endsWith('/tags')) return;
       const page = url.searchParams.get('page');
       if (!phase) return response([{ name: 'old', commit: { sha: 'old' } }]);
-      if (page === '1') return response([{ name: 'new', commit: { sha: 'new' } }], true);
+      if (page === '1')
+        return response([{ name: 'new', commit: { sha: 'new' } }], true);
       if (phase === 1) return new Response('', { status: 500 });
       return response([]);
     },
@@ -300,14 +314,23 @@ test('partial or failed version lists retain cached tags until the full catalog 
 test('jobs paginate and deduplicate IDs without inflating the completion ratio', async () => {
   await using(
     (url) => {
-      if (url.pathname.endsWith('/actions/runs')) return response({ workflow_runs: [run(1)] });
+      if (url.pathname.endsWith('/actions/runs'))
+        return response({ workflow_runs: [run(1)] });
       if (url.pathname.endsWith('/jobs')) {
-        const job = { id: 1, run_id: 1, status: 'completed', conclusion: 'success' };
+        const job = {
+          id: 1,
+          run_id: 1,
+          status: 'completed',
+          conclusion: 'success',
+        };
         return url.searchParams.get('page') === '1'
           ? response({ total_count: 2, jobs: [job] }, true)
           : response({
               total_count: 2,
-              jobs: [job, { id: 2, run_id: 1, status: 'queued', conclusion: null }],
+              jobs: [
+                job,
+                { id: 2, run_id: 1, status: 'queued', conclusion: null },
+              ],
             });
       }
     },
@@ -322,9 +345,15 @@ test('jobs paginate and deduplicate IDs without inflating the completion ratio',
 test('older selected-run pages remain partial and can resume rather than restart indefinitely', async () => {
   await using(
     (url) => {
-      if (url.pathname.endsWith('/actions/runs') && url.searchParams.has('head_sha')) {
+      if (
+        url.pathname.endsWith('/actions/runs') &&
+        url.searchParams.has('head_sha')
+      ) {
         const page = Number(url.searchParams.get('page'));
-        return response({ workflow_runs: [run(page, 'completed', 1, 'old')] }, page < 4);
+        return response(
+          { workflow_runs: [run(page, 'completed', 1, 'old')] },
+          page < 4,
+        );
       }
     },
     async (store, requests) => {
@@ -337,7 +366,9 @@ test('older selected-run pages remain partial and can resume rather than restart
       assert.equal(store.getSnapshot().bySha.get('old')!.runs.length, 4);
       assert.equal(
         requests.filter(
-          (url) => url.searchParams.has('head_sha') && url.searchParams.get('page') === '1',
+          (url) =>
+            url.searchParams.has('head_sha') &&
+            url.searchParams.get('page') === '1',
         ).length,
         1,
       );
@@ -350,7 +381,8 @@ test('active runs that leave the recent list reach a final state without polling
     (url) => {
       if (url.pathname.endsWith('/actions/runs'))
         return response({ workflow_runs: recent ? [run(1)] : [] });
-      if (url.pathname.endsWith('/actions/runs/1')) return response(run(1, 'completed'));
+      if (url.pathname.endsWith('/actions/runs/1'))
+        return response(run(1, 'completed'));
       if (url.pathname.endsWith('/jobs'))
         return response({
           total_count: 1,
@@ -363,11 +395,23 @@ test('active runs that leave the recent list reach a final state without polling
       await store.refresh();
       recent = false;
       await store.refresh();
-      assert.equal(store.getSnapshot().bySha.get('a')!.actions!.state, 'success');
-      const jobs = requests.filter((url) => url.pathname.endsWith('/jobs')).length;
+      assert.equal(
+        store.getSnapshot().bySha.get('a')!.actions!.state,
+        'success',
+      );
+      const jobs = requests.filter((url) =>
+        url.pathname.endsWith('/jobs'),
+      ).length;
       await store.refresh();
-      assert.equal(requests.filter((url) => url.pathname.endsWith('/actions/runs/1')).length, 1);
-      assert.equal(requests.filter((url) => url.pathname.endsWith('/jobs')).length, jobs);
+      assert.equal(
+        requests.filter((url) => url.pathname.endsWith('/actions/runs/1'))
+          .length,
+        1,
+      );
+      assert.equal(
+        requests.filter((url) => url.pathname.endsWith('/jobs')).length,
+        jobs,
+      );
     },
   );
 });
@@ -399,7 +443,11 @@ test('failed release tag resolution is retried and unchanged tag details stay ca
       assert.equal(store.getSnapshot().bySha.get('a')!.releases.length, 1);
       assert.equal(store.getSnapshot().errors.releases, undefined);
       await store.refresh();
-      assert.equal(requests.filter((url) => url.pathname.endsWith('/git/ref/tags/rc')).length, 2);
+      assert.equal(
+        requests.filter((url) => url.pathname.endsWith('/git/ref/tags/rc'))
+          .length,
+        2,
+      );
       assert.equal(store.getSnapshot().bySha.get('a')!.releases.length, 1);
     },
   );
@@ -433,11 +481,17 @@ test('loaded catalog pages are revalidated when only an older tag or release cha
     async (store) => {
       await store.open('a/b', '');
       await store.refresh(true);
-      assert.equal(store.getSnapshot().bySha.get('b')!.releases[0].name, 'Initial');
+      assert.equal(
+        store.getSnapshot().bySha.get('b')!.releases[0].name,
+        'Initial',
+      );
       phase = 1;
       await store.refresh();
       assert.equal(store.getSnapshot().bySha.has('b'), false);
-      assert.equal(store.getSnapshot().bySha.get('c')!.releases[0].name, 'Updated');
+      assert.equal(
+        store.getSnapshot().bySha.get('c')!.releases[0].name,
+        'Updated',
+      );
     },
   );
 });
@@ -447,8 +501,14 @@ test('detail scrolling resumes only the selected SHA and skips finished catalogs
       if (url.pathname.endsWith('/actions/runs')) {
         const page = Number(url.searchParams.get('page'));
         return url.searchParams.has('head_sha')
-          ? response({ workflow_runs: [run(page, 'completed', 1, 'a')] }, page < 4)
-          : response({ workflow_runs: [run(99, 'completed', 1, 'other')] }, true);
+          ? response(
+              { workflow_runs: [run(page, 'completed', 1, 'a')] },
+              page < 4,
+            )
+          : response(
+              { workflow_runs: [run(99, 'completed', 1, 'other')] },
+              true,
+            );
       }
     },
     async (store, requests) => {
@@ -475,7 +535,15 @@ test('a draft release with a missing ref does not keep scroll pagination running
   await using(
     (url) =>
       url.pathname.endsWith('/releases')
-        ? response([{ id: 1, name: 'Draft', tag_name: 'missing', draft: true, prerelease: false }])
+        ? response([
+            {
+              id: 1,
+              name: 'Draft',
+              tag_name: 'missing',
+              draft: true,
+              prerelease: false,
+            },
+          ])
         : url.pathname.endsWith('/git/ref/tags/missing')
           ? new Response('{}', { status: 404 })
           : undefined,
@@ -487,7 +555,8 @@ test('a draft release with a missing ref does not keep scroll pagination running
       await store.loadMore('a');
       assert.equal(requests.length, before);
       assert.equal(
-        requests.filter((url) => url.pathname.endsWith('/git/ref/tags/missing')).length,
+        requests.filter((url) => url.pathname.endsWith('/git/ref/tags/missing'))
+          .length,
         1,
       );
     },
@@ -511,7 +580,10 @@ test('loading a later catalog page does not clear an earlier refresh failure wit
       assert.ok(error);
       await store.loadMore('a');
       assert.equal(store.getSnapshot().errors.tags, error);
-      assert.equal(requests.filter((url) => url.pathname.endsWith('/tags')).length, 2);
+      assert.equal(
+        requests.filter((url) => url.pathname.endsWith('/tags')).length,
+        2,
+      );
       assert.equal(store.getSnapshot().more, false);
     },
   );
@@ -561,7 +633,8 @@ test('a newly selected commit is published together with its pending lookup', as
 test('detail scrolling also resumes an unfinished job list without restarting its first pages', async () => {
   await using(
     (url) => {
-      if (url.pathname.endsWith('/actions/runs')) return response({ workflow_runs: [run(1)] });
+      if (url.pathname.endsWith('/actions/runs'))
+        return response({ workflow_runs: [run(1)] });
       if (url.pathname.endsWith('/jobs')) {
         const page = Number(url.searchParams.get('page'));
         return response(
@@ -601,7 +674,8 @@ test('known active job counts and cold completed workflows produce a complete co
   const current = [run(1), run(2, 'completed'), run(3, 'completed')];
   await using(
     (url) => {
-      if (url.pathname.endsWith('/actions/runs')) return response({ workflow_runs: current });
+      if (url.pathname.endsWith('/actions/runs'))
+        return response({ workflow_runs: current });
       if (url.pathname.endsWith('/jobs')) {
         const id = Number(url.pathname.split('/runs/')[1].split('/')[0]),
           total = id === 3 ? 3 : 2;
@@ -632,13 +706,16 @@ test('known active job counts and cold completed workflows produce a complete co
       for (const id of [2, 3])
         assert.equal(
           requests.filter(
-            (url) => url.pathname.includes(`/runs/${id}/`) && url.pathname.endsWith('/jobs'),
+            (url) =>
+              url.pathname.includes(`/runs/${id}/`) &&
+              url.pathname.endsWith('/jobs'),
           ).length,
           1,
         );
       assert.equal(
         requests.filter(
-          (url) => url.pathname.includes('/runs/1/') && url.pathname.endsWith('/jobs'),
+          (url) =>
+            url.pathname.includes('/runs/1/') && url.pathname.endsWith('/jobs'),
         ).length,
         3,
       );
@@ -661,7 +738,12 @@ test('a finished workflow gets one final snapshot while its sibling remains acti
         return response({
           total_count: 2,
           jobs: [
-            { id: id * 10, run_id: id, status: 'completed', conclusion: 'success' },
+            {
+              id: id * 10,
+              run_id: id,
+              status: 'completed',
+              conclusion: 'success',
+            },
             {
               id: id * 10 + 1,
               run_id: id,
@@ -682,15 +764,24 @@ test('a finished workflow gets one final snapshot while its sibling remains acti
       await store.refresh();
       assert.equal(
         requests.filter(
-          (url) => url.pathname.includes('/runs/2/') && url.pathname.endsWith('/jobs'),
+          (url) =>
+            url.pathname.includes('/runs/2/') && url.pathname.endsWith('/jobs'),
         ).length,
         2,
       );
-      const before = requests.filter((url) => url.pathname.endsWith('/jobs')).length;
+      const before = requests.filter((url) =>
+        url.pathname.endsWith('/jobs'),
+      ).length;
       phase = 2;
       await store.refresh();
-      assert.equal(requests.filter((url) => url.pathname.endsWith('/jobs')).length, before);
-      assert.equal(store.getSnapshot().bySha.get('a')!.actions!.state, 'success');
+      assert.equal(
+        requests.filter((url) => url.pathname.endsWith('/jobs')).length,
+        before,
+      );
+      assert.equal(
+        store.getSnapshot().bySha.get('a')!.actions!.state,
+        'success',
+      );
     },
   );
 });
@@ -706,7 +797,12 @@ test('a failed completed snapshot remains unknown and retries once per later ref
         return response({
           total_count: 2,
           jobs: [
-            { id: id * 10, run_id: id, status: 'completed', conclusion: 'success' },
+            {
+              id: id * 10,
+              run_id: id,
+              status: 'completed',
+              conclusion: 'success',
+            },
             {
               id: id * 10 + 1,
               run_id: id,
@@ -720,7 +816,8 @@ test('a failed completed snapshot remains unknown and retries once per later ref
     async (store, requests) => {
       const count = () =>
         requests.filter(
-          (url) => url.pathname.includes('/runs/2/') && url.pathname.endsWith('/jobs'),
+          (url) =>
+            url.pathname.includes('/runs/2/') && url.pathname.endsWith('/jobs'),
         ).length;
       await store.open('a/b', '');
       await store.inspect('a');

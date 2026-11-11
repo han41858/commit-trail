@@ -7,7 +7,9 @@ import { CommitInfoStore } from './CommitInfoStore';
 const response = (data: unknown, status = 200, partial = false) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: partial ? { Link: '<https://api.github.com/next>; rel="next"' } : {},
+    headers: partial
+      ? { Link: '<https://api.github.com/next>; rel="next"' }
+      : {},
   });
 type Options = {
   names?: string[];
@@ -17,7 +19,11 @@ type Options = {
 };
 async function using(
   options: Options,
-  check: (history: History, store: BranchSelections, requests: URL[]) => Promise<void>,
+  check: (
+    history: History,
+    store: BranchSelections,
+    requests: URL[],
+  ) => Promise<void>,
 ) {
   const data = new Map<string, string>(),
     store = new BranchSelections({
@@ -65,12 +71,18 @@ async function using(
           html_url: '',
         },
       ]);
-    if (url.pathname.endsWith('/actions/runs')) return response({ workflow_runs: [] });
+    if (url.pathname.endsWith('/actions/runs'))
+      return response({ workflow_runs: [] });
     if (
-      ['/tags', '/releases', '/activity', '/pulls'].some((suffix) => url.pathname.endsWith(suffix))
+      ['/tags', '/releases', '/activity', '/pulls'].some((suffix) =>
+        url.pathname.endsWith(suffix),
+      )
     )
       return response([]);
-    return response({ default_branch: options.defaultBranch ?? 'dev', private: false });
+    return response({
+      default_branch: options.defaultBranch ?? 'dev',
+      private: false,
+    });
   };
   try {
     await check(history, store, requests);
@@ -114,13 +126,23 @@ test('missing URL branches fall back to the remembered branch, and confirmed del
 });
 test('partial catalogs resolve exact saved and URL branch names without lowercasing or fetching unrelated defaults', async () => {
   await using(
-    { names: ['dev'], partial: true, exact: { 'Feature/Fix': 'feature', main: 403 } },
+    {
+      names: ['dev'],
+      partial: true,
+      exact: { 'Feature/Fix': 'feature', main: 403 },
+    },
     async (history, store, requests) => {
       store.record('a/repo', 'Feature/Fix', false);
       await history.open('a/repo');
       assert.equal(history.getSnapshot().base, 'Feature/Fix');
-      assert.ok(requests.some((url) => url.pathname.endsWith('/branches/Feature%2FFix')));
-      assert.ok(!requests.some((url) => url.pathname.endsWith('/branches/main')));
+      assert.ok(
+        requests.some((url) =>
+          url.pathname.endsWith('/branches/Feature%2FFix'),
+        ),
+      );
+      assert.ok(
+        !requests.some((url) => url.pathname.endsWith('/branches/main')),
+      );
       await history.open('a/repo', '', undefined, 'dev');
       assert.equal(history.getSnapshot().base, 'dev');
       assert.equal(history.getSnapshot().error, '');
@@ -146,7 +168,11 @@ for (const status of [401, 403, 429, 500])
   });
 for (const method of ['retry', 'refresh'] as const)
   test(`failed initial branch lookup uses ${method} to retry its requested choice instead of silently choosing a default`, async () => {
-    const options: Options = { names: ['main'], partial: true, exact: { 'Feature/Fix': 500 } };
+    const options: Options = {
+      names: ['main'],
+      partial: true,
+      exact: { 'Feature/Fix': 500 },
+    };
     await using(options, async (history, store) => {
       await history.open('a/repo', '', undefined, 'Feature/Fix');
       assert.ok(history.getSnapshot().error);
@@ -158,7 +184,11 @@ for (const method of ['retry', 'refresh'] as const)
     });
   });
 test('retry resolves a failed URL navigation without first clearing the existing graph', async () => {
-  const options: Options = { names: ['main'], partial: true, exact: { Feature: 500 } };
+  const options: Options = {
+    names: ['main'],
+    partial: true,
+    exact: { Feature: 500 },
+  };
   await using(options, async (history) => {
     await history.open('a/repo');
     await history.restoreBase('Feature');
@@ -170,7 +200,11 @@ test('retry resolves a failed URL navigation without first clearing the existing
   });
 });
 test('the common refresh path retries a pending URL lookup and keeps ordinary refresh priorities unchanged', async () => {
-  const options: Options = { names: ['main'], partial: true, exact: { Feature: 500 } };
+  const options: Options = {
+    names: ['main'],
+    partial: true,
+    exact: { Feature: 500 },
+  };
   await using(options, async (history, store) => {
     await history.open('a/repo');
     await history.restoreBase('Feature');
@@ -239,7 +273,8 @@ test('Split view preserves its primary graph and initializes other repositories 
       assert.equal(entries[1].history.getSnapshot().base, 'main');
       assert.equal(store.get('b/repo'), 'master');
       assert.equal(
-        requests.slice(count).filter((url) => url.pathname === '/repos/a/repo').length,
+        requests.slice(count).filter((url) => url.pathname === '/repos/a/repo')
+          .length,
         0,
       );
       group.start(['a/repo', 'b/repo'], '', ['master'], true);

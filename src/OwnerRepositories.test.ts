@@ -20,15 +20,27 @@ const repository = (
   pushed_at: pushedAt,
 });
 const response = (items: unknown, next = false) =>
-  new Response(JSON.stringify(
-    next && Array.isArray(items)
-      ? [...items, ...Array.from({ length: Math.max(0, 100 - items.length) }, (_, index) =>
-          repository(10000 + index, `other-${index}`, 'another-owner'))]
-      : items,
-  ), {
-    headers: next ? { Link: '<https://api.github.com/ignored?page=2>; rel="next"' } : {},
-  });
-const names = (store: OwnerRepositories) => store.getSnapshot().repositories.map((repo) => repo.name);
+  new Response(
+    JSON.stringify(
+      next && Array.isArray(items)
+        ? [
+            ...items,
+            ...Array.from(
+              { length: Math.max(0, 100 - items.length) },
+              (_, index) =>
+                repository(10000 + index, `other-${index}`, 'another-owner'),
+            ),
+          ]
+        : items,
+    ),
+    {
+      headers: next
+        ? { Link: '<https://api.github.com/ignored?page=2>; rel="next"' }
+        : {},
+    },
+  );
+const names = (store: OwnerRepositories) =>
+  store.getSnapshot().repositories.map((repo) => repo.name);
 
 function fixture(t: TestContext, token = '') {
   const original = globalThis.fetch;
@@ -54,7 +66,10 @@ test('owner query is explicit, anonymous, normalized and uses public owner repos
     assert.equal(url.searchParams.get('direction'), 'asc');
     assert.equal(url.searchParams.get('per_page'), '100');
     assert.equal(url.searchParams.get('page'), '1');
-    assert.equal((init?.headers as Record<string, string>).Authorization, undefined);
+    assert.equal(
+      (init?.headers as Record<string, string>).Authorization,
+      undefined,
+    );
     return response([repository(1, 'first')]);
   };
   assert.equal(calls, 0);
@@ -92,7 +107,10 @@ test('PAT lookup merges by ID and filters collaboration repositories by exact ow
     if (url.pathname === '/user/repos') {
       assert.equal(auth, 'Bearer limited-pat');
       assert.equal(url.searchParams.get('type'), null);
-      assert.equal(url.searchParams.get('affiliation'), 'owner,collaborator,organization_member');
+      assert.equal(
+        url.searchParams.get('affiliation'),
+        'owner,collaborator,organization_member',
+      );
       assert.equal(url.searchParams.get('sort'), 'full_name');
       assert.equal(url.searchParams.get('direction'), 'asc');
       assert.equal(url.searchParams.get('per_page'), '100');
@@ -118,8 +136,13 @@ test('invalid or restricted PAT errors keep independent public results', async (
     store.setToken(`invalid-or-restricted-${status}`);
     globalThis.fetch = async (input, init) => {
       if (new URL(String(input)).pathname === '/user/repos')
-        return new Response('{"message":"sensitive permission detail"}', { status });
-      assert.equal((init?.headers as Record<string, string>).Authorization, undefined);
+        return new Response('{"message":"sensitive permission detail"}', {
+          status,
+        });
+      assert.equal(
+        (init?.headers as Record<string, string>).Authorization,
+        undefined,
+      );
       return response([repository(1, 'public')]);
     };
     await store.open('owner');
@@ -172,16 +195,24 @@ test('authenticated results are usable even if the public source fails', async (
 
 test('repository order uses case-insensitive name regardless of push time', async (t) => {
   const store = fixture(t);
-  globalThis.fetch = async () => response([
-    repository(1, 'zeta'),
-    repository(2, 'Beta'),
-    repository(3, 'alpha'),
-    repository(4, 'new', 'owner', false, '2026-11-02T00:00:00Z'),
-    repository(5, 'no-push', 'owner', false, null),
-    repository(6, 'invalid-push', 'owner', false, 'invalid'),
-  ]);
+  globalThis.fetch = async () =>
+    response([
+      repository(1, 'zeta'),
+      repository(2, 'Beta'),
+      repository(3, 'alpha'),
+      repository(4, 'new', 'owner', false, '2026-11-02T00:00:00Z'),
+      repository(5, 'no-push', 'owner', false, null),
+      repository(6, 'invalid-push', 'owner', false, 'invalid'),
+    ]);
   await store.open('owner');
-  assert.deepEqual(names(store), ['alpha', 'Beta', 'invalid-push', 'new', 'no-push', 'zeta']);
+  assert.deepEqual(names(store), [
+    'alpha',
+    'Beta',
+    'invalid-push',
+    'new',
+    'no-push',
+    'zeta',
+  ]);
 });
 
 test('both sources paginate only on loadMore calls and preserve unmatched authenticated pages', async (t) => {
@@ -223,7 +254,9 @@ test('an empty matching authenticated page is not treated as exhaustion while Li
   globalThis.fetch = async (input) => {
     if (new URL(String(input)).pathname !== '/user/repos') return response([]);
     authCalls++;
-    return authCalls === 1 ? response([], true) : response([repository(1, 'found', 'owner', true)]);
+    return authCalls === 1
+      ? response([], true)
+      : response([repository(1, 'found', 'owner', true)]);
   };
   await store.open('owner');
   assert.deepEqual(names(store), []);
@@ -242,7 +275,8 @@ test('failed next page keeps prior rows and loadMore retries the failed source p
     const url = new URL(String(input));
     const page = Number(url.searchParams.get('page'));
     calls.push(`${url.pathname}:${page}`);
-    if (url.pathname === '/user/repos') return response([repository(2, 'private', 'owner', true)]);
+    if (url.pathname === '/user/repos')
+      return response([repository(2, 'private', 'owner', true)]);
     if (page === 1) return response([repository(1, 'public')], true);
     if (!failed) {
       failed = true;
@@ -302,18 +336,20 @@ test('public rate limiting does not block authenticated results or retry before 
 
 test('anonymous 404 identifies the owner and neither response errors nor malformed records leak data', async (t) => {
   const store = fixture(t);
-  globalThis.fetch = async () => new Response('{"message":"private secret"}', { status: 404 });
+  globalThis.fetch = async () =>
+    new Response('{"message":"private secret"}', { status: 404 });
   await store.open('missing');
   assert.match(store.getSnapshot().public.error, /owner not found/i);
   assert.ok(!store.getSnapshot().public.error.includes('secret'));
   assert.equal(store.getSnapshot().public.more, false);
-  globalThis.fetch = async () => response([
-    repository(1, 'public'),
-    repository(2, 'must-not-be-public', 'owner', true),
-    { ...repository(3, 'bad'), full_name: 'other/bad' },
-    { ...repository(4, 'bad'), id: '4' },
-    { ...repository(5, 'bad'), private: undefined },
-  ]);
+  globalThis.fetch = async () =>
+    response([
+      repository(1, 'public'),
+      repository(2, 'must-not-be-public', 'owner', true),
+      { ...repository(3, 'bad'), full_name: 'other/bad' },
+      { ...repository(4, 'bad'), id: '4' },
+      { ...repository(5, 'bad'), private: undefined },
+    ]);
   await store.open('owner');
   assert.deepEqual(names(store), ['public']);
 });
@@ -351,7 +387,10 @@ test('changing owner aborts old requests and late responses cannot overwrite the
   const old: { resolve: (value: Response) => void; signal: AbortSignal }[] = [];
   let first = true;
   globalThis.fetch = async (_input, init) => {
-    if (first) return new Promise<Response>((resolve) => old.push({ resolve, signal: init!.signal! }));
+    if (first)
+      return new Promise<Response>((resolve) =>
+        old.push({ resolve, signal: init!.signal! }),
+      );
     return response([repository(2, 'new', 'next')]);
   };
   const previous = store.open('owner');
@@ -360,7 +399,8 @@ test('changing owner aborts old requests and late responses cannot overwrite the
   await store.open('next');
   assert.equal(old.length, 2);
   assert.ok(old.every((request) => request.signal.aborted));
-  for (const request of old) request.resolve(response([repository(1, 'late-private', 'owner', true)]));
+  for (const request of old)
+    request.resolve(response([repository(1, 'late-private', 'owner', true)]));
   await previous;
   assert.equal(store.getSnapshot().owner, 'next');
   assert.deepEqual(names(store), ['new']);
@@ -393,7 +433,8 @@ test('fresh successful pages survive close and are reused across owner casing an
   globalThis.fetch = async (input) => {
     calls++;
     const path = new URL(String(input)).pathname;
-    if (path === '/user/repos') return response([repository(2, 'private', 'owner', true)]);
+    if (path === '/user/repos')
+      return response([repository(2, 'private', 'owner', true)]);
     const owner = path.split('/')[2];
     return response([repository(1, 'public', owner)]);
   };
@@ -421,7 +462,8 @@ test('expired cache refreshes on explicit open including an already open owner',
     Date.now = originalNow;
   });
   let calls = 0;
-  globalThis.fetch = async () => response([repository(++calls, `version-${calls}`)]);
+  globalThis.fetch = async () =>
+    response([repository(++calls, `version-${calls}`)]);
   await store.open('owner');
   now += 59_999;
   await store.open('owner');
@@ -455,7 +497,8 @@ test('PAT add, replacement and removal invalidate visible and cached authenticat
   let calls = 0;
   globalThis.fetch = async (input, init) => {
     calls++;
-    if (new URL(String(input)).pathname !== '/user/repos') return response([repository(1, 'public')]);
+    if (new URL(String(input)).pathname !== '/user/repos')
+      return response([repository(1, 'public')]);
     const token = (init?.headers as Record<string, string>).Authorization;
     return response([
       repository(
@@ -486,11 +529,14 @@ test('a token change ignores a late private response and cannot seed a new-token
   const store = fixture(t, 'old');
   let finish!: (response: Response) => void;
   globalThis.fetch = async (input, init) => {
-    if (new URL(String(input)).pathname !== '/user/repos') return response([repository(1, 'public')]);
-    if ((init?.headers as Record<string, string>).Authorization === 'Bearer old')
+    if (new URL(String(input)).pathname !== '/user/repos')
+      return response([repository(1, 'public')]);
+    if (
+      (init?.headers as Record<string, string>).Authorization === 'Bearer old'
+    )
       return new Promise<Response>((resolve) => {
-      finish = resolve;
-    });
+        finish = resolve;
+      });
     return response([repository(3, 'new-private', 'owner', true)]);
   };
   const previous = store.open('owner');
@@ -508,7 +554,8 @@ test('a token change ignores a late private response and cannot seed a new-token
 test('global HTTP activity counts owner lookups while repository column counters stay isolated', async (t) => {
   const store = fixture(t, 'pat');
   const pending: ((result: Response) => void)[] = [];
-  globalThis.fetch = async () => new Promise<Response>((resolve) => pending.push(resolve));
+  globalThis.fetch = async () =>
+    new Promise<Response>((resolve) => pending.push(resolve));
   const initial = requestActivity.getSnapshot();
   const loading = store.open('owner');
   await flush();
@@ -562,7 +609,10 @@ test('reopening a paginated cache continues at the next page without duplicating
   globalThis.fetch = async (input) => {
     const page = Number(new URL(String(input)).searchParams.get('page'));
     pages.push(page);
-    return response([repository(1, 'shared'), repository(page + 1, `page-${page}`)], page < 3);
+    return response(
+      [repository(1, 'shared'), repository(page + 1, `page-${page}`)],
+      page < 3,
+    );
   };
   await store.open('owner');
   await store.loadMore();
@@ -595,7 +645,10 @@ test('an authenticated rate limit leaves public pagination usable and remains sc
   await store.loadMore();
   assert.deepEqual(names(store), ['public-1', 'public-2']);
   await store.loadMore();
-  assert.equal(calls.filter((path) => path.startsWith('/user/repos:')).length, 1);
+  assert.equal(
+    calls.filter((path) => path.startsWith('/user/repos:')).length,
+    1,
+  );
   store.setToken('new');
   await store.open('owner');
   assert.deepEqual(names(store), ['new-private', 'public-1']);
@@ -607,7 +660,10 @@ test('a fast authenticated page also waits for public data before showing the co
   let finishPublic!: (value: Response) => void;
   globalThis.fetch = async (input) =>
     new URL(String(input)).pathname === '/user/repos'
-      ? response([repository(2, 'private', 'owner', true), repository(1, 'public')])
+      ? response([
+          repository(2, 'private', 'owner', true),
+          repository(1, 'public'),
+        ])
       : new Promise<Response>((resolve) => {
           finishPublic = resolve;
         });
@@ -677,7 +733,12 @@ test('loadMore keeps displayed rows stable and blocks overlapping actions until 
   assert.equal(calls.length, 4);
   finishAuth(response([repository(4, 'new-private', 'owner', true)]));
   await loading;
-  assert.deepEqual(names(store), ['new-private', 'new-public', 'private', 'public']);
+  assert.deepEqual(names(store), [
+    'new-private',
+    'new-public',
+    'private',
+    'public',
+  ]);
   assert.equal(store.getSnapshot().busy, false);
   assert.equal(calls.length, 4);
 });
@@ -696,7 +757,9 @@ test('loadMore retries keep prior rows until every retried source settles and do
         ? response([repository(2, 'private', 'owner', true)], true)
         : response([repository(1, 'public')], true);
     if (!retrying) return new Response('{}', { status: 500 });
-    return new Promise<Response>((resolve) => pending.set(url.pathname, resolve));
+    return new Promise<Response>((resolve) =>
+      pending.set(url.pathname, resolve),
+    );
   };
   await store.open('owner');
   await store.loadMore();
@@ -713,9 +776,16 @@ test('loadMore retries keep prior rows until every retried source settles and do
   assert.equal(store.getSnapshot().busy, true);
   await store.loadMore();
   assert.equal(calls.length, 6);
-  pending.get('/user/repos')!(response([repository(4, 'new-private', 'owner', true)]));
+  pending.get('/user/repos')!(
+    response([repository(4, 'new-private', 'owner', true)]),
+  );
   await loading;
-  assert.deepEqual(names(store), ['new-private', 'new-public', 'private', 'public']);
+  assert.deepEqual(names(store), [
+    'new-private',
+    'new-public',
+    'private',
+    'public',
+  ]);
   assert.equal(store.getSnapshot().busy, false);
   assert.equal(store.getSnapshot().public.error, '');
   assert.equal(store.getSnapshot().authenticated.error, '');
@@ -732,7 +802,8 @@ test('a failed source in loadMore preserves old rows until the other source fini
       return url.pathname === '/user/repos'
         ? response([repository(2, 'private', 'owner', true)], true)
         : response([repository(1, 'public')], true);
-    if (url.pathname === '/user/repos') return new Response('{}', { status: 403 });
+    if (url.pathname === '/user/repos')
+      return new Response('{}', { status: 403 });
     return new Promise<Response>((resolve) => {
       finishPublic = resolve;
     });
@@ -779,7 +850,10 @@ test('loadMore recovers an initial page failure while advancing a healthy source
       if (fail) return new Response('{}', { status: 500 });
       return response([repository(1, 'public')]);
     }
-    return response([repository(page + 1, `private-${page}`, 'owner', true)], page === 1);
+    return response(
+      [repository(page + 1, `private-${page}`, 'owner', true)],
+      page === 1,
+    );
   };
   await store.open('owner');
   assert.ok(store.getSnapshot().public.error);
@@ -790,7 +864,10 @@ test('loadMore recovers an initial page failure while advancing a healthy source
   assert.equal(store.getSnapshot().public.error, '');
   assert.deepEqual(names(store), ['private-1', 'private-2', 'public']);
   assert.deepEqual(calls.sort(), [
-    '/user/repos:1', '/user/repos:2', '/users/owner/repos:1', '/users/owner/repos:1',
+    '/user/repos:1',
+    '/user/repos:2',
+    '/users/owner/repos:1',
+    '/users/owner/repos:1',
   ]);
   await store.loadMore();
   assert.equal(calls.length, 4);

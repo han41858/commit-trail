@@ -144,7 +144,6 @@ Each Graph is independent. Hover adds no API request, periodic timer or DAG layo
 
 All widths and Split view columns support the same path selection: clicking/tapping a branch badge or line retains its highlight without inspecting a commit. Node/message/version-icon clicks still open details. Retained paths are independent per column. Badge/line clicks close the one shared detail popup without clearing other columns’ retained paths. Empty space, detail close or deleted targets clear the relevant selection; valid targets survive resize and reordering. Hover temporarily overrides it. Truncated badge taps also show the full-name tooltip until another press or any graph scroll. Mouse line hits use 5 CSS pixels; touch uses 12. The cursor is a pointer only over actual click targets. Touch movement beyond 8 CSS pixels, cancellation and holds over 500ms do not create a selection; native scrolling is preserved. The common resolver and opacity transition are reused without additional API requests.
 
-
 ## Architecture and limits
 
 `main.tsx` owns app state, authentication, navigation and refresh lifetimes. `ViewOptions.tsx`, `AccessTokenPanel.tsx`, `AppStatus.tsx` and `MonitorControls.tsx` render their respective controls from explicit props and keep the existing DOM, refs and callbacks. They do not create separate sessions or subscriptions.

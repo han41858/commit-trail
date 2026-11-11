@@ -1,5 +1,9 @@
 type UpdateState = { visible: boolean; applying: boolean; error: string };
-const initial = (): UpdateState => ({ visible: false, applying: false, error: '' });
+const initial = (): UpdateState => ({
+  visible: false,
+  applying: false,
+  error: '',
+});
 
 // App-version updates are independent of GitHub refreshes and never receive app data or tokens.
 export class PwaUpdates {
@@ -29,7 +33,8 @@ export class PwaUpdates {
     const changed = this.worker !== worker;
     this.worker = worker;
     if (this.dismissed.has(worker) || this.state.applying) return;
-    if (changed || !this.state.visible) this.publish({ visible: true, error: '' });
+    if (changed || !this.state.visible)
+      this.publish({ visible: true, error: '' });
   };
   dismiss = () => {
     if (this.state.applying) return;
@@ -53,7 +58,10 @@ export class PwaUpdates {
     const failed = () => {
       this.approved = false;
       clearTimeout(this.timer);
-      this.publish({ applying: false, error: 'Could not apply the update. Please try again.' });
+      this.publish({
+        applying: false,
+        error: 'Could not apply the update. Please try again.',
+      });
     };
     this.timer = setTimeout(failed, 15000);
     try {

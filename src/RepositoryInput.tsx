@@ -1,7 +1,17 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { lowercaseField } from './repoInput';
 import { lowercaseRepoInput } from './model';
-import { matchingRecentRepositories, type RecentRepositories } from './RecentRepositories';
+import {
+  matchingRecentRepositories,
+  type RecentRepositories,
+} from './RecentRepositories';
 import type { OwnerRepositories } from './OwnerRepositories';
 import { OwnerRepositoryPicker } from './OwnerRepositoryPicker';
 import { useOwnerRepositoryPicker } from './useOwnerRepositoryPicker';
@@ -37,12 +47,21 @@ export function RepositoryInput({
     [edited, setEdited] = useState(false),
     [active, setActive] = useState<string | null>(null),
     [menuHeight, setMenuHeight] = useState<number | null>(null);
-  const matches = matchingRecentRepositories(snapshot.entries, value, edited ? undefined : current),
+  const matches = matchingRecentRepositories(
+      snapshot.entries,
+      value,
+      edited ? undefined : current,
+    ),
     activeIndex = matches.findIndex((entry) => entry.repository === active);
   const showing =
-      open && !popupOpen && !ownerPicker.showing && snapshot.available && matches.length > 0,
+      open &&
+      !popupOpen &&
+      !ownerPicker.showing &&
+      snapshot.available &&
+      matches.length > 0,
     expanded = showing && menuHeight !== 0;
-  const activeId = expanded && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined;
+  const activeId =
+    expanded && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined;
   function close() {
     setOpen(false);
     setActive(null);
@@ -63,7 +82,8 @@ export function RepositoryInput({
   useEffect(() => {
     if (!open) return;
     const outside = (event: Event) => {
-      if (event.target instanceof Node && !form.current?.contains(event.target)) close();
+      if (event.target instanceof Node && !form.current?.contains(event.target))
+        close();
     };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('focusin', outside);
@@ -76,11 +96,16 @@ export function RepositoryInput({
     if (!showing) return;
     const viewport = window.visualViewport;
     const update = () => {
-      const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+      const bottom = viewport
+        ? viewport.offsetTop + viewport.height
+        : window.innerHeight;
       setMenuHeight(
         Math.max(
           0,
-          Math.min(360, bottom - (input.current?.getBoundingClientRect().bottom || 0) - 16),
+          Math.min(
+            360,
+            bottom - (input.current?.getBoundingClientRect().bottom || 0) - 16,
+          ),
         ),
       );
     };
@@ -95,7 +120,8 @@ export function RepositoryInput({
     };
   }, [showing]);
   useEffect(() => {
-    if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+    if (activeId)
+      document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
   }, [activeId]);
   return (
     <form
@@ -121,7 +147,13 @@ export function RepositoryInput({
           aria-autocomplete="list"
           aria-haspopup={ownerPicker.showing ? 'dialog' : 'grid'}
           aria-expanded={ownerPicker.showing || expanded}
-          aria-controls={ownerPicker.showing ? `${listId}-owner` : expanded ? listId : undefined}
+          aria-controls={
+            ownerPicker.showing
+              ? `${listId}-owner`
+              : expanded
+                ? listId
+                : undefined
+          }
           aria-activedescendant={activeId}
           autoComplete="off"
           enterKeyHint="go"
@@ -158,7 +190,9 @@ export function RepositoryInput({
                   ? event.key === 'ArrowDown'
                     ? 0
                     : matches.length - 1
-                  : (activeIndex + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) %
+                  : (activeIndex +
+                      (event.key === 'ArrowDown' ? 1 : -1) +
+                      matches.length) %
                     matches.length;
               setActive(matches[index].repository);
             } else if (event.key === 'Enter' && expanded && activeIndex >= 0) {
@@ -168,7 +202,12 @@ export function RepositoryInput({
               event.preventDefault();
               event.stopPropagation();
               close();
-            } else if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') close();
+            } else if (
+              event.ctrlKey &&
+              event.shiftKey &&
+              event.key.toLowerCase() === 'd'
+            )
+              close();
           }}
         />
         {value && (
@@ -222,11 +261,18 @@ export function RepositoryInput({
             style={
               menuHeight === null
                 ? undefined
-                : { maxHeight: `max(0px, calc(${menuHeight}px - var(--safe-bottom)))` }
+                : {
+                    maxHeight: `max(0px, calc(${menuHeight}px - var(--safe-bottom)))`,
+                  }
             }
           >
             {/* A grid popup permits separate, keyboard-accessible delete controls inside each row. */}
-            <div id={listId} role="grid" aria-label="Recent repositories" className="recent-grid">
+            <div
+              id={listId}
+              role="grid"
+              aria-label="Recent repositories"
+              className="recent-grid"
+            >
               {matches.map((entry, index) => (
                 <div
                   key={entry.repository}

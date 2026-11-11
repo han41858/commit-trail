@@ -13,10 +13,14 @@ export type ChangeSnapshot = {
 const signature = (value: unknown) => {
   const text = JSON.stringify(value);
   let hash = 2166136261;
-  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+  for (let i = 0; i < text.length; i++)
+    hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
   return hash >>> 0;
 };
-export function captureChanges(history: HistorySnapshot, info: InfoSnapshot): ChangeSnapshot {
+export function captureChanges(
+  history: HistorySnapshot,
+  info: InfoSnapshot,
+): ChangeSnapshot {
   const snapshot: ChangeSnapshot = {
     commits: new Map(),
     branches: new Map(),
@@ -25,11 +29,15 @@ export function captureChanges(history: HistorySnapshot, info: InfoSnapshot): Ch
     actions: new Map(),
   };
   for (const commit of history.commits)
-    snapshot.commits.set(commit.sha, signature([commit.parents, commit.commit]));
+    snapshot.commits.set(
+      commit.sha,
+      signature([commit.parents, commit.commit]),
+    );
   for (const branch of history.branches)
     snapshot.branches.set(branch.name, signature(branch.commit.sha));
   for (const [sha, value] of info.bySha) {
-    for (const tag of value.tags) snapshot.tags.set(tag.name, signature(tag.sha));
+    for (const tag of value.tags)
+      snapshot.tags.set(tag.name, signature(tag.sha));
     for (const release of value.releases)
       snapshot.releases.set(String(release.id), signature([sha, release]));
     for (const run of value.runs)
@@ -46,12 +54,16 @@ export function captureChanges(history: HistorySnapshot, info: InfoSnapshot): Ch
   }
   return snapshot;
 }
-export function changeCounts(before: ChangeSnapshot, after: ChangeSnapshot): Changes {
+export function changeCounts(
+  before: ChangeSnapshot,
+  after: ChangeSnapshot,
+): Changes {
   const result = noChanges();
   const compare = (a: Signature, b: Signature) => ({
     added: [...b.keys()].filter((key) => !a.has(key)).length,
     removed: [...a.keys()].filter((key) => !b.has(key)).length,
-    changed: [...b].filter(([key, value]) => a.has(key) && a.get(key) !== value).length,
+    changed: [...b].filter(([key, value]) => a.has(key) && a.get(key) !== value)
+      .length,
   });
   const commits = compare(before.commits, after.commits),
     branches = compare(before.branches, after.branches);

@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { layout, type Commit, type Branch } from './model';
 import { branchTracks, type BranchTrack } from './branchLabels';
 import { graphColors } from './graphColors';
-import { graphHoverIndex, graphHoverOwner, graphHoverAlpha, resolveGraphHover } from './graphHover';
+import {
+  graphHoverIndex,
+  graphHoverOwner,
+  graphHoverAlpha,
+  resolveGraphHover,
+} from './graphHover';
 
 const commit = (sha: string, ...parents: string[]): Commit => ({
   sha,
@@ -23,7 +28,10 @@ const merged = () => [
 
 function index(
   commits: Commit[],
-  names = { main: 'merge', feature: 'feature', other: 'other' } as Record<string, string>,
+  names = { main: 'merge', feature: 'feature', other: 'other' } as Record<
+    string,
+    string
+  >,
   base = 'main',
   reverse = false,
   sameColors = false,
@@ -32,7 +40,10 @@ function index(
   const head = names[base];
   const data = layout(commits, new Map(), head);
   const positions = new Map(
-    data.ordered.map((c, i) => [c.sha, { x: 48, y: (reverse ? commits.length - i : i) * 31 }]),
+    data.ordered.map((c, i) => [
+      c.sha,
+      { x: 48, y: (reverse ? commits.length - i : i) * 31 },
+    ]),
   );
   const colors = graphColors(commits, branches, base, head);
   if (sameColors) {
@@ -40,7 +51,15 @@ function index(
     for (const b of branches) colors.branches.set(b.name, 0);
     for (const id of colors.edges.keys()) colors.edges.set(id, 0);
   }
-  const tracks = branchTracks(commits, branches, base, data.spine, positions, reverse, colors);
+  const tracks = branchTracks(
+    commits,
+    branches,
+    base,
+    data.spine,
+    positions,
+    reverse,
+    colors,
+  );
   return graphHoverIndex(data.ordered, tracks, colors.paths);
 }
 
@@ -115,7 +134,10 @@ test('first-parent line hover reuses its child path including the fork boundary'
 test('a merge connector follows the incoming path rather than the destination path', () => {
   const paths = index(merged());
   assert.deepEqual(edge('merge:feature', paths), branch('feature', paths));
-  assert.equal(graphHoverOwner({ kind: 'edge', id: 'merge:feature' }, paths), 'edge:merge:feature');
+  assert.equal(
+    graphHoverOwner({ kind: 'edge', id: 'merge:feature' }, paths),
+    'edge:merge:feature',
+  );
   assert.notEqual(edge('merge:feature', paths), node('merge', paths));
 });
 
@@ -158,7 +180,10 @@ test('dev promotion includes the full incoming colored path through its fork, in
   const paths = index(promotionHistory(), { main: 'e1ac3b8', dev: 'new-dev' });
   const focus = edge('e1ac3b8:a4304a2', paths);
   assert.deepEqual([...focus.nodes], ['e1ac3b8', 'a4304a2', '98b49e1', 'fork']);
-  assert.deepEqual([...focus.edges], ['e1ac3b8:a4304a2', 'a4304a2:98b49e1', '98b49e1:fork']);
+  assert.deepEqual(
+    [...focus.edges],
+    ['e1ac3b8:a4304a2', 'a4304a2:98b49e1', '98b49e1:fork'],
+  );
   assert.equal(focus.branches.has('dev'), false);
   for (const sha of ['new-dev', 'f2ec8d4', 'old-main', 'root'])
     assert.equal(focus.nodes.has(sha), false);
@@ -169,7 +194,10 @@ test('an intermediate ref cannot split the colored path for badges, nodes or mer
   const paths = index(commits, { main: 'M', dev: 'a6', topic: 'a3' });
   const focus = edge('M:a4', paths);
   assert.deepEqual([...focus.nodes], ['M', 'a4', 'a3', 'a2', 'a1', 'b']);
-  assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3', 'a3:a2', 'a2:a1', 'a1:b']);
+  assert.deepEqual(
+    [...focus.edges],
+    ['M:a4', 'a4:a3', 'a3:a2', 'a2:a1', 'a1:b'],
+  );
   assert.equal(focus.nodes.has('a5'), false);
   assert.equal(focus.nodes.has('older'), false);
   assert.deepEqual(focus.branches, new Set(['main', 'topic']));
@@ -191,7 +219,10 @@ test('unknown destination ancestry does not truncate an incoming path at an inte
     commit('a2', 'missing'),
     commit('destination'),
   ];
-  const focus = edge('M:a4', index(commits, { main: 'M', dev: 'a6', topic: 'a3' }));
+  const focus = edge(
+    'M:a4',
+    index(commits, { main: 'M', dev: 'a6', topic: 'a3' }),
+  );
   assert.deepEqual([...focus.nodes], ['M', 'a4', 'a3', 'a2']);
   assert.deepEqual([...focus.edges], ['M:a4', 'a4:a3', 'a3:a2', 'a2:missing']);
 });
@@ -242,7 +273,12 @@ test('loading missing history rebuilds the path without mutating an already reso
   const complete = edge(
     'merge:work',
     index(
-      [...commits, commit('destination', 'fork'), commit('prior', 'fork'), commit('fork')],
+      [
+        ...commits,
+        commit('destination', 'fork'),
+        commit('prior', 'fork'),
+        commit('fork'),
+      ],
       names,
     ),
   );
@@ -275,7 +311,9 @@ test('resolving a short incoming path does not scan unrelated loaded history', (
 
 test('merge scopes and ordinary paths share the two-entry cache limit', () => {
   const commits = [
-    ...Array.from({ length: 20 }, (_, i) => commit(`merge-${i}`, 'base', `work-${i}`)),
+    ...Array.from({ length: 20 }, (_, i) =>
+      commit(`merge-${i}`, 'base', `work-${i}`),
+    ),
     ...Array.from({ length: 20 }, (_, i) => commit(`work-${i}`, 'base')),
     commit('base'),
   ];
@@ -290,9 +328,17 @@ test('merge scopes and ordinary paths share the two-entry cache limit', () => {
 });
 
 test('edge hover never invents connections or unknown incoming paths', () => {
-  const paths = index([commit('tip', 'missing', 'other-missing')], { main: 'tip' });
+  const paths = index([commit('tip', 'missing', 'other-missing')], {
+    main: 'tip',
+  });
   assert.equal(edge('tip:missing', paths), node('tip', paths));
-  for (const id of ['tip:other-missing', 'tip:fake', 'missing:tip', 'tip', 'tip:missing:extra'])
+  for (const id of [
+    'tip:other-missing',
+    'tip:fake',
+    'missing:tip',
+    'tip',
+    'tip:missing:extra',
+  ])
     assert.equal(resolveGraphHover({ kind: 'edge', id }, paths), null);
 });
 
@@ -308,14 +354,31 @@ test('a branch includes its fork and terminal merge without following either nei
 });
 
 test('path focus includes existing source and destination badges without extending either path', () => {
-  const paths = index(boundaryHistory(), boundaryNames, 'ancestor', false, true);
+  const paths = index(
+    boundaryHistory(),
+    boundaryNames,
+    'ancestor',
+    false,
+    true,
+  );
   const focus = node('b-middle', paths);
-  assert.deepEqual(focus.nodes, new Set(['b-head', 'b-middle', 'b-first', 'a-fork', 'c-merge']));
+  assert.deepEqual(
+    focus.nodes,
+    new Set(['b-head', 'b-middle', 'b-first', 'a-fork', 'c-merge']),
+  );
   assert.deepEqual(
     focus.edges,
-    new Set(['b-head:b-middle', 'b-middle:b-first', 'b-first:a-fork', 'c-merge:b-head']),
+    new Set([
+      'b-head:b-middle',
+      'b-middle:b-first',
+      'b-first:a-fork',
+      'c-merge:b-head',
+    ]),
   );
-  assert.deepEqual(focus.branches, new Set([...boundaryBadges, 'b', 'b-alias', 'b-marker']));
+  assert.deepEqual(
+    focus.branches,
+    new Set([...boundaryBadges, 'b', 'b-alias', 'b-marker']),
+  );
   assert.equal(edge('b-first:a-fork', paths), focus);
   assert.deepEqual(edge('c-merge:b-head', paths), focus);
   assert.equal(paths.owners.get('a-fork'), paths.owners.get('a-head'));
@@ -325,9 +388,21 @@ test('path focus includes existing source and destination badges without extendi
     assert.equal(graphHoverAlpha(focus, 'branches', name), 1, name);
   for (const name of ['ancestor', 'unrelated'])
     assert.equal(graphHoverAlpha(focus, 'branches', name), 0.25, name);
-  for (const sha of ['a-head', 'a-base', 'c-head', 'c-base', 'ancestor-head', 'unrelated-head'])
+  for (const sha of [
+    'a-head',
+    'a-base',
+    'c-head',
+    'c-base',
+    'ancestor-head',
+    'unrelated-head',
+  ])
     assert.equal(graphHoverAlpha(focus, 'nodes', sha), 0.25, sha);
-  for (const id of ['a-fork:a-base', 'c-head:c-merge', 'c-merge:c-base', 'c-base:ancestor-head'])
+  for (const id of [
+    'a-fork:a-base',
+    'c-head:c-merge',
+    'c-merge:c-base',
+    'c-base:ancestor-head',
+  ])
     assert.equal(graphHoverAlpha(focus, 'edges', id), 0.25, id);
 });
 
@@ -340,9 +415,15 @@ test('an explicit badge filters its own aliases while preserving all boundary ow
     assert.equal(selected.edges, ordinary.edges);
     assert.deepEqual(selected.branches, new Set([...boundaryBadges, name]));
     for (const alias of ['b', 'b-alias', 'b-marker'])
-      assert.equal(graphHoverAlpha(selected, 'branches', alias), alias === name ? 1 : 0.25);
+      assert.equal(
+        graphHoverAlpha(selected, 'branches', alias),
+        alias === name ? 1 : 0.25,
+      );
     assert.equal(node('b-first', paths), ordinary);
-    assert.deepEqual(ordinary.branches, new Set([...boundaryBadges, 'b', 'b-alias', 'b-marker']));
+    assert.deepEqual(
+      ordinary.branches,
+      new Set([...boundaryBadges, 'b', 'b-alias', 'b-marker']),
+    );
   }
   assert.equal(paths.flows.size, 1);
 });
@@ -364,13 +445,23 @@ test('historical merge badges include only the selected destination and source b
     true,
   );
   const focus = edge('c-merge:b-middle', paths);
-  assert.deepEqual(focus.nodes, new Set(['c-merge', 'b-middle', 'b-first', 'a-fork']));
+  assert.deepEqual(
+    focus.nodes,
+    new Set(['c-merge', 'b-middle', 'b-first', 'a-fork']),
+  );
   assert.deepEqual(
     focus.edges,
     new Set(['c-merge:b-middle', 'b-middle:b-first', 'b-first:a-fork']),
   );
   assert.deepEqual(focus.branches, new Set([...boundaryBadges, 'b-marker']));
-  for (const name of ['b', 'b-alias', 'later', 'later-alias', 'ancestor', 'unrelated'])
+  for (const name of [
+    'b',
+    'b-alias',
+    'later',
+    'later-alias',
+    'ancestor',
+    'unrelated',
+  ])
     assert.equal(graphHoverAlpha(focus, 'branches', name), 0.25, name);
   for (const sha of ['b-head', 'c-head', 'a-head', 'later-head', 'later-merge'])
     assert.equal(graphHoverAlpha(focus, 'nodes', sha), 0.25, sha);
@@ -379,15 +470,28 @@ test('historical merge badges include only the selected destination and source b
 });
 
 test('an unloaded source boundary adds no guessed badge while a known destination keeps its aliases', () => {
-  const commits = boundaryHistory().filter((c) => !['a-head', 'a-fork', 'a-base'].includes(c.sha));
+  const commits = boundaryHistory().filter(
+    (c) => !['a-head', 'a-fork', 'a-base'].includes(c.sha),
+  );
   const paths = index(commits, boundaryNames, 'ancestor');
   const focus = node('b-middle', paths);
-  assert.deepEqual(focus.nodes, new Set(['b-head', 'b-middle', 'b-first', 'c-merge']));
+  assert.deepEqual(
+    focus.nodes,
+    new Set(['b-head', 'b-middle', 'b-first', 'c-merge']),
+  );
   assert.deepEqual(
     focus.edges,
-    new Set(['b-head:b-middle', 'b-middle:b-first', 'b-first:a-fork', 'c-merge:b-head']),
+    new Set([
+      'b-head:b-middle',
+      'b-middle:b-first',
+      'b-first:a-fork',
+      'c-merge:b-head',
+    ]),
   );
-  assert.deepEqual(focus.branches, new Set(['b', 'b-alias', 'b-marker', 'c', 'c-alias', 'c-marker']));
+  assert.deepEqual(
+    focus.branches,
+    new Set(['b', 'b-alias', 'b-marker', 'c', 'c-alias', 'c-marker']),
+  );
   for (const name of ['a', 'a-alias', 'a-marker']) {
     assert.equal(graphHoverAlpha(focus, 'branches', name), 0.25);
     assert.equal(resolveGraphHover({ kind: 'branch', id: name }, paths), null);
@@ -426,10 +530,25 @@ test('multiple terminal merges add only their endpoints and exact incoming conne
     other: 'other',
   });
   const focus = branch('feature', paths);
-  assert.deepEqual([...focus.nodes].sort(), ['base', 'feature', 'merge', 'release']);
-  assert.deepEqual([...focus.edges].sort(), ['feature:base', 'merge:feature', 'release:feature']);
-  for (const sha of ['other', 'root', 'after-merge']) assert.equal(focus.nodes.has(sha), false);
-  for (const id of ['merge:base', 'merge:other', 'release:root', 'after-merge:merge'])
+  assert.deepEqual([...focus.nodes].sort(), [
+    'base',
+    'feature',
+    'merge',
+    'release',
+  ]);
+  assert.deepEqual([...focus.edges].sort(), [
+    'feature:base',
+    'merge:feature',
+    'release:feature',
+  ]);
+  for (const sha of ['other', 'root', 'after-merge'])
+    assert.equal(focus.nodes.has(sha), false);
+  for (const id of [
+    'merge:base',
+    'merge:other',
+    'release:root',
+    'after-merge:merge',
+  ])
     assert.equal(focus.edges.has(id), false);
 });
 
@@ -444,11 +563,18 @@ test('syncing the current reference into work does not end the reference path', 
     commit('m1'),
   ];
   for (const reference of ['main', 'release/custom']) {
-    const paths = index(commits, { [reference]: 'm2', feature: 'f3', other: 'g3' }, reference);
+    const paths = index(
+      commits,
+      { [reference]: 'm2', feature: 'f3', other: 'g3' },
+      reference,
+    );
     assert.deepEqual([...branch(reference, paths).nodes], ['m2', 'm1']);
     assert.deepEqual([...branch(reference, paths).edges], ['m2:m1']);
     assert.equal(paths.ends.has('m2'), false);
-    assert.equal(graphHoverAlpha(branch(reference, paths), 'edges', 'f3:m2'), 0.25);
+    assert.equal(
+      graphHoverAlpha(branch(reference, paths), 'edges', 'f3:m2'),
+      0.25,
+    );
   }
 });
 
@@ -462,8 +588,14 @@ test('landing synced work still adds its terminal merge while leaving sync conne
     commit('m1'),
   ];
   const paths = index(commits, { main: 'm3', feature: 'f3' });
-  assert.deepEqual([...branch('feature', paths).nodes], ['f3', 'f2', 'f1', 'm1', 'm3']);
-  assert.equal(graphHoverAlpha(branch('feature', paths), 'edges', 'f3:m2'), 0.25);
+  assert.deepEqual(
+    [...branch('feature', paths).nodes],
+    ['f3', 'f2', 'f1', 'm1', 'm3'],
+  );
+  assert.equal(
+    graphHoverAlpha(branch('feature', paths), 'edges', 'f3:m2'),
+    0.25,
+  );
   assert.deepEqual([...branch('main', paths).nodes], ['m3', 'm2', 'm1']);
 });
 
@@ -478,7 +610,10 @@ test('hover and selection at a middle commit reuse its entire shared colored pat
   const paths = index(commits, { main: 'merge', feature: 'feature2' });
   const focus = node('feature1', paths);
   assert.deepEqual([...focus.nodes], ['feature2', 'feature1', 'base', 'merge']);
-  assert.deepEqual([...focus.edges], ['feature2:feature1', 'feature1:base', 'merge:feature2']);
+  assert.deepEqual(
+    [...focus.edges],
+    ['feature2:feature1', 'feature1:base', 'merge:feature2'],
+  );
   assert.equal(node('feature2', paths), focus);
   assert.equal(branch('feature', paths), focus);
 });
@@ -501,17 +636,27 @@ test('deleted branches retain their own path without a name', () => {
     commit('root'),
   ];
   const paths = index(commits, { main: 'merge' });
-  assert.deepEqual([...node('work', paths).nodes], ['tip', 'work', 'base', 'merge']);
+  assert.deepEqual(
+    [...node('work', paths).nodes],
+    ['tip', 'work', 'base', 'merge'],
+  );
   assert.equal(node('work', paths), node('tip', paths));
   assert.deepEqual(node('work', paths).branches, new Set(['main']));
 });
 
 test('same-HEAD aliases share a path while the explicit badge keeps only its own name bright', () => {
-  const paths = index(merged(), { main: 'merge', alias: 'merge', feature: 'feature' });
+  const paths = index(merged(), {
+    main: 'merge',
+    alias: 'merge',
+    feature: 'feature',
+  });
   const alias = branch('alias', paths);
   assert.deepEqual(alias.nodes, branch('main', paths).nodes);
   assert.deepEqual([...alias.branches], ['alias']);
-  assert.deepEqual([...node('merge', paths).branches].sort(), ['alias', 'main']);
+  assert.deepEqual([...node('merge', paths).branches].sort(), [
+    'alias',
+    'main',
+  ]);
 });
 
 test('identical palette colors and coordinates cannot combine distinct path identities', () => {
@@ -525,11 +670,19 @@ test('identical palette colors and coordinates cannot combine distinct path iden
 
 test('label-only geometry cannot invent a branch identity', () => {
   const commits = merged();
-  const unclassified: BranchTrack = { name: 'guess', lane: 0, color: 0, points: [{ x: 48, y: 0 }] };
+  const unclassified: BranchTrack = {
+    name: 'guess',
+    lane: 0,
+    color: 0,
+    points: [{ x: 48, y: 0 }],
+  };
   const colors = graphColors(commits, [], 'main', 'merge');
   const paths = graphHoverIndex(commits, [unclassified], colors.paths);
   assert.equal(resolveGraphHover({ kind: 'branch', id: 'guess' }, paths), null);
-  assert.deepEqual([...node('feature', paths).nodes], ['feature', 'base', 'merge']);
+  assert.deepEqual(
+    [...node('feature', paths).nodes],
+    ['feature', 'base', 'merge'],
+  );
   assert.equal(node('feature', paths).branches.size, 0);
 });
 
@@ -541,32 +694,64 @@ test('unloaded parents preserve the stub but do not become selectable targets', 
   );
   assert.deepEqual([...branch('feature', paths).nodes], ['tip']);
   assert.deepEqual([...branch('feature', paths).edges], ['tip:unloaded']);
-  assert.equal(resolveGraphHover({ kind: 'branch', id: 'absent' }, paths), null);
-  assert.equal(resolveGraphHover({ kind: 'commit', id: 'unloaded' }, paths), null);
+  assert.equal(
+    resolveGraphHover({ kind: 'branch', id: 'absent' }, paths),
+    null,
+  );
+  assert.equal(
+    resolveGraphHover({ kind: 'commit', id: 'unloaded' }, paths),
+    null,
+  );
   assert.equal(resolveGraphHover(null, paths), null);
 });
 
 test('changed HEADs extend the path while deleted refs cannot revive a badge', () => {
   const commits = merged();
   const original = branch('feature', index(commits));
-  const next = index([commit('new', 'feature'), ...commits], { main: 'merge', feature: 'new' });
-  assert.deepEqual([...branch('feature', next).nodes], ['new', 'feature', 'base']);
+  const next = index([commit('new', 'feature'), ...commits], {
+    main: 'merge',
+    feature: 'new',
+  });
+  assert.deepEqual(
+    [...branch('feature', next).nodes],
+    ['new', 'feature', 'base'],
+  );
   assert.equal(branch('feature', next).nodes.has('merge'), false);
   assert.equal(original.nodes.has('new'), false);
   const deleted = index(commits, { main: 'merge' });
-  assert.equal(resolveGraphHover({ kind: 'branch', id: 'feature' }, deleted), null);
-  assert.deepEqual([...node('feature', deleted).nodes], ['feature', 'base', 'merge']);
+  assert.equal(
+    resolveGraphHover({ kind: 'branch', id: 'feature' }, deleted),
+    null,
+  );
+  assert.deepEqual(
+    [...node('feature', deleted).nodes],
+    ['feature', 'base', 'merge'],
+  );
 });
 
 test('reverse direction changes geometry without changing path or merge-scope membership', () => {
   const normal = index(merged());
   const reverse = index(merged(), undefined, 'main', true);
   assert.deepEqual(branch('feature', normal), branch('feature', reverse));
-  assert.deepEqual(edge('merge:feature', normal), edge('merge:feature', reverse));
+  assert.deepEqual(
+    edge('merge:feature', normal),
+    edge('merge:feature', reverse),
+  );
   const forwardBoundaries = index(boundaryHistory(), boundaryNames, 'ancestor');
-  const reverseBoundaries = index(boundaryHistory(), boundaryNames, 'ancestor', true);
-  assert.deepEqual(node('b-middle', forwardBoundaries), node('b-middle', reverseBoundaries));
-  assert.deepEqual(branch('b', forwardBoundaries), branch('b', reverseBoundaries));
+  const reverseBoundaries = index(
+    boundaryHistory(),
+    boundaryNames,
+    'ancestor',
+    true,
+  );
+  assert.deepEqual(
+    node('b-middle', forwardBoundaries),
+    node('b-middle', reverseBoundaries),
+  );
+  assert.deepEqual(
+    branch('b', forwardBoundaries),
+    branch('b', reverseBoundaries),
+  );
   assert.deepEqual(
     edge('c-merge:b-head', forwardBoundaries),
     edge('c-merge:b-head', reverseBoundaries),
@@ -575,7 +760,11 @@ test('reverse direction changes geometry without changing path or merge-scope me
 
 test('track geometry cannot extend a path into unrelated colored history', () => {
   const commits = merged();
-  const colors = graphColors(commits, refs({ main: 'merge', feature: 'feature' }), 'main');
+  const colors = graphColors(
+    commits,
+    refs({ main: 'merge', feature: 'feature' }),
+    'main',
+  );
   const paths = graphHoverIndex(
     commits,
     [
@@ -593,8 +782,14 @@ test('track geometry cannot extend a path into unrelated colored history', () =>
     ],
     colors.paths,
   );
-  assert.deepEqual([...branch('feature', paths).edges], ['feature:base', 'merge:feature']);
-  assert.deepEqual([...branch('feature', paths).nodes], ['feature', 'base', 'merge']);
+  assert.deepEqual(
+    [...branch('feature', paths).edges],
+    ['feature:base', 'merge:feature'],
+  );
+  assert.deepEqual(
+    [...branch('feature', paths).nodes],
+    ['feature', 'base', 'merge'],
+  );
 });
 
 test('all commits in one path reuse one cached result', () => {
@@ -642,14 +837,21 @@ test('long paths are iterative and intermediate commits reuse the result', () =>
 });
 
 test('an active base HEAD outside the refs still claims its entire colored path', () => {
-  const commits = [commit('active', 'base'), commit('base', 'root'), commit('root')];
+  const commits = [
+    commit('active', 'base'),
+    commit('base', 'root'),
+    commit('root'),
+  ];
   const colors = graphColors(commits, refs({ main: 'base' }), 'main', 'active');
   const paths = graphHoverIndex(
     commits,
     [{ name: 'main', lane: 0, points: [], headSha: 'base' }],
     colors.paths,
   );
-  assert.deepEqual([...node('active', paths).nodes], ['active', 'base', 'root']);
+  assert.deepEqual(
+    [...node('active', paths).nodes],
+    ['active', 'base', 'root'],
+  );
   assert.deepEqual([...node('active', paths).branches], ['main']);
   assert.equal(graphHoverAlpha(null, 'nodes', 'active'), 1);
 });

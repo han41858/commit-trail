@@ -49,7 +49,13 @@ test('disabled instrumentation does not read the clock, log, schedule updates or
   metrics.cache('/private');
   metrics.queuedCancelled();
   metrics.layout(undefined, []);
-  metrics.render(undefined, [], { loaded: 1, visible: 1, drawn: 1, branches: 1, lanes: 1 });
+  metrics.render(undefined, [], {
+    loaded: 1,
+    visible: 1,
+    drawn: 1,
+    branches: 1,
+    lanes: 1,
+  });
   metrics.print();
   assert.equal(clocks + logs + updates + timers.mock.callCount(), 0);
   assert.equal(snapshot(metrics).api.requests, 0);
@@ -100,7 +106,11 @@ test('HTTP, conditional 304, failures, cancellations and observed quota are dist
     }),
   );
   failure.finish('failed');
-  const cancel = metrics.request('/repos/PRIVATE/repository/commits', false, cycle)!;
+  const cancel = metrics.request(
+    '/repos/PRIVATE/repository/commits',
+    false,
+    cycle,
+  )!;
   now = 22;
   cancel.finish('cancelled');
   metrics.cache('commits', cycle);
@@ -150,7 +160,12 @@ test('each category retains only its latest 20 measurements and reset ignores ol
   }
   const data = snapshot(metrics);
   assert.deepEqual(
-    [data.requests.length, data.cycles.length, data.layouts.length, data.renders.length],
+    [
+      data.requests.length,
+      data.cycles.length,
+      data.layouts.length,
+      data.renders.length,
+    ],
     [20, 20, 20, 20],
   );
   assert.equal(data.cycles[0].id, 'refresh-6');
@@ -227,7 +242,10 @@ test('common API client and immutable reader cache count actual fetches and pres
     debug.setMode('button');
     globalThis.fetch = async (_input, init) => {
       calls++;
-      assert.equal((init!.headers as Record<string, string>).Authorization, 'Bearer PRIVATE_PAT');
+      assert.equal(
+        (init!.headers as Record<string, string>).Authorization,
+        'Bearer PRIVATE_PAT',
+      );
       await flush();
       return response(
         { object: { type: 'commit', sha: 'PRIVATE_SHA' } },
@@ -239,7 +257,11 @@ test('common API client and immutable reader cache count actual fetches and pres
       reader.get('/repos/private/repository/git/tags/PRIVATE_TAG', true, cycle),
       reader.get('/repos/private/repository/git/tags/PRIVATE_TAG', true, cycle),
     ]);
-    await reader.get('/repos/private/repository/git/tags/PRIVATE_TAG', true, cycle);
+    await reader.get(
+      '/repos/private/repository/git/tags/PRIVATE_TAG',
+      true,
+      cycle,
+    );
     debug.finish(cycle);
     assert.equal(calls, 1);
     const data = snapshot();
@@ -269,7 +291,11 @@ test('pool queues are separate from active HTTP; cancellation and failure return
     globalThis.fetch = async (_input, init) =>
       new Promise<Response>((resolve, reject) => {
         release = resolve;
-        init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+        init!.signal!.addEventListener(
+          'abort',
+          () => reject(init!.signal!.reason),
+          { once: true },
+        );
       });
     const tasks = controllers.map((c) =>
       pool.run(c.signal, () => github('/repos/a/b', '', c.signal)),
@@ -342,9 +368,15 @@ test('initial, unchanged 304 and changed refreshes measure existing stores witho
           headers,
         );
       if (path.endsWith('/commits'))
-        return response(phase >= 2 ? [commit('b', 'a'), commit('a')] : [commit('a')], headers);
+        return response(
+          phase >= 2 ? [commit('b', 'a'), commit('a')] : [commit('a')],
+          headers,
+        );
       if (path.endsWith('/tags'))
-        return response([{ name: phase >= 2 ? 'new' : 'old', commit: { sha: 'a' } }], headers);
+        return response(
+          [{ name: phase >= 2 ? 'new' : 'old', commit: { sha: 'a' } }],
+          headers,
+        );
       if (path.endsWith('/releases'))
         return response(
           [
@@ -361,7 +393,8 @@ test('initial, unchanged 304 and changed refreshes measure existing stores witho
           ],
           headers,
         );
-      if (path.endsWith('/actions/runs')) return response({ workflow_runs: [run()] }, headers);
+      if (path.endsWith('/actions/runs'))
+        return response({ workflow_runs: [run()] }, headers);
       if (path.endsWith('/jobs'))
         return response(
           {
@@ -392,11 +425,17 @@ test('initial, unchanged 304 and changed refreshes measure existing stores witho
     phase = 1;
     let before = captureChanges(history.getSnapshot(), info.getSnapshot());
     const unchanged = debug.beginCycle('auto', () =>
-      changeCounts(before, captureChanges(history.getSnapshot(), info.getSnapshot())),
+      changeCounts(
+        before,
+        captureChanges(history.getSnapshot(), info.getSnapshot()),
+      ),
     )!;
     const array = history.getSnapshot().commits,
       start = calls;
-    await Promise.all([history.refresh(unchanged), info.refresh(false, undefined, unchanged)]);
+    await Promise.all([
+      history.refresh(unchanged),
+      info.refresh(false, undefined, unchanged),
+    ]);
     debug.finish(unchanged);
     let sample = snapshot().cycles.at(-1)!;
     assert.equal(sample.requests, calls - start);
@@ -415,9 +454,15 @@ test('initial, unchanged 304 and changed refreshes measure existing stores witho
     phase = 2;
     before = captureChanges(history.getSnapshot(), info.getSnapshot());
     const changed = debug.beginCycle('manual', () =>
-      changeCounts(before, captureChanges(history.getSnapshot(), info.getSnapshot())),
+      changeCounts(
+        before,
+        captureChanges(history.getSnapshot(), info.getSnapshot()),
+      ),
     )!;
-    await Promise.all([history.refresh(changed), info.refresh(false, undefined, changed)]);
+    await Promise.all([
+      history.refresh(changed),
+      info.refresh(false, undefined, changed),
+    ]);
     measuredLayout(history.getSnapshot().commits);
     debug.finish(changed);
     sample = snapshot().cycles.at(-1)!;
@@ -449,7 +494,10 @@ test('API categories strip route details and recognize nested Actions jobs', () 
   );
   assert.equal(apiKind('/repos/private/name/commits/sha'), 'commits');
   assert.equal(apiKind('/user'), 'identity');
-  assert.equal(apiKind('/repos/private/name/git/ref/tags/private'), 'tag-objects');
+  assert.equal(
+    apiKind('/repos/private/name/git/ref/tags/private'),
+    'tag-objects',
+  );
 });
 
 test('completion logs once after React settling and distinguishes late Canvas frames', (t) => {
@@ -475,7 +523,13 @@ test('completion logs once after React settling and distinguishes late Canvas fr
   assert.equal((summaries[0].value as { durationMs: number }).durationMs, 20);
   assert.equal((summaries[0].value as { layouts: number }).layouts, 1);
   now = 200;
-  metrics.render(190, commits, { loaded: 20, visible: 10, drawn: 12, branches: 2, lanes: 2 });
+  metrics.render(190, commits, {
+    loaded: 20,
+    visible: 10,
+    drawn: 12,
+    branches: 2,
+    lanes: 2,
+  });
   assert.equal(snapshot(metrics).renders[0].cycleId, null);
   assert.equal(snapshot(metrics).cycles[0].renders, 0);
   metrics.setMode('off');
@@ -505,7 +559,8 @@ test('quota deltas tolerate out-of-order responses and reset separately from HTT
       ),
     );
     probe.finish('success');
-    if (used === 14) assert.equal(snapshot(metrics).rates[0].observedUsedDelta, 4);
+    if (used === 14)
+      assert.equal(snapshot(metrics).rates[0].observedUsedDelta, 4);
   }
   const data = snapshot(metrics);
   assert.equal(data.api.requests, 4);
@@ -562,9 +617,13 @@ test('a traversal cancelled before initial loading finishes closes that measurem
         if (url.searchParams.get('sha') === 'main') {
           waiting();
           return new Promise<Response>((_resolve, reject) =>
-            init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), {
-              once: true,
-            }),
+            init!.signal!.addEventListener(
+              'abort',
+              () => reject(init!.signal!.reason),
+              {
+                once: true,
+              },
+            ),
           );
         }
         return response([commit('b')]);
