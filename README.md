@@ -1,8 +1,10 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg" />
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo.svg" />
-    <img src="assets/logo.svg" alt="Commit Trail logo" width="96" height="96" />
+    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: light)" srcset="assets/logo-light.svg" />
+    <source media="(prefers-reduced-motion: reduce)" srcset="assets/logo.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-light-animated.svg" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-animated.svg" />
+    <img src="assets/logo-animated.svg" alt="Commit Trail logo" width="96" height="96" />
   </picture>
 </p>
 
