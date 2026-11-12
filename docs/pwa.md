@@ -325,7 +325,7 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 - `vite.config.ts`: `vite-plugin-pwa` 2.x의 `generateSW`, `registerType: prompt`를 사용한다. 커스텀 Service Worker와 별도 배포 워크플로는 추가하지 않는다. PWA 빌드 의존성은 `package.json`과 잠금 파일에서 관리한다.
 - Manifest는 `/manifest.webmanifest`, Service Worker는 `/sw.js`에서 제공한다. ID·시작 주소·범위는 `/`로 고정하고 방향은 제한하지 않는다. 페이지의 기존 쿼리(반복 `repo`·`mode`·`debug` 포함)와 fragment는 업데이트 후에도 유지한다.
-- `assets/logo.svg`와 `assets/logo-light.svg`를 어두운/밝은 테마의 정지형 원본으로 사용한다. 첫 화면의 큰 로고는 대응하는 `*-animated.svg`를 표시하고, `prefers-reduced-motion: reduce`이면 `<picture>`의 정지형 source로 전환한다. 헤더는 정지형 SVG를 사용하며 앱의 시스템/수동 테마 선택을 따른다.
+- `assets/logo.svg`와 `assets/logo-light.svg`를 어두운/밝은 테마의 정지형 원본으로 사용한다. 첫 화면의 큰 로고는 대응하는 `*-animated.svg`를 표시하고, `prefers-reduced-motion: reduce`이면 `<picture>`의 정지형 source로 전환한다. 큰 로고는 표시 후 최대 10초만 재생하며, 탭을 숨기면 정지형으로 전환하고 복귀 시 자동 재시작하지 않는다. 헤더는 정지형 SVG를 사용하며 앱의 시스템/수동 테마 선택을 따른다.
 - `public/icons/`의 192/512 PNG와 Apple 180 PNG는 어두운 배경(`#070a11`) 위에 `assets/logo.svg`를 렌더링한다. Maskable 512 PNG는 SVG 전체를 중앙 288px 정사각형에 넣어 반지름 40%의 안전 원 안에 보존한다. 탭 아이콘은 원본 정지형 SVG의 경로·색상을 유지하되 `viewBox`를 줄여 확대하고 궤적 두께를 보강한 `favicon.svg`를 사용한다. 어두운 브랜드 배경으로 밝은 탭에서도 대비를 확보하며, 32px PNG fallback은 같은 favicon에서 생성한다. 홈 화면·공유 이미지용 PNG는 앱 테마와 무관하게 같은 브랜드 배경을 사용한다.
 - `src/PwaUpdates.ts`, `src/pwa.ts`, `src/PwaUpdatePrompt.tsx`: 등록·새 버전 안내·적용을 API 갱신과 분리한다. 최초 설치 안내나 설치 유도 배너는 없다. 같은 worker의 Later는 반복 안내하지 않으며 새 버전은 다시 알릴 수 있다.
 - 배포 빌드에서만 SW를 등록한다. 기본 갱신 검사는 브라우저 등록 시, 열린 화면에서는 1시간 주기 및 온라인·탭 복귀 시 수행한다. 후자는 1분 이내 중복 검사, 숨긴 탭·오프라인·설치 중 검사를 생략한다. GitHub API를 호출하지 않는다.

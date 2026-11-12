@@ -1,3 +1,4 @@
+import { BrandMark } from './BrandMark';
 import React, {
   useCallback,
   useEffect,
@@ -771,19 +772,7 @@ function App() {
             </div>
           ) : (
             <div className="empty">
-              <picture>
-                <source
-                  media="(prefers-reduced-motion: reduce)"
-                  srcSet={logo}
-                />
-                <img
-                  className="empty-mark"
-                  src={animatedLogo}
-                  alt=""
-                  width="160"
-                  height="160"
-                />
-              </picture>
+              <BrandMark staticSrc={logo} animatedSrc={animatedLogo} />
               <h1>
                 {state.busy ? 'Loading...' : 'Watch your Git history unfold.'}
               </h1>
