@@ -269,7 +269,7 @@ The panel separates HTTP/cache/quota observations, initial/manual/automatic refr
 
 Commit Trail can be installed from a supported browser or added to the iOS home screen. It opens in standalone mode with the existing graph and controls. No install banner is shown. The app identity and launcher start at `/`; repository links still use `?repo=`.
 
-The app uses dark/light SVG logos according to its resolved theme. The large empty-screen logo animates unless reduced motion is requested; header logos stay static. The PWA precaches all four SVG variants for offline use. Home-screen and social images use PNGs rendered from the static dark logo on the brand background; the favicon preserves the original static dark SVG, with a transparent 32px PNG fallback rendered from the same source.
+The app uses dark/light SVG logos according to its resolved theme. The large empty-screen logo animates unless reduced motion is requested; header logos stay static. The PWA precaches all four SVG variants for offline use. Home-screen and social images use PNGs rendered from the static dark logo on the brand background; the favicon preserves the static logo’s paths and colors while using a tighter viewBox, thicker orbit strokes and a dark brand background for small tabs. Its 32px PNG fallback is rendered from the same favicon.
 
 Production builds use `vite-plugin-pwa` to cache the static app shell, including lazy UI assets. **GitHub API responses, private history and PATs are never stored in Service Worker Cache Storage.** GitHub still needs a network connection. The existing browser localStorage token policy is unchanged. Service Workers require HTTPS (localhost works for development verification); Vite's dev server does not register the production worker.
 
