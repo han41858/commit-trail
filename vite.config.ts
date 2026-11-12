@@ -19,19 +19,19 @@ export default defineConfig({
         background_color: '#070a11',
         icons: [
           {
-            src: '/icons/app-mark-192.png',
+            src: '/icons/app-logo-192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/icons/app-mark-512.png',
+            src: '/icons/app-logo-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/icons/app-mark-maskable-512.png',
+            src: '/icons/app-logo-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
