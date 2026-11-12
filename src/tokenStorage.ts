@@ -5,7 +5,8 @@ export function readStoredToken() {
   } catch {
     return {
       token: '',
-      error: 'Browser storage is unavailable. A token can still be used for this tab.',
+      error:
+        'Browser storage is unavailable. A token can still be used for this tab.',
     };
   }
 }

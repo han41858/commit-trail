@@ -36,7 +36,11 @@ export class MonitorSession {
   constructor(
     private readonly history: History,
     private readonly info: CommitInfoStore,
-    private readonly metadata: (repository: string, isPrivate: boolean, visit: boolean) => void,
+    private readonly metadata: (
+      repository: string,
+      isPrivate: boolean,
+      visit: boolean,
+    ) => void,
     private readonly branchSelections?: BranchSelections,
   ) {}
   subscribe = (listener: () => void) => {
@@ -59,7 +63,8 @@ export class MonitorSession {
           !history.busy &&
           !history.pendingSources.length &&
           (!history.meta ||
-            (!metadata.busy && (!entry.primary || metadata.repo === entry.repository)))
+            (!metadata.busy &&
+              (!entry.primary || metadata.repo === entry.repository)))
         );
       })
     );
@@ -87,7 +92,10 @@ export class MonitorSession {
         entry.info.getSnapshot().retryAt,
       ]),
     );
-    if (retryAt > this.state.retryAt || this.isSettled(this.state) !== this.state.settled)
+    if (
+      retryAt > this.state.retryAt ||
+      this.isSettled(this.state) !== this.state.settled
+    )
       this.publish({ retryAt });
   };
   // Anonymous automatic cycles read tags, releases and Actions only after the
@@ -103,7 +111,9 @@ export class MonitorSession {
     // read must stop this follow-up before it sends anything.
     const follow = (idle: boolean, retryAt = 0): Promise<RefreshResult> => {
       const limit = Math.max(retryAt, this.state.retryAt);
-      return limit > Date.now() ? Promise.resolve({ retryAt: limit }) : refresh(idle);
+      return limit > Date.now()
+        ? Promise.resolve({ retryAt: limit })
+        : refresh(idle);
     };
     return task.then(
       (result) => follow(result.repository !== 'changed', result.retryAt),
@@ -114,7 +124,8 @@ export class MonitorSession {
     const state = entry.history.getSnapshot(),
       extras = entry.info.getSnapshot();
     return {
-      error: state.error || Object.values(extras.errors).join(' · ') || undefined,
+      error:
+        state.error || Object.values(extras.errors).join(' · ') || undefined,
       retryAt: Math.max(state.retryAt || 0, extras.retryAt),
     };
   }
@@ -131,7 +142,11 @@ export class MonitorSession {
       )
       .catch((): RefreshResult => ({ error: 'Repository update failed.' }))
       .then((result) => {
-        if (this.tasks.get(entry) === task && result.retryAt && result.retryAt > this.state.retryAt)
+        if (
+          this.tasks.get(entry) === task &&
+          result.retryAt &&
+          result.retryAt > this.state.retryAt
+        )
           this.publish({ retryAt: result.retryAt });
         return result;
       })
@@ -153,34 +168,44 @@ export class MonitorSession {
     });
   }
   private openEntry(entry: MonitorEntry) {
-    return measureRefresh('initial', entry.history, entry.info, async (cycle) => {
-      let metadata: Promise<void> | undefined;
-      // Match the single-repository flow: initialize metadata before commits arrive,
-      // so opening its store cannot erase the renderer's first visible-SHA watch.
-      const openMetadata = () => {
-        if (
-          metadata ||
-          !entry.history.getSnapshot().meta ||
-          !this.state.active ||
-          !this.state.entries.includes(entry) ||
-          !this.canRequest()
-        )
-          return;
-        metadata = entry.info.open(entry.repository, this.token, cycle);
-      };
-      const unsubscribe = entry.history.subscribe(openMetadata);
-      try {
-        await entry.history.open(entry.repository, this.token, cycle, entry.branch);
-        if (!this.state.active || !this.state.entries.includes(entry)) {
-          if (cycle) cycle.cancelled = true;
-          return {};
+    return measureRefresh(
+      'initial',
+      entry.history,
+      entry.info,
+      async (cycle) => {
+        let metadata: Promise<void> | undefined;
+        // Match the single-repository flow: initialize metadata before commits arrive,
+        // so opening its store cannot erase the renderer's first visible-SHA watch.
+        const openMetadata = () => {
+          if (
+            metadata ||
+            !entry.history.getSnapshot().meta ||
+            !this.state.active ||
+            !this.state.entries.includes(entry) ||
+            !this.canRequest()
+          )
+            return;
+          metadata = entry.info.open(entry.repository, this.token, cycle);
+        };
+        const unsubscribe = entry.history.subscribe(openMetadata);
+        try {
+          await entry.history.open(
+            entry.repository,
+            this.token,
+            cycle,
+            entry.branch,
+          );
+          if (!this.state.active || !this.state.entries.includes(entry)) {
+            if (cycle) cycle.cancelled = true;
+            return {};
+          }
+          await metadata;
+          return this.combined(entry);
+        } finally {
+          unsubscribe();
         }
-        await metadata;
-        return this.combined(entry);
-      } finally {
-        unsubscribe();
-      }
-    });
+      },
+    );
   }
   start = (
     repositories: readonly string[],
@@ -190,20 +215,25 @@ export class MonitorSession {
   ) => {
     this.stop();
     this.token = token;
-    const entries = normalizeMonitorRepositories(repositories).map((repository) => {
-      const current = this.history.getSnapshot(),
-        primary = current.repo === repository && (!!current.meta || current.busy);
-      const index = repositories.findIndex(
-        (value) => normalizeMonitorRepositories([value])[0] === repository,
-      );
-      return {
-        repository,
-        primary,
-        branch: branches[index],
-        history: primary ? this.history : new History(this.metadata, this.branchSelections),
-        info: primary ? this.info : new CommitInfoStore(),
-      };
-    });
+    const entries = normalizeMonitorRepositories(repositories).map(
+      (repository) => {
+        const current = this.history.getSnapshot(),
+          primary =
+            current.repo === repository && (!!current.meta || current.busy);
+        const index = repositories.findIndex(
+          (value) => normalizeMonitorRepositories([value])[0] === repository,
+        );
+        return {
+          repository,
+          primary,
+          branch: branches[index],
+          history: primary
+            ? this.history
+            : new History(this.metadata, this.branchSelections),
+          info: primary ? this.info : new CommitInfoStore(),
+        };
+      },
+    );
     if (!entries.length) return;
     this.publish({ active: true, entries, running: new Set() });
     for (const entry of entries) {
@@ -233,13 +263,19 @@ export class MonitorSession {
         entry.info.cancel();
       }
     this.tasks.clear();
-    if (this.state.active) this.publish({ active: false, entries: [], running: new Set() });
+    if (this.state.active)
+      this.publish({ active: false, entries: [], running: new Set() });
   };
   reorder = (repositories: readonly string[]) => {
     if (!this.state.active) return false;
     const names = normalizeMonitorRepositories(repositories);
-    const byRepository = new Map(this.state.entries.map((entry) => [entry.repository, entry]));
-    if (names.length !== this.state.entries.length || names.some((name) => !byRepository.has(name)))
+    const byRepository = new Map(
+      this.state.entries.map((entry) => [entry.repository, entry]),
+    );
+    if (
+      names.length !== this.state.entries.length ||
+      names.some((name) => !byRepository.has(name))
+    )
       return false;
     const entries = names.map((name) => byRepository.get(name)!);
     if (entries.some((entry, index) => entry !== this.state.entries[index]))
@@ -256,29 +292,40 @@ export class MonitorSession {
       });
     const authentication = this.authentication,
       observe = (result: RefreshResult) =>
-        authentication === this.authentication ? this.captureResult(result) : result;
-    const task = measureRefresh(kind, this.history, this.info, async (cycle) => {
-      const history: Promise<HistoryRefresh> = this.history.getSnapshot().error
-        ? this.history.retry().then(() => {
-            const state = this.history.getSnapshot();
-            return { error: state.error || undefined, retryAt: state.retryAt || undefined };
-          })
-        : this.history.refresh(cycle, kind);
-      const results = await this.settle([
-        history.then(observe),
-        this.metadataAfter(this.history, kind, history, (idle) =>
-          this.info.refresh(false, undefined, cycle, idle),
-        ).then(observe),
-      ]);
-      return {
-        error:
-          results
-            .map((result) => result.error)
-            .filter(Boolean)
-            .join(' · ') || undefined,
-        retryAt: Math.max(0, ...results.map((result) => result.retryAt || 0)),
-      };
-    }).finally(() => {
+        authentication === this.authentication
+          ? this.captureResult(result)
+          : result;
+    const task = measureRefresh(
+      kind,
+      this.history,
+      this.info,
+      async (cycle) => {
+        const history: Promise<HistoryRefresh> = this.history.getSnapshot()
+          .error
+          ? this.history.retry().then(() => {
+              const state = this.history.getSnapshot();
+              return {
+                error: state.error || undefined,
+                retryAt: state.retryAt || undefined,
+              };
+            })
+          : this.history.refresh(cycle, kind);
+        const results = await this.settle([
+          history.then(observe),
+          this.metadataAfter(this.history, kind, history, (idle) =>
+            this.info.refresh(false, undefined, cycle, idle),
+          ).then(observe),
+        ]);
+        return {
+          error:
+            results
+              .map((result) => result.error)
+              .filter(Boolean)
+              .join(' · ') || undefined,
+          retryAt: Math.max(0, ...results.map((result) => result.retryAt || 0)),
+        };
+      },
+    ).finally(() => {
       if (this.primaryPending === task) this.primaryPending = null;
     });
     this.primaryPending = task;
@@ -300,7 +347,9 @@ export class MonitorSession {
       started: Promise<RefreshResult>[] = [];
     for (const entry of entries) {
       const state = entry.history.getSnapshot();
-      if (this.tasks.has(entry) || state.busy || entry.info.getSnapshot().busy) continue;
+      // Boundary and metadata loads may stall; they do not hold back ref sync.
+      // The stores share their own in-flight refreshes.
+      if (this.tasks.has(entry) || entry.history.loadingBase) continue;
       const task = this.run(entry, () =>
         !state.meta
           ? entry.primary
@@ -324,14 +373,20 @@ export class MonitorSession {
                   this.state.active && this.state.entries.includes(entry)
                     ? this.captureResult(result)
                     : result;
-                const results = await this.settle([history.then(observe), metadata.then(observe)]);
+                const results = await this.settle([
+                  history.then(observe),
+                  metadata.then(observe),
+                ]);
                 return {
                   error:
                     results
                       .map((result) => result.error)
                       .filter(Boolean)
                       .join(' · ') || undefined,
-                  retryAt: Math.max(0, ...results.map((result) => result.retryAt || 0)),
+                  retryAt: Math.max(
+                    0,
+                    ...results.map((result) => result.retryAt || 0),
+                  ),
                 };
               }),
       );

@@ -15,7 +15,12 @@ export class GitHubReader {
     this.cache.clear();
     this.pending.clear();
   }
-  get<T>(path: string, immutable = false, cycle?: DebugCycle): Promise<GitHubPage<T>> {
+  get<T>(
+    path: string,
+    immutable = false,
+    cycle?: DebugCycle,
+    revalidate = false,
+  ): Promise<GitHubPage<T>> {
     cycle = cycle ?? debug.forSignal(this.controller.signal);
     if (immutable && this.cache.has(path)) {
       debug.cache(path, cycle);
@@ -28,7 +33,11 @@ export class GitHubReader {
     }
     if (this.retryAt > Date.now())
       return Promise.reject(
-        new GitHubError('GitHub API rate limit reached. Waiting to retry.', 429, this.retryAt),
+        new GitHubError(
+          'GitHub API rate limit reached. Waiting to retry.',
+          429,
+          this.retryAt,
+        ),
       );
     const signal = this.controller.signal;
     const task = this.pool
@@ -41,6 +50,7 @@ export class GitHubReader {
             signal,
             this.cache.get(path) as GitHubPage<T> | undefined,
             cycle,
+            revalidate,
           ),
         cycle,
       )

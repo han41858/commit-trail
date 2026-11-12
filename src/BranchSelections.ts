@@ -2,7 +2,11 @@ import { monitorRepository } from './MonitorRepositories';
 import { branchName } from './branchName';
 
 export const BRANCH_SELECTIONS_KEY = 'commit-trail.branch-selections';
-type Entry = { repository: string; branch: string; visibility: 'public' | 'private' };
+type Entry = {
+  repository: string;
+  branch: string;
+  visibility: 'public' | 'private';
+};
 type StorageAccess = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 type Options = {
   storage?: () => StorageAccess;
@@ -38,7 +42,11 @@ export class BranchSelections {
       const entries = new Map<string, Entry>();
       if (Array.isArray(decoded))
         for (const item of decoded) {
-          if (!item || !branchName(item.branch) || !['public', 'private'].includes(item.visibility))
+          if (
+            !item ||
+            !branchName(item.branch) ||
+            !['public', 'private'].includes(item.visibility)
+          )
             continue;
           try {
             const repository = monitorRepository(item.repository);
@@ -61,7 +69,10 @@ export class BranchSelections {
     if (!this.writable()) return;
     try {
       if (this.entries.length)
-        this.storage?.setItem(BRANCH_SELECTIONS_KEY, JSON.stringify(this.entries));
+        this.storage?.setItem(
+          BRANCH_SELECTIONS_KEY,
+          JSON.stringify(this.entries),
+        );
       else this.storage?.removeItem(BRANCH_SELECTIONS_KEY);
     } catch {
       try {
@@ -81,7 +92,9 @@ export class BranchSelections {
       return;
     }
     const entry = this.entries.find((entry) => entry.repository === repository);
-    return entry && (entry.visibility === 'public' || this.allowed()) ? entry.branch : undefined;
+    return entry && (entry.visibility === 'public' || this.allowed())
+      ? entry.branch
+      : undefined;
   };
   record = (repository: string, branch: string, isPrivate: boolean) => {
     this.reload();
@@ -113,14 +126,17 @@ export class BranchSelections {
   repositoryMetadata = (repository: string, isPrivate: boolean) => {
     this.reload();
     const entry = this.entries.find((entry) => entry.repository === repository);
-    if (!entry || entry.visibility === (isPrivate ? 'private' : 'public')) return;
+    if (!entry || entry.visibility === (isPrivate ? 'private' : 'public'))
+      return;
     entry.visibility = isPrivate ? 'private' : 'public';
     this.persist();
   };
   authenticationChanged = (previous: string, next: string) => {
     if (previous === next && this.writable()) return;
     this.reload();
-    this.entries = this.entries.filter((entry) => entry.visibility === 'public');
+    this.entries = this.entries.filter(
+      (entry) => entry.visibility === 'public',
+    );
     this.persist();
   };
 }

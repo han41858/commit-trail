@@ -42,8 +42,15 @@ function completionClock(start = 1000) {
     },
   };
 }
-const response = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
-  new Response(status === 304 ? null : JSON.stringify(data), { status, headers });
+const response = (
+  data: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+) =>
+  new Response(status === 304 ? null : JSON.stringify(data), {
+    status,
+    headers,
+  });
 async function using(
   check: (context: {
     group: MonitorSession;
@@ -68,17 +75,26 @@ async function using(
     const url = new URL(String(input)),
       path = url.pathname;
     paths.push(path);
-    init?.signal?.addEventListener('abort', () => aborted.push(path), { once: true });
+    init?.signal?.addEventListener('abort', () => aborted.push(path), {
+      once: true,
+    });
     const hold = holds.get(path);
     if (hold) return hold.promise;
     const failure = failures.get(path);
-    if (failure) return response({}, failure, failure === 429 ? { 'Retry-After': '60' } : {});
+    if (failure)
+      return response(
+        {},
+        failure,
+        failure === 429 ? { 'Retry-After': '60' } : {},
+      );
     if ((init?.headers as Record<string, string>)?.['If-None-Match']) {
       conditional.push(path);
       return response(null, 304);
     }
     if (path.endsWith('/branches'))
-      return response([{ name: 'main', commit: { sha: 'head' } }], 200, { ETag: '"stable"' });
+      return response([{ name: 'main', commit: { sha: 'head' } }], 200, {
+        ETag: '"stable"',
+      });
     if (path.endsWith('/commits'))
       return response([
         {
@@ -94,9 +110,15 @@ async function using(
       ]);
     if (path.endsWith('/actions/runs'))
       return response({ workflow_runs: [] }, 200, { ETag: '"stable"' });
-    if (['/tags', '/releases', '/activity'].some((suffix) => path.endsWith(suffix)))
+    if (
+      ['/tags', '/releases', '/activity'].some((suffix) =>
+        path.endsWith(suffix),
+      )
+    )
       return response([], 200, { ETag: '"stable"' });
-    return response({ default_branch: 'main', private: false }, 200, { ETag: '"stable"' });
+    return response({ default_branch: 'main', private: false }, 200, {
+      ETag: '"stable"',
+    });
   };
   const metadata = (repo: string, _private: boolean, visit: boolean) => {
       if (visit) visits.push(repo);
@@ -105,7 +127,17 @@ async function using(
     info = new CommitInfoStore(),
     group = new MonitorSession(history, info, metadata);
   try {
-    await check({ group, history, info, paths, visits, holds, failures, aborted, conditional });
+    await check({
+      group,
+      history,
+      info,
+      paths,
+      visits,
+      holds,
+      failures,
+      aborted,
+      conditional,
+    });
   } finally {
     group.stop();
     history.cancel();
@@ -124,7 +156,10 @@ test('one through 32 independent models reuse the primary and cap only distinct 
       const before = paths.filter((path) => path === '/repos/a/one').length;
       const names = [
         'a/one',
-        ...Array.from({ length: count - 1 }, (_, index) => `owner/repo-${index}`),
+        ...Array.from(
+          { length: count - 1 },
+          (_, index) => `owner/repo-${index}`,
+        ),
       ];
       group.start(
         [
@@ -140,10 +175,19 @@ test('one through 32 independent models reuse the primary and cap only distinct 
         names,
       );
       assert.equal(group.getSnapshot().entries[0].history, history);
-      assert.equal(paths.filter((path) => path === '/repos/a/one').length, before);
+      assert.equal(
+        paths.filter((path) => path === '/repos/a/one').length,
+        before,
+      );
       assert.deepEqual(visits, names);
-      assert.equal(new Set(group.getSnapshot().entries.map((entry) => entry.history)).size, count);
-      assert.equal(new Set(group.getSnapshot().entries.map((entry) => entry.info)).size, count);
+      assert.equal(
+        new Set(group.getSnapshot().entries.map((entry) => entry.history)).size,
+        count,
+      );
+      assert.equal(
+        new Set(group.getSnapshot().entries.map((entry) => entry.info)).size,
+        count,
+      );
     });
 });
 test('metadata starts as soon as repository metadata succeeds, before slow branch or commit loading completes', async () => {
@@ -169,7 +213,11 @@ test('a URL can adopt the loading primary model and start the remaining reposito
     group.start(['a/one', 'b/two'], '');
     assert.equal(group.getSnapshot().entries[0].primary, true);
     assert.equal(group.getSnapshot().entries[0].history, history);
-    await until(() => group.getSnapshot().entries[1].history.getSnapshot().commits.length === 1);
+    await until(
+      () =>
+        group.getSnapshot().entries[1].history.getSnapshot().commits.length ===
+        1,
+    );
     assert.equal(paths.filter((path) => path === '/repos/a/one').length, 1);
     first.resolve(response({ default_branch: 'main', private: false }));
     await opening;
@@ -190,7 +238,10 @@ test('an adopted primary URL failure retries through its original history withou
     await until(() => !group.getSnapshot().running.size);
     assert.ok(history.getSnapshot().meta);
     assert.equal(paths.filter((path) => path === '/repos/a/one').length, 2);
-    assert.equal(paths.filter((path) => path === '/repos/a/one/tags').length, 0);
+    assert.equal(
+      paths.filter((path) => path === '/repos/a/one/tags').length,
+      0,
+    );
   });
 });
 test('a slow repository does not delay dispatch completion or the next refresh of faster repositories', async () => {
@@ -219,7 +270,11 @@ test('a slow repository does not delay dispatch completion or the next refresh o
 test('32 repositories share one RefreshLoop timer and skip an already running repository', async () => {
   await using(async ({ group, paths, holds }) => {
     group.start(
-      ['a/one', 'b/two', ...Array.from({ length: 30 }, (_, index) => `owner/repo-${index}`)],
+      [
+        'a/one',
+        'b/two',
+        ...Array.from({ length: 30 }, (_, index) => `owner/repo-${index}`),
+      ],
       '',
     );
     await until(() => !group.getSnapshot().running.size);
@@ -262,12 +317,18 @@ test('failures stay isolated and failed metadata is retried on the common schedu
     failures.set('/repos/b/two', 404);
     group.start(['a/one', 'b/two'], '');
     await until(() => !group.getSnapshot().running.size);
-    assert.equal(group.getSnapshot().entries[0].history.getSnapshot().commits.length, 1);
+    assert.equal(
+      group.getSnapshot().entries[0].history.getSnapshot().commits.length,
+      1,
+    );
     assert.ok(group.getSnapshot().entries[1].history.getSnapshot().error);
     failures.clear();
     await group.refreshAll('auto');
     await until(() => !group.getSnapshot().running.size);
-    assert.equal(group.getSnapshot().entries[1].history.getSnapshot().commits.length, 1);
+    assert.equal(
+      group.getSnapshot().entries[1].history.getSnapshot().commits.length,
+      1,
+    );
     assert.equal(paths.filter((path) => path === '/repos/b/two').length, 2);
   });
 });
@@ -299,7 +360,9 @@ test('the initial timer can settle after a late history request fails in either 
       await info.open('a/one', '');
       group.start(['a/one', 'b/two'], '');
       await until(() => !group.getSnapshot().running.size);
-      const entry = group.getSnapshot().entries.find((item) => item.repository === repository)!;
+      const entry = group
+        .getSnapshot()
+        .entries.find((item) => item.repository === repository)!;
       const { clock, timers } = completionClock();
       const loop = new RefreshLoop(
         () => group.refreshAll('manual'),
@@ -419,7 +482,11 @@ test('one repository rate limit pauses all 32 repositories until the shared dead
   await using(async ({ group, failures, paths }) => {
     failures.set('/repos/b/two', 429);
     group.start(
-      ['a/one', 'b/two', ...Array.from({ length: 30 }, (_, index) => `owner/repo-${index}`)],
+      [
+        'a/one',
+        'b/two',
+        ...Array.from({ length: 30 }, (_, index) => `owner/repo-${index}`),
+      ],
       '',
     );
     await until(() => !group.getSnapshot().running.size);
@@ -429,7 +496,10 @@ test('one repository rate limit pauses all 32 repositories until the shared dead
     assert.ok(result.retryAt! > Date.now());
     assert.equal(paths.length, before);
     const limited = group.getSnapshot();
-    assert.equal(group.reorder(limited.entries.map((entry) => entry.repository).reverse()), true);
+    assert.equal(
+      group.reorder(limited.entries.map((entry) => entry.repository).reverse()),
+      true,
+    );
     assert.equal(group.getSnapshot().retryAt, limited.retryAt);
     assert.equal(group.getSnapshot().running, limited.running);
     assert.equal(group.canRequest(), false);
@@ -464,7 +534,9 @@ test('conditional caches remain repository-local and unchanged refreshes keep co
   await using(async ({ group, conditional }) => {
     group.start(['a/one', 'b/two'], '');
     await until(() => !group.getSnapshot().running.size);
-    const commits = group.getSnapshot().entries.map((entry) => entry.history.getSnapshot().commits);
+    const commits = group
+      .getSnapshot()
+      .entries.map((entry) => entry.history.getSnapshot().commits);
     for (let i = 0; i < 2; i++) {
       await group.refreshAll('auto');
       await until(() => !group.getSnapshot().running.size);
@@ -480,7 +552,10 @@ test('conditional caches remain repository-local and unchanged refreshes keep co
 });
 test('exit cancels all 32 monitor-owned requests and ignores their late metadata', async () => {
   await using(async ({ group, holds, paths, visits, aborted }) => {
-    const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
+    const names = Array.from(
+      { length: 32 },
+      (_, index) => `owner/repo-${index}`,
+    );
     const slow = names.map(() => deferred<Response>());
     names.forEach((name, index) => holds.set(`/repos/${name}`, slow[index]));
     group.start(names, '');
@@ -501,7 +576,10 @@ test('exit cancels all 32 monitor-owned requests and ignores their late metadata
 });
 test('32 initial loads complete independently, including a failed repository and a late final response', async () => {
   await using(async ({ group, holds, failures, paths }) => {
-    const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
+    const names = Array.from(
+      { length: 32 },
+      (_, index) => `owner/repo-${index}`,
+    );
     const slow = deferred<Response>();
     holds.set(`/repos/${names[31]}`, slow);
     failures.set(`/repos/${names[12]}`, 404);
@@ -523,13 +601,23 @@ test('32 initial loads complete independently, including a failed repository and
     failures.clear();
     await group.refreshAll('auto');
     await until(() => !group.getSnapshot().running.size);
-    assert.ok(entries.every((entry) => entry.history.getSnapshot().commits.length === 1));
-    assert.equal(paths.filter((path) => path === `/repos/${names[12]}`).length, 2);
+    assert.ok(
+      entries.every(
+        (entry) => entry.history.getSnapshot().commits.length === 1,
+      ),
+    );
+    assert.equal(
+      paths.filter((path) => path === `/repos/${names[12]}`).length,
+      2,
+    );
   });
 });
 test('reordering all 32 repositories preserves model, commit and branch identity without API work', async () => {
   await using(async ({ group, paths }) => {
-    const names = Array.from({ length: 32 }, (_, index) => `owner/repo-${index}`);
+    const names = Array.from(
+      { length: 32 },
+      (_, index) => `owner/repo-${index}`,
+    );
     group.start(names, '');
     await until(() => !group.getSnapshot().running.size);
     const before = group.getSnapshot();
@@ -585,7 +673,9 @@ test('a pending refresh survives reordering and is still skipped on the next dis
     assert.equal(paths.length, count);
     assert.equal(aborted.length, cancellations);
     await group.refreshAll('auto');
-    await until(() => paths.filter((path) => path === '/repos/a/one').length === 3);
+    await until(
+      () => paths.filter((path) => path === '/repos/a/one').length === 3,
+    );
     assert.equal(paths.filter((path) => path === '/repos/b/two').length, 2);
     holds.delete('/repos/b/two');
     slow.resolve(response({ default_branch: 'main', private: false }));
@@ -620,7 +710,9 @@ test('a late rate error from a cancelled metadata refresh cannot throttle a new 
     const slow = deferred<Response>();
     holds.set('/repos/b/two/tags', slow);
     await group.refreshAll('auto');
-    await until(() => paths.filter((path) => path === '/repos/b/two/tags').length === 2);
+    await until(
+      () => paths.filter((path) => path === '/repos/b/two/tags').length === 2,
+    );
     group.authenticationChanged('old', 'new');
     slow.resolve(response({}, 429, { 'Retry-After': '60' }));
     await tick();
@@ -650,12 +742,16 @@ for (const statuses of [
       await tick();
       assert.equal(loop.getSnapshot().lastCompletedAt, 1000);
       time.set(2000);
-      first.resolve(response({ default_branch: 'main', private: false }, statuses[0]));
+      first.resolve(
+        response({ default_branch: 'main', private: false }, statuses[0]),
+      );
       await until(() => group.getSnapshot().running.size === 1);
       loop.loaded();
       assert.equal(loop.getSnapshot().lastCompletedAt, 1000);
       time.set(5000);
-      last.resolve(response({ default_branch: 'main', private: false }, statuses[1]));
+      last.resolve(
+        response({ default_branch: 'main', private: false }, statuses[1]),
+      );
       await until(() => loop.getSnapshot().lastCompletedAt === 5000);
       assert.equal(group.getSnapshot().running.size, 0);
       assert.equal(loop.getSnapshot().nextAt, 61000);

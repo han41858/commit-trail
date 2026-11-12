@@ -35,7 +35,9 @@ const shapes: Record<RunStatus['icon'], ReactNode> = {
       <path d="M6.5 5v3l2 1M14.5 4v4m0 3h.01" />
     </>
   ),
-  unknown: <path d="M5.5 5a2.5 2.5 0 1 1 4.2 1.8C8.5 7.5 8 8 8 9.5M8 12.5h.01" />,
+  unknown: (
+    <path d="M5.5 5a2.5 2.5 0 1 1 4.2 1.8C8.5 7.5 8 8 8 9.5M8 12.5h.01" />
+  ),
 };
 export function ActionStatusIcon({ status }: { status: RunStatus }) {
   return (

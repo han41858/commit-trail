@@ -9,7 +9,10 @@ const date = (value: number | null) =>
   value === null ? 'unknown' : new Date(value).toLocaleTimeString();
 function Panel() {
   const data = useSyncExternalStore(debug.subscribe, debug.getSnapshot);
-  const active = useSyncExternalStore(requestActivity.subscribe, requestActivity.getSnapshot);
+  const active = useSyncExternalStore(
+    requestActivity.subscribe,
+    requestActivity.getSnapshot,
+  );
   const queued = useSyncExternalStore(
     requestActivity.subscribeQueue,
     requestActivity.getQueuedSnapshot,
@@ -24,7 +27,10 @@ function Panel() {
       setCopied('Clipboard unavailable; use Console');
     }
   }
-  const completed = Object.values(data.api.statuses).reduce((sum, count) => sum + count, 0);
+  const completed = Object.values(data.api.statuses).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
   const api = data.api,
     graph = data.graph,
     lastLayout = data.layouts.at(-1),
@@ -45,7 +51,10 @@ function Panel() {
     >
       <header>
         <strong>Developer diagnostics</strong>
-        <button aria-label="Close diagnostics" onClick={() => debug.setMode('button')}>
+        <button
+          aria-label="Close diagnostics"
+          onClick={() => debug.setMode('button')}
+        >
           ×
         </button>
       </header>
@@ -72,12 +81,14 @@ function Panel() {
           <br />
           Memory hits {api.memoryHits} · shared requests {api.shared}
           <br />
-          Failed {api.failed} · cancelled {api.cancelled} · queue cancelled {api.queuedCancelled}
+          Failed {api.failed} · cancelled {api.cancelled} · queue cancelled{' '}
+          {api.queuedCancelled}
           <br />
           Overlapping identical requests {api.duplicates}
         </p>
         <p>
-          HTTP time: avg {ms(completed ? api.totalMs / completed : 0)} · max {ms(api.maxMs)}
+          HTTP time: avg {ms(completed ? api.totalMs / completed : 0)} · max{' '}
+          {ms(api.maxMs)}
         </p>
         <table>
           <caption>Requests by API type</caption>
@@ -100,18 +111,20 @@ function Panel() {
         {data.rates.length ? (
           data.rates.map((rate) => (
             <p key={rate.resource}>
-              {rate.resource}: remaining {rate.remaining ?? 'unknown'} / {rate.limit ?? 'unknown'} ·
-              used {rate.used ?? 'unknown'}
+              {rate.resource}: remaining {rate.remaining ?? 'unknown'} /{' '}
+              {rate.limit ?? 'unknown'} · used {rate.used ?? 'unknown'}
               <br />
-              Reset {date(rate.resetAt)} · observed used Δ {rate.observedUsedDelta ?? 'unknown'}
+              Reset {date(rate.resetAt)} · observed used Δ{' '}
+              {rate.observedUsedDelta ?? 'unknown'}
             </p>
           ))
         ) : (
           <p>No exposed headers observed.</p>
         )}
         <small>
-          HTTP requests and quota use differ. Header deltas may include traffic from other clients.
-          Overlap is a duplicate candidate, not proof of waste.
+          HTTP requests and quota use differ. Header deltas may include traffic
+          from other clients. Overlap is a duplicate candidate, not proof of
+          waste.
         </small>
         <h3>Graph</h3>
         <p>
@@ -119,30 +132,37 @@ function Panel() {
           <br />
           Branches {graph.branches} · lanes {graph.lanes}
           <br />
-          DAG {lastLayout ? ms(lastLayout.ms) : '—'} · {data.layoutCount} calculations
+          DAG {lastLayout ? ms(lastLayout.ms) : '—'} · {data.layoutCount}{' '}
+          calculations
           <br />
-          Canvas {lastRender ? ms(lastRender.ms) : '—'} · {data.renderCount} draws
+          Canvas {lastRender ? ms(lastRender.ms) : '—'} · {data.renderCount}{' '}
+          draws
         </p>
         <h3>Refreshes · last 20</h3>
         {[...data.cycles].reverse().map((cycle) => (
           <details key={cycle.id}>
             <summary>
-              {cycle.id} · {cycle.kind} · {ms(cycle.durationMs)} · HTTP {cycle.requests}
+              {cycle.id} · {cycle.kind} · {ms(cycle.durationMs)} · HTTP{' '}
+              {cycle.requests}
             </summary>
             <p>
-              {cycle.outcome} · 304 {cycle.notModified} · cache {cycle.memoryHits}
+              {cycle.outcome} · 304 {cycle.notModified} · cache{' '}
+              {cycle.memoryHits}
               {' · shared '}
               {cycle.shared}
               <br />
-              Commits +{cycle.commitsAdded} ~{cycle.commitsChanged} −{cycle.commitsRemoved}
+              Commits +{cycle.commitsAdded} ~{cycle.commitsChanged} −
+              {cycle.commitsRemoved}
               <br />
-              Branches +{cycle.branchesAdded} ~{cycle.branchesChanged} −{cycle.branchesRemoved}
+              Branches +{cycle.branchesAdded} ~{cycle.branchesChanged} −
+              {cycle.branchesRemoved}
               <br />
               Tags {cycle.tagsChanged} · releases {cycle.releasesChanged}
               {' · Actions '}
               {cycle.actionsChanged}
               <br />
-              DAG {cycle.layouts} / {ms(cycle.layoutMs)} · Canvas {cycle.renders}
+              DAG {cycle.layouts} / {ms(cycle.layoutMs)} · Canvas{' '}
+              {cycle.renders}
               {' / '}
               {ms(cycle.renderMs)}
             </p>
@@ -158,7 +178,10 @@ function Panel() {
             )}
           </pre>
         </details>
-        <small>Local memory only. Detailed numeric summaries are also in DevTools Console.</small>
+        <small>
+          Local memory only. Detailed numeric summaries are also in DevTools
+          Console.
+        </small>
       </div>
       <div className="debug-tools">
         <button onClick={() => void copy()}>Copy diagnostics</button>
@@ -171,13 +194,18 @@ function Panel() {
   );
 }
 // Loaded on demand by DebugRoot, so users who never enable debug mode do not download the panel or its styles.
-export default function DebugUI({ mode, panelHost }: {
+export default function DebugUI({
+  mode,
+  panelHost,
+}: {
   mode: 'button' | 'panel';
   panelHost: RefObject<HTMLElement | null>;
 }) {
   // Movable diagnostics are not bottom notices; retain the app's theme in the portal.
   if (mode === 'panel')
-    return panelHost.current ? createPortal(<Panel />, panelHost.current) : null;
+    return panelHost.current
+      ? createPortal(<Panel />, panelHost.current)
+      : null;
   return (
     <button
       className="debug-entry"

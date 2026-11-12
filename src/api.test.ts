@@ -10,12 +10,18 @@ test('pagination uses 100 commits and encoded branch; token only sent to GitHub'
         input,
         'https://api.github.com/repos/a/b/commits?sha=feat%2Ftest&per_page=100&page=2',
       );
-      assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer test-token');
+      assert.equal(
+        (init?.headers as Record<string, string>).Authorization,
+        'Bearer test-token',
+      );
       return new Response('[]', {
         headers: { Link: '<https://api.github.com/x?page=3>; rel="next"' },
       });
     };
-    assert.equal((await commitsPage('a/b', 'feat/test', 2, 'test-token')).next, true);
+    assert.equal(
+      (await commitsPage('a/b', 'feat/test', 2, 'test-token')).next,
+      true,
+    );
   } finally {
     globalThis.fetch = original;
   }
@@ -24,8 +30,14 @@ test('branch pagination and unauthenticated request', async () => {
   const original = globalThis.fetch;
   try {
     globalThis.fetch = async (input, init) => {
-      assert.equal(input, 'https://api.github.com/repos/a/b/branches?per_page=100&page=2');
-      assert.equal((init?.headers as Record<string, string>).Authorization, undefined);
+      assert.equal(
+        input,
+        'https://api.github.com/repos/a/b/branches?per_page=100&page=2',
+      );
+      assert.equal(
+        (init?.headers as Record<string, string>).Authorization,
+        undefined,
+      );
       return new Response('[]');
     };
     assert.equal((await branchesPage('a/b', 2, '')).next, false);
@@ -37,11 +49,14 @@ test('API errors are safe, distinct and retryable', async () => {
   const original = globalThis.fetch;
   try {
     for (const status of [401, 403, 404, 409, 429, 500]) {
-      globalThis.fetch = async () => new Response('sensitive response', { status });
+      globalThis.fetch = async () =>
+        new Response('sensitive response', { status });
       await assert.rejects(
         github('/repos/a/b', 'secret'),
         (e) =>
-          e instanceof Error && !e.message.includes('sensitive') && !e.message.includes('secret'),
+          e instanceof Error &&
+          !e.message.includes('sensitive') &&
+          !e.message.includes('secret'),
       );
     }
     globalThis.fetch = async () => new Response('[]');
@@ -70,10 +85,16 @@ test('primary and secondary rate limits include a retry deadline; permission err
   try {
     const reset = Math.ceil(Date.now() / 1000) + 1800;
     globalThis.fetch = async () =>
-      new Response(JSON.stringify({ message: 'sensitive rate limit exceeded' }), {
-        status: 403,
-        headers: { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(reset) },
-      });
+      new Response(
+        JSON.stringify({ message: 'sensitive rate limit exceeded' }),
+        {
+          status: 403,
+          headers: {
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': String(reset),
+          },
+        },
+      );
     await assert.rejects(
       github('/repos/a/b', ''),
       (e: any) =>
@@ -94,13 +115,17 @@ test('primary and secondary rate limits include a retry deadline; permission err
     );
     globalThis.fetch = async () =>
       new Response(
-        JSON.stringify({ message: 'Resource not accessible by personal access token' }),
+        JSON.stringify({
+          message: 'Resource not accessible by personal access token',
+        }),
         { status: 403 },
       );
     await assert.rejects(
       github('/repos/a/b', 'test-token'),
       (e: any) =>
-        !e.retryAt && e.message.includes('denied access') && !e.message.includes('rate limit'),
+        !e.retryAt &&
+        e.message.includes('denied access') &&
+        !e.message.includes('rate limit'),
     );
   } finally {
     globalThis.fetch = original;
@@ -136,8 +161,18 @@ test('active history is restricted to the current date window and activity is or
       requests.push(new URL(String(input)));
       return new Response('[]');
     };
-    await commitsPage('a/b', 'release-sha', 1, '', undefined, Date.parse('2026-10-25T00:00:00Z'));
-    assert.equal(requests[0].searchParams.get('since'), '2026-10-25T00:00:00.000Z');
+    await commitsPage(
+      'a/b',
+      'release-sha',
+      1,
+      '',
+      undefined,
+      Date.parse('2026-10-25T00:00:00Z'),
+    );
+    assert.equal(
+      requests[0].searchParams.get('since'),
+      '2026-10-25T00:00:00.000Z',
+    );
     const { branchActivityPage } = await import('./api');
     await branchActivityPage('a/b', 'next-cursor', '');
     assert.equal(requests[1].pathname, '/repos/a/b/activity');
@@ -186,7 +221,9 @@ test('request activity counts HTTP work through body parsing and clears failed r
       fail = resolve;
     });
   const counts: number[] = [];
-  const stop = requestActivity.subscribe(() => counts.push(requestActivity.getSnapshot()));
+  const stop = requestActivity.subscribe(() =>
+    counts.push(requestActivity.getSnapshot()),
+  );
   try {
     globalThis.fetch = async (input) => {
       if (String(input).endsWith('/first')) {

@@ -14,7 +14,9 @@ export function historyFrontiers(
   if (reverse) {
     if (nextPage > 0) {
       const parents = new Set(
-        [...commits.values()].flatMap((commit) => commit.parents.map((parent) => parent.sha)),
+        [...commits.values()].flatMap((commit) =>
+          commit.parents.map((parent) => parent.sha),
+        ),
       );
       const tips = forwardWindow.filter((commit) => !parents.has(commit.sha));
       for (const commit of tips.length ? tips : forwardWindow.slice(0, 1))
@@ -24,9 +26,9 @@ export function historyFrontiers(
   for (const commit of commits.values()) {
     if (reverse && !sideCommits.has(commit.sha)) continue;
     // A queried parent may have been pruned; only a loaded commit closes a gap.
-    const sources = [...new Set(commit.parents.map((parent) => parent.sha))].filter(
-      (sha) => !commits.has(sha),
-    );
+    const sources = [
+      ...new Set(commit.parents.map((parent) => parent.sha)),
+    ].filter((sha) => !commits.has(sha));
     if (sources.length) frontiers.push({ sha: commit.sha, sources });
   }
   return frontiers;

@@ -1,12 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { preferredBranch, recommendBranches, PullCounts } from './recommendations';
+import {
+  preferredBranch,
+  recommendBranches,
+  PullCounts,
+} from './recommendations';
 const branch = (name: string) => ({ name, commit: { sha: name } });
 test('main wins even with no merged PRs; master is the fallback when main is absent', () => {
   const branches = ['develop', 'master', 'main', 'release'].map(branch);
   assert.equal(preferredBranch(branches, 'develop'), 'main');
   assert.deepEqual(
-    recommendBranches(branches, { release: 200, master: 3, main: 0 }, 'develop').map((b) => b.name),
+    recommendBranches(
+      branches,
+      { release: 200, master: 3, main: 0 },
+      'develop',
+    ).map((b) => b.name),
     ['main', 'master', 'develop', 'release'],
   );
   assert.equal(
@@ -16,10 +24,16 @@ test('main wins even with no merged PRs; master is the fallback when main is abs
     ),
     'master',
   );
-  assert.equal(preferredBranch([branch('develop'), branch('release')], 'develop'), 'develop');
+  assert.equal(
+    preferredBranch([branch('develop'), branch('release')], 'develop'),
+    'develop',
+  );
 });
 test('recommendations contain at most 30 existing refs ordered by merged PR counts', () => {
-  const branches = ['main', ...Array.from({ length: 40 }, (_, i) => `branch-${i}`)].map(branch);
+  const branches = [
+    'main',
+    ...Array.from({ length: 40 }, (_, i) => `branch-${i}`),
+  ].map(branch);
   const counts = Object.fromEntries(branches.map((b, i) => [b.name, i]));
   counts.deleted = 1000;
   const ranked = recommendBranches(branches, counts, 'main');
@@ -32,12 +46,22 @@ test('recommendations contain at most 30 existing refs ordered by merged PR coun
 test('90-day counts exclude unmerged and old merges and deduplicate overlapping PR pages', () => {
   const tally = new PullCounts(new Date('2026-10-29T12:00:00Z'));
   const now = '2026-10-29T10:00:00Z';
-  const recent = { id: 1, merged_at: now, updated_at: now, base: { ref: 'release' } };
+  const recent = {
+    id: 1,
+    merged_at: now,
+    updated_at: now,
+    base: { ref: 'release' },
+  };
   assert.equal(
     tally.add([
       recent,
       { id: 2, merged_at: null, updated_at: now, base: { ref: 'release' } },
-      { id: 3, merged_at: '2026-01-01T00:00:00Z', updated_at: now, base: { ref: 'old' } },
+      {
+        id: 3,
+        merged_at: '2026-01-01T00:00:00Z',
+        updated_at: now,
+        base: { ref: 'old' },
+      },
     ]),
     false,
   );
@@ -60,7 +84,9 @@ test('90-day counts exclude unmerged and old merges and deduplicate overlapping 
 test('main, master and repository default are pinned in order without duplicates', () => {
   const branches = ['release', 'main', 'master', 'develop'].map(branch);
   assert.deepEqual(
-    recommendBranches(branches, { release: 5000 }, 'develop').map((b) => b.name),
+    recommendBranches(branches, { release: 5000 }, 'develop').map(
+      (b) => b.name,
+    ),
     ['main', 'master', 'develop', 'release'],
   );
   assert.deepEqual(

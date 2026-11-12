@@ -25,16 +25,16 @@ Commit Trail을 모바일과 데스크톱에 설치할 수 있는 Progressive We
 
 Web App Manifest를 구성합니다.
 
-| 속성 | 설정 |
-|---|---|
-| name | Commit Trail |
-| short_name | Commit Trail |
-| id | `/` |
-| start_url | `/` |
-| scope | `/` |
-| display | `standalone` |
-| orientation | 제한 없음 |
-| theme_color | 기존 UI 테마와 일치 |
+| 속성             | 설정                  |
+| ---------------- | --------------------- |
+| name             | Commit Trail          |
+| short_name       | Commit Trail          |
+| id               | `/`                   |
+| start_url        | `/`                   |
+| scope            | `/`                   |
+| display          | `standalone`          |
+| orientation      | 제한 없음             |
+| theme_color      | 기존 UI 테마와 일치   |
 | background_color | 기존 앱 배경색과 일치 |
 
 - 앱 이름과 아이콘은 기존 Commit Trail 브랜드 사용
@@ -212,11 +212,11 @@ PWA 설치 여부가 인증 권한이나 GitHub API 호출 제한에 영향을 �
 
 기존 GitHub–Vercel Git Integration 배포 정책을 유지합니다.
 
-| 브랜치 | 배포 환경 |
-|---|---|
-| feature/*, fix/* 등 | Preview |
-| dev | Preview |
-| main | Production |
+| 브랜치                  | 배포 환경  |
+| ----------------------- | ---------- |
+| `feature/*`, `fix/*` 등 | Preview    |
+| dev                     | Preview    |
+| main                    | Production |
 
 - 브랜치별 Preview 자동 배포 유지
 - main 병합 시 Production 자동 배포 유지
@@ -323,42 +323,25 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 ## 12. 구현 구성
 
-- `vite.config.ts`: `vite-plugin-pwa` 2.x의 `generateSW`, `registerType: prompt`를 사용한다. 커스텀 Service Worker와 별도 배포 워크플로는 추가하지 않는다. 기존 의존성 버전은 유지하며 빌드용 직접 의존성만 1개 추가한다.
+- `vite.config.ts`: `vite-plugin-pwa` 2.x의 `generateSW`, `registerType: prompt`를 사용한다. 커스텀 Service Worker와 별도 배포 워크플로는 추가하지 않는다. PWA 빌드 의존성은 `package.json`과 잠금 파일에서 관리한다.
 - Manifest는 `/manifest.webmanifest`, Service Worker는 `/sw.js`에서 제공한다. ID·시작 주소·범위는 `/`로 고정하고 방향은 제한하지 않는다. 페이지의 기존 쿼리(반복 `repo`·`mode`·`debug` 포함)와 fragment는 업데이트 후에도 유지한다.
-- `public/icons/`: 원본 `assets/logo.png`를 그대로 보존하고 192/512 PNG, Apple 180 PNG와 maskable 512 PNG를 파생 생성했다. 파일 크기를 줄이기 위해 256색 PNG로 인코딩한다. Maskable은 원본 전체를 중앙 288px 정사각형 안에 넣어 반지름 40%의 안전 원에 모두 들어가도록 했다. 새 디자인·문자는 추가하지 않았다.
+- `assets/logo.svg`와 `assets/logo-light.svg`를 어두운/밝은 테마의 정지형 원본으로 사용한다. 첫 화면의 큰 로고는 대응하는 `*-animated.svg`를 표시하고, `prefers-reduced-motion: reduce`이면 `<picture>`의 정지형 source로 전환한다. 큰 로고는 표시 후 최대 10초만 재생하며, 탭을 숨기면 정지형으로 전환하고 복귀 시 자동 재시작하지 않는다. 헤더는 정지형 SVG를 사용하며 앱의 시스템/수동 테마 선택을 따른다.
+- `public/icons/`의 192/512 PNG와 Apple 180 PNG는 어두운 배경(`#070a11`) 위에 `assets/logo.svg`를 렌더링한다. Maskable 512 PNG는 SVG 전체를 중앙 288px 정사각형에 넣어 반지름 40%의 안전 원 안에 보존한다. 탭 아이콘은 원본 정지형 SVG의 경로·색상을 유지하되 `viewBox`를 줄여 확대하고 궤적 두께를 보강한 `favicon.svg`를 사용한다. 어두운 브랜드 배경으로 밝은 탭에서도 대비를 확보하며, 32px PNG fallback은 같은 favicon에서 생성한다. 홈 화면·공유 이미지용 PNG는 앱 테마와 무관하게 같은 브랜드 배경을 사용한다.
 - `src/PwaUpdates.ts`, `src/pwa.ts`, `src/PwaUpdatePrompt.tsx`: 등록·새 버전 안내·적용을 API 갱신과 분리한다. 최초 설치 안내나 설치 유도 배너는 없다. 같은 worker의 Later는 반복 안내하지 않으며 새 버전은 다시 알릴 수 있다.
 - 배포 빌드에서만 SW를 등록한다. 기본 갱신 검사는 브라우저 등록 시, 열린 화면에서는 1시간 주기 및 온라인·탭 복귀 시 수행한다. 후자는 1분 이내 중복 검사, 숨긴 탭·오프라인·설치 중 검사를 생략한다. GitHub API를 호출하지 않는다.
 - 적용 버튼을 누른 창만 새 controller가 준비된 후 새로고침한다. 다른 창에서 업데이트를 적용해도 현재 창을 강제 새로고침하지 않는다. 적용 실패·15초 이내 제어권 미전환 시 기존 화면과 오류 안내를 유지하고 재시도할 수 있다.
-- Workbox는 빌드된 HTML·JS·CSS·PNG와 Manifest만 precache한다. 런타임 캐시 경로는 없다. `/` 및 쿼리를 가진 `/` 탐색만 캐시된 `index.html`로 처리하고 쿼리·저장소별 HTML 캐시를 만들지 않는다. GitHub 응답·Authorization·PAT를 SW에 전달하거나 저장하는 코드는 없다. PAT는 새 제품명에 맞춘 localStorage 키를 사용하며, 이전 제품의 데이터는 이전하지 않는다. 복원·삭제 정책은 유지한다.
+- Workbox는 빌드된 HTML·JS·CSS·PNG·SVG와 Manifest만 precache한다. 런타임 캐시 경로는 없다. `/` 및 쿼리를 가진 `/` 탐색만 캐시된 `index.html`로 처리하고 쿼리·저장소별 HTML 캐시를 만들지 않는다. GitHub 응답·Authorization·PAT를 SW에 전달하거나 저장하는 코드는 없다. PAT는 새 제품명에 맞춘 localStorage 키를 사용하며, 이전 제품의 데이터는 이전하지 않는다. 복원·삭제 정책은 유지한다.
 - 새 worker 설치가 실패하면 기존 worker와 앱 셸을 유지한다. 활성화 때 현재 정적 자산을 보존하고 오래된 precache 항목을 정리한다. 이미 열린 다른 창의 앱 코드는 사용자 적용·재시작 전까지 유지될 수 있다.
 - `index.html`의 `viewport-fit=cover`, Chromium의 `interactive-widget=resizes-content`, iOS 홈 화면 메타데이터를 사용한다. 기존 동적 theme-color는 유지한다. Safe Area를 그래프 좌우·하단과 오버레이에 적용하고 그래프 상단은 기존 toolbar 측정값만 사용하여 여백을 이중 적용하지 않는다. 좁은 화면의 입력 글자 크기는 16px로 맞춘다.
 - CSP는 기존 제한에 정적 자산 접근용 `connect-src 'self'`, 명시적 `worker-src 'self'`, `manifest-src 'self'`만 추가한다. SW는 재검증하며 immutable 캐시를 쓰지 않고, 기존 해시 자산은 immutable 정책을 유지한다. Preview/Production은 같은 코드이며 SW·캐시·설치는 Origin별로 분리된다.
 
 ## 13. 검증 기록과 실기기 확인
 
-### 초기 구현 검증
+### 검증 범위와 한계
 
-다음은 초기 PWA 구현 시점의 검증 기록이다. 테스트 개수도 당시 기준이다. 로컬 Chromium의 일반 프로필과 실제 Service Worker·Cache Storage를 사용했다. API만 모킹했으며 Vercel과 같은 CSP·응답 헤더를 로컬 정적 서버에 적용했다.
+과거 초기 구현은 로컬 Chromium의 실제 Service Worker·Cache Storage와 합성 API 응답으로 확인했다. 설치 조건·정적 캐시 경계·오프라인 셸·사용자 확인 업데이트·여러 창·실패한 설치·캐시 정리를 검증했으며, 당시 테스트 개수와 상세 결과는 Git 이력에서 확인할 수 있다. 로컬 검증은 현재 배포와 실기기 동작을 보장하지 않는다.
 
-| 항목 | 확인 결과 |
-| --- | --- |
-| 자동 테스트 / 빌드 | 앱 207개 통과, TypeScript·Vite·Workbox 빌드 성공 |
-| 설치 조건 | Manifest 파싱 오류 0건, Chromium 설치 가능 조건 오류 0건, 고정 app ID 확인 |
-| 정적 캐시 | 중복 없는 12개 리소스, API URL·Authorization·합성 비공개 응답·PAT 저장 0건 |
-| 오프라인 재실행 | 쿼리·기존 토큰 정책 유지, 셸·지연 로딩 디버그 패널 실행, 미조회 Git 데이터 0개, 복구 후 기존 Retry 정상 |
-| 실패한 배포 | 새 정적 자산 503으로 SW 설치 실패를 재현, 기존 앱 셸·그래프 유지 및 불필요한 업데이트 안내 없음 |
-| 사용자 확인 | 새 버전 대기 중 화면 유지, Later 후 같은 버전 재안내 없음, 적용한 창만 새 버전으로 재실행 |
-| 여러 창 | 다른 창의 업데이트로 강제 새로고침 없음, 각 창에서 선택하여 적용, 쿼리·fragment 유지 |
-| 캐시 정리·분리 | 업데이트 후 오래된 자산·실패한 설치의 임시 항목 정리, 서로 다른 포트의 캐시·토큰·설치 ID 분리 |
-| 화면 | 세로·가로 Canvas 리사이즈, 작은 콘텐츠 뷰포트 입력, 59px/34px 및 가로 44px/21px Safe Area 에뮬레이션, 가로 문서 넘침 없음 |
-
-초기 구현 검증에서는 Production 배포·실기기 설치를 확인하지 않았다. 아래 배포 후 확인 기록과 구분하며, Chromium 에뮬레이션을 실기기 검증으로 취급하지 않는다. 보호된 Preview는 먼저 Vercel 인증을 완료해야 하며 그 결과가 익명 Production 접근을 입증하지 않는다.
-
-### 배포 후 확인 (2026-11-01, KST)
-
-- [main 커밋 `a76ea8d`](https://github.com/han41858/commit-trail/commit/a76ea8d9e54f108df6360efd0871a95d20d3e666)의 Vercel Production 배포가 READY이고, CI 및 Production release 워크플로가 성공한 것을 확인했다. 자동 생성한 [릴리즈 `rel-20261101020811`](https://github.com/han41858/commit-trail/releases/tag/rel-20261101020811)의 태그도 같은 배포 커밋을 가리킨다. 이 검증은 당시의 Production Origin에서 수행했다. 이름 변경 후 목표 주소는 `https://commit-trail-view.vercel.app/`이며, 새 도메인 배포 검증은 별도로 수행한다.
-- 이전 PWA 배포 후 사용자로부터 설치 성공 확인을 받았다. 기기·OS·브라우저와 앱 업데이트 적용 결과는 기록되지 않았으므로, 이번 릴리즈의 플랫폼별 설치·업데이트 검증 완료를 의미하지 않는다.
-- 실제 Android Chrome 설치·업데이트, iOS Safari 홈 화면·상태 표시줄·키보드·회전, 데스크톱 OS 설치 실행 및 업데이트 적용은 플랫폼별로 추가 확인해야 한다.
+이전 배포에서 사용자 설치 성공 확인은 있었지만 기기·OS·브라우저와 업데이트 결과가 기록되지 않아 플랫폼별 검증 완료로 보지 않는다. 실제 Android Chrome 설치·업데이트, iOS Safari 홈 화면·상태 표시줄·키보드·회전, 데스크톱 설치 실행·업데이트는 별도로 확인해야 한다. 배포 검증은 현재 Production Origin에서 익명 접근으로 수행하며, 보호된 Preview의 인증 성공과 구분한다.
 
 이미 로딩된 Git 데이터는 기존 정책에 따라 현재 탭 메모리에 남을 수 있다. 오프라인으로 새 저장소를 여는 경우에는 기존 오류·Retry를 사용하며, 이미 정상 로딩한 저장소의 자동 갱신은 기존 숨김·온라인 복귀 정책을 따른다. 오프라인 Git 데이터베이스나 백그라운드 동기화는 없다.
 
@@ -372,7 +355,7 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 ### 긴급 해제용 빌드
 
-기존 SW·앱 셸 자체가 잘못되어 일반 업데이트 안내로 복구할 수 없을 때 운영자가 선택하는 예외 절차다. **현재 PR의 평상시 설정에는 활성화하지 않는다.**
+기존 SW·앱 셸 자체가 잘못되어 일반 업데이트 안내로 복구할 수 없을 때 운영자가 선택하는 예외 절차다. **평상시 설정에는 활성화하지 않는다.**
 
 1. 정상 정적 앱을 기준으로 `vite.config.ts`의 `VitePWA({ ... })`에 임시로 `selfDestroying: true`를 추가하고 기존 `npm run build`를 실행한다. `filename`/`scope`/배포 Origin은 바꾸지 않는다. 별도 환경 변수는 만들지 않는다.
 2. `dist/sw.js`가 `registration.unregister()`를 포함하는 해제용 worker인지 확인한다. 평상시 precache worker와 혼동하지 않는다.
@@ -391,9 +374,13 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 ```js
 const registration = await navigator.serviceWorker.getRegistration('/');
-if (registration?.scope === `${location.origin}/`) await registration.unregister();
+if (registration?.scope === `${location.origin}/`)
+  await registration.unregister();
 for (const name of await caches.keys()) {
-  if (name.startsWith('workbox-precache-') && name.endsWith(`-${location.origin}/`)) {
+  if (
+    name.startsWith('workbox-precache-') &&
+    name.endsWith(`-${location.origin}/`)
+  ) {
     await caches.delete(name);
   }
 }
@@ -404,10 +391,8 @@ location.reload();
 
 ### 운영상 선택과 후속 항목
 
-- 디버그 JS·CSS도 정적 precache에 포함한다. 오프라인에서 기존 디버그 패널을 사용할 수 있도록 한 선택이며, 온라인 지연 로딩 절감분 약 6.7KB는 SW 설치 시 내려받는다.
+- 디버그 JS·CSS도 정적 precache에 포함하므로 오프라인에서 진단 패널을 사용할 수 있다. 별도 청크이더라도 SW 설치 시 내려받는다.
 - 설치 스플래시의 초기 색은 기본 어두운 브랜드 색으로 고정하고 실행 후에는 기존 시스템/앱 테마를 적용한다.
 - 업데이트 안내는 오른쪽 아래에 고정한다. 디버그 진입 버튼·로딩 실패 안내가 함께 표시되면 같은 알림 영역에서 업데이트 안내의 8px 위에 쌓아, 안내 높이나 줄바꿈에 관계없이 겹치지 않게 한다. 업데이트 안내가 없을 때의 디버그 위치는 유지하며, 패널이 열려 있어도 업데이트 안내를 조작하고 닫을 수 있다.
-- 앱 화면의 로고는 원본(1254px, 약 1.2MB) 대신 최대 표시 크기 160px의 2배인 320px 256색 PNG(`assets/logo-320.png`, 약 22KB)를 사용한다. 원본 `assets/logo.png`는 저장소에 보존하지만 앱 번들과 precache에는 포함하지 않는다. `public/icons/`의 아이콘도 같은 256색 PNG로 다시 인코딩해 합계 약 163KB에서 약 65KB로 줄였다(원본 대비 PSNR 47dB 이상). precache는 약 1.7MiB에서 약 446KiB로 줄었고 API 데이터는 포함하지 않는다.
-- 리뷰 후 로컬 Chromium에서 `selfDestroying: true`인 별도 검증 빌드를 실제 제공해 SW 등록 0개·Cache Storage 0개를 확인했다. PAT와 쿼리·fragment는 보존되고 다른 Origin의 캐시는 유지되었으며 정상 PWA 빌드 재등록도 확인했다. 평상시 프로젝트 설정에는 이 옵션을 켜지 않았다.
-- 업데이트 안내와 디버그 진입 버튼의 실제 경계가 겹치지 않는 것, 디버그 패널을 연 상태에서도 Update app을 선택할 수 있는 것을 확인했다.
-- `npm audit --omit=dev` 결과는 0건이다. 전체 감사의 low 4건은 `workbox-build`·`@rollup/plugin-node-resolve`·`deepmerge` 빌드 경로이며 후속으로 추적한다. 자동 수정 제안은 필요한 v2 API가 없는 `vite-plugin-pwa` 0.2.1로의 대폭 다운그레이드이므로 적용하지 않는다.
+- 기존 `assets/logo.png`·`assets/logo-320.png`는 원본 이력으로 보존하며 앱 번들과 precache에는 포함하지 않는다. 실제 캐시 크기는 빌드 산출물에 따라 달라지고 API 데이터는 포함하지 않는다.
+- 의존성 감사는 현재 잠금 파일과 조회 시점의 권고를 기준으로 `npm audit` 및 `npm audit --omit=dev`로 구분해 확인한다. 과거 감사 건수를 현재 상태로 간주하지 않으며, 자동 수정이 제안돼도 사용 중인 PWA API·호환성을 확인한 뒤 적용한다.

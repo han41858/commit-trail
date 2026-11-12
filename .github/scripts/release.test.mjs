@@ -12,7 +12,9 @@ test(
   },
   () => {
     assert.equal(
-      existsSync(new URL('../workflows/production-release.yml', import.meta.url)),
+      existsSync(
+        new URL('../workflows/production-release.yml', import.meta.url),
+      ),
       targetBranch === 'main',
       'Keep the automatic entrypoint on main; dev must only expose manual recovery.',
     );
@@ -22,7 +24,8 @@ test(
 const SHA = 'a'.repeat(40),
   OTHER = 'b'.repeat(40);
 const bot = { id: 35613825, login: 'vercel[bot]', type: 'Bot' };
-const error = (status) => Object.assign(new Error(`HTTP ${status}`), { status });
+const error = (status) =>
+  Object.assign(new Error(`HTTP ${status}`), { status });
 
 function fixture() {
   const state = {
@@ -40,7 +43,8 @@ function fixture() {
       state: 'success',
       creator: bot,
       created_at: '2026-10-30T14:45:12Z',
-      environment_url: 'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
+      environment_url:
+        'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
       log_url: 'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
       target_url: 'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
     },
@@ -49,7 +53,8 @@ function fixture() {
         state: 'success',
         context: 'Vercel',
         creator: bot,
-        target_url: 'https://vercel.com/han-janghyuns-projects/commit-trail/Abc123',
+        target_url:
+          'https://vercel.com/han-janghyuns-projects/commit-trail/Abc123',
       },
     ],
     comparison: 'ahead',
@@ -77,9 +82,17 @@ function fixture() {
   const repos = {
     getDeployment: wrap('getDeployment', () => state.deployment),
     getDeploymentStatus: wrap('getDeploymentStatus', () => state.status),
-    listDeploymentStatuses: wrap('listDeploymentStatuses', () => state.statuses || [state.status]),
-    compareCommits: wrap('compareCommits', () => ({ status: state.comparison })),
-    listCommitStatusesForRef: wrap('listCommitStatusesForRef', () => state.commitStatuses),
+    listDeploymentStatuses: wrap(
+      'listDeploymentStatuses',
+      () => state.statuses || [state.status],
+    ),
+    compareCommits: wrap('compareCommits', () => ({
+      status: state.comparison,
+    })),
+    listCommitStatusesForRef: wrap(
+      'listCommitStatusesForRef',
+      () => state.commitStatuses,
+    ),
     listReleases: wrap('listReleases', () => state.releases),
     generateReleaseNotes: wrap('generateReleaseNotes', () => {
       if (state.failNotes) throw error(503);
@@ -90,7 +103,8 @@ function fixture() {
       if (state.releaseRace) {
         state.releases.push({
           ...args,
-          html_url: 'https://github.com/han41858/commit-trail/releases/existing',
+          html_url:
+            'https://github.com/han41858/commit-trail/releases/existing',
         });
         state.releaseRace = false;
         throw error(422);
@@ -118,7 +132,10 @@ function fixture() {
     createRef: wrap('createRef', ({ ref, sha }) => {
       if (state.protectedTag) throw error(422);
       if (state.tagRace) {
-        state.refs.push({ ref, object: { type: 'commit', sha: state.tagRace } });
+        state.refs.push({
+          ref,
+          object: { type: 'commit', sha: state.tagRace },
+        });
         state.tagRace = null;
         throw error(422);
       }
@@ -126,16 +143,24 @@ function fixture() {
       state.refs.push(item);
       return item;
     }),
-    getTag: wrap('getTag', ({ tag_sha }) => ({ object: state.annotated[tag_sha] })),
+    getTag: wrap('getTag', ({ tag_sha }) => ({
+      object: state.annotated[tag_sha],
+    })),
   };
-  const github = { rest: { repos, git }, paginate: async (fn, args) => (await fn(args)).data };
+  const github = {
+    rest: { repos, git },
+    paginate: async (fn, args) => (await fn(args)).data,
+  };
   const core = { info() {} };
   const api = { github, context, core };
   return {
     state,
     context,
     api,
-    writes: () => state.calls.filter((call) => ['createRef', 'createRelease'].includes(call.name)),
+    writes: () =>
+      state.calls.filter((call) =>
+        ['createRef', 'createRelease'].includes(call.name),
+      ),
   };
 }
 
@@ -173,8 +198,14 @@ test('the renamed public Production domain is accepted and recorded in release n
   f.state.status.environment_url = 'https://commit-trail-view.vercel.app/';
   const result = await publishRelease(f.api);
   assert.equal(result.created, true);
-  assert.match(f.state.releases[0].body, /Production: https:\/\/commit-trail-view\.vercel\.app\//);
-  assert.match(f.state.releases[0].body, /github\.com\/han41858\/commit-trail\/commit\//);
+  assert.match(
+    f.state.releases[0].body,
+    /Production: https:\/\/commit-trail-view\.vercel\.app\//,
+  );
+  assert.match(
+    f.state.releases[0].body,
+    /github\.com\/han41858\/commit-trail\/commit\//,
+  );
 });
 
 test('Vercel Production succeeds even when GitHub production_environment is false', async () => {
@@ -219,20 +250,30 @@ test('another project or team cannot publish this repository release', async () 
   ]) {
     const f = fixture();
     f.state.commitStatuses[0].target_url = url;
-    await assert.rejects(publishRelease(f.api), /expected Vercel team and project/);
+    await assert.rejects(
+      publishRelease(f.api),
+      /expected Vercel team and project/,
+    );
     assert.equal(f.writes().length, 0);
   }
 });
 
 test('the real Vercel deployment-status URL shape is cross-checked against its authenticated commit status', async () => {
   const f = fixture();
-  assert.equal((await inspectDeployment(f.api)).dashboardUrl, f.state.commitStatuses[0].target_url);
   assert.equal(
-    f.state.calls.find((call) => call.name === 'listCommitStatusesForRef').args.ref,
+    (await inspectDeployment(f.api)).dashboardUrl,
+    f.state.commitStatuses[0].target_url,
+  );
+  assert.equal(
+    f.state.calls.find((call) => call.name === 'listCommitStatusesForRef').args
+      .ref,
     SHA,
   );
   f.state.commitStatuses[0].creator = { ...bot, id: 1 };
-  await assert.rejects(inspectDeployment(f.api), /expected Vercel team and project/);
+  await assert.rejects(
+    inspectDeployment(f.api),
+    /expected Vercel team and project/,
+  );
 });
 
 test('lookalike project and team deployment hosts are rejected even with a valid project commit status', async () => {
@@ -336,7 +377,10 @@ test('atomic tag creation races recover the same SHA or allocate another second'
     const f = fixture();
     f.state.tagRace = sha;
     const result = await publishRelease(f.api);
-    assert.equal(result.tag, sha === SHA ? 'rel-20261030234512' : 'rel-20261030234513');
+    assert.equal(
+      result.tag,
+      sha === SHA ? 'rel-20261030234512' : 'rel-20261030234513',
+    );
     assert.equal(f.state.releases.length, 1);
   }
 });
@@ -351,7 +395,11 @@ test('a tag-policy error is surfaced instead of evading the rule with another ta
 
 test('delayed success events do not replace a newer Latest release', async () => {
   const f = fixture();
-  f.state.releases.push({ tag_name: 'rel-20261031010000', draft: false, prerelease: false });
+  f.state.releases.push({
+    tag_name: 'rel-20261031010000',
+    draft: false,
+    prerelease: false,
+  });
   await publishRelease(f.api);
   assert.equal(f.state.releases.at(-1).make_latest, 'false');
 });
@@ -389,7 +437,10 @@ test('manual retry rejects a failed deployment while allowing an inactive histor
 
 test('annotated tags resolve to the deployed commit without being rewritten', async () => {
   const f = fixture();
-  f.state.refs.push({ ref: 'refs/tags/rel-20261030230000', object: { type: 'tag', sha: OTHER } });
+  f.state.refs.push({
+    ref: 'refs/tags/rel-20261030230000',
+    object: { type: 'tag', sha: OTHER },
+  });
   f.state.annotated = { [OTHER]: { type: 'commit', sha: SHA } };
   assert.equal((await publishRelease(f.api)).tag, 'rel-20261030230000');
   assert.equal(f.state.refs[0].object.type, 'tag');
@@ -397,7 +448,10 @@ test('annotated tags resolve to the deployed commit without being rewritten', as
 
 test('draft releases are not published or overwritten by this automation', async () => {
   const f = fixture();
-  f.state.refs.push({ ref: 'refs/tags/rel-20261030230000', object: { type: 'commit', sha: SHA } });
+  f.state.refs.push({
+    ref: 'refs/tags/rel-20261030230000',
+    object: { type: 'commit', sha: SHA },
+  });
   f.state.releases.push({ tag_name: 'rel-20261030230000', draft: true });
   await assert.rejects(publishRelease(f.api), /reserved/);
   assert.equal(f.writes().length, 0);

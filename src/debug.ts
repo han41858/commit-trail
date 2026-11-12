@@ -142,7 +142,8 @@ const bounded = <T>(items: T[], item: T) => {
 };
 const hash = (value: string) => {
   let result = 2166136261;
-  for (let i = 0; i < value.length; i++) result = Math.imul(result ^ value.charCodeAt(i), 16777619);
+  for (let i = 0; i < value.length; i++)
+    result = Math.imul(result ^ value.charCodeAt(i), 16777619);
   return result >>> 0;
 };
 export function apiKind(path: string): ApiKind {
@@ -271,8 +272,11 @@ export class DebugMetrics {
     return this.enabled() && cycle?.session === this.session;
   }
   forSignal(signal?: AbortSignal) {
-    const cycle = this.enabled() && signal ? this.signals.get(signal) : undefined;
-    return cycle && this.valid(cycle) && cycle.endedAt === undefined ? cycle : undefined;
+    const cycle =
+      this.enabled() && signal ? this.signals.get(signal) : undefined;
+    return cycle && this.valid(cycle) && cycle.endedAt === undefined
+      ? cycle
+      : undefined;
   }
   bind(signal: AbortSignal, cycle?: DebugCycle) {
     if (this.valid(cycle) && !cycle!.cancelled && cycle!.endedAt === undefined)
@@ -332,10 +336,16 @@ export class DebugMetrics {
     part = 'work',
     outcome: CycleSample['outcome'] = 'completed',
   ) {
-    if (!this.valid(cycle) || cycle!.endedAt !== undefined || !cycle!.parts.delete(part)) return;
+    if (
+      !this.valid(cycle) ||
+      cycle!.endedAt !== undefined ||
+      !cycle!.parts.delete(part)
+    )
+      return;
     if (outcome !== 'completed') cycle!.sample.outcome = outcome;
     if (cycle!.parts.size) return;
-    if (cycle!.sample.outcome === 'running') cycle!.sample.outcome = 'completed';
+    if (cycle!.sample.outcome === 'running')
+      cycle!.sample.outcome = 'completed';
     cycle!.endedAt = this.clock();
     cycle!.sample.durationMs = cycle!.endedAt - cycle!.start;
     if (cycle!.cancelled) cycle!.sample.outcome = 'cancelled';
@@ -349,9 +359,14 @@ export class DebugMetrics {
     }, 100);
     this.completions.add(timer);
   }
-  cache(pathOrKind: string, cycle?: DebugCycle, kind: 'memory' | 'shared' = 'memory') {
+  cache(
+    pathOrKind: string,
+    cycle?: DebugCycle,
+    kind: 'memory' | 'shared' = 'memory',
+  ) {
     if (!this.enabled()) return;
-    for (const target of this.targets(cycle)) target[kind === 'memory' ? 'memoryHits' : 'shared']++;
+    for (const target of this.targets(cycle))
+      target[kind === 'memory' ? 'memoryHits' : 'shared']++;
     this.log('cache', {
       kind,
       api: apiKind(pathOrKind),
@@ -364,7 +379,12 @@ export class DebugMetrics {
     for (const target of this.targets(cycle)) target.queuedCancelled++;
     this.touch();
   }
-  request(path: string, conditional: boolean, cycle?: DebugCycle, aborted = false) {
+  request(
+    path: string,
+    conditional: boolean,
+    cycle?: DebugCycle,
+    aborted = false,
+  ) {
     if (!this.enabled()) return;
     if (aborted) {
       for (const target of this.targets(cycle)) target.cancelled++;
@@ -433,11 +453,16 @@ export class DebugMetrics {
       remaining = number('X-RateLimit-Remaining'),
       used = number('X-RateLimit-Used'),
       reset = number('X-RateLimit-Reset');
-    if (limit === null && remaining === null && used === null && reset === null) return;
+    if (limit === null && remaining === null && used === null && reset === null)
+      return;
     const raw = headers.get('X-RateLimit-Resource'),
-      resource = ['core', 'search', 'graphql', 'code_search', 'integration_manifest'].includes(
-        raw || '',
-      )
+      resource = [
+        'core',
+        'search',
+        'graphql',
+        'code_search',
+        'integration_manifest',
+      ].includes(raw || '')
         ? raw!
         : 'other';
     const key = `${resource}:${limit}:${reset}`;
@@ -449,7 +474,8 @@ export class DebugMetrics {
       this.rateWindows.set(key, window);
       observedUsedDelta = window.max - window.min;
     }
-    if (this.rateWindows.size > 20) this.rateWindows.delete(this.rateWindows.keys().next().value!);
+    if (this.rateWindows.size > 20)
+      this.rateWindows.delete(this.rateWindows.keys().next().value!);
     const sample: RateSample = {
       resource,
       limit,
@@ -458,7 +484,9 @@ export class DebugMetrics {
       resetAt: reset === null ? null : reset * 1000,
       observedUsedDelta,
     };
-    const index = this.data.rates.findIndex((item) => item.resource === resource);
+    const index = this.data.rates.findIndex(
+      (item) => item.resource === resource,
+    );
     if (index >= 0) this.data.rates[index] = sample;
     else bounded(this.data.rates, sample);
   }
@@ -498,7 +526,8 @@ export class DebugMetrics {
     JSON.stringify(
       {
         schema: 1,
-        scope: 'local numeric diagnostics; no tokens, URLs, names, messages or raw responses',
+        scope:
+          'local numeric diagnostics; no tokens, URLs, names, messages or raw responses',
         ...clone(this.data),
         activity: {
           active: requestActivity.getSnapshot(),

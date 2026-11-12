@@ -14,12 +14,18 @@ export function monitorDetailsFrame(
     width = Math.min(480, availableWidth - gapX * 2);
   const left = Math.max(
     bounds.left + gapX,
-    Math.min(anchor.left + anchor.width / 2 - width / 2, bounds.right - gapX - width),
+    Math.min(
+      anchor.left + anchor.width / 2 - width / 2,
+      bounds.right - gapX - width,
+    ),
   );
   return {
     left,
     width,
     bottom: bounds.top + availableHeight - gapY,
-    maxHeight: Math.max(0, Math.min(originalHeight * 0.65 - rise, availableHeight - gapY * 2)),
+    maxHeight: Math.max(
+      0,
+      Math.min(originalHeight * 0.65 - rise, availableHeight - gapY * 2),
+    ),
   };
 }

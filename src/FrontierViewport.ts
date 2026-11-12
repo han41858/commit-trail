@@ -28,10 +28,14 @@ export class FrontierViewport {
       rows.every((sha, index) => sha === this.rows[index])
     )
       return;
-    const next = new Map(rows.map((sha, index) => [sha, inset + index * rowHeight]));
+    const next = new Map(
+      rows.map((sha, index) => [sha, inset + index * rowHeight]),
+    );
     const anchors = this.rows.flatMap((sha, index) => {
       const y = next.get(sha);
-      return y === undefined ? [] : [{ before: this.inset + index * this.rowHeight, after: y }];
+      return y === undefined
+        ? []
+        : [{ before: this.inset + index * this.rowHeight, after: y }];
     });
     if (anchors.length) {
       const scale = rowHeight / this.rowHeight;
@@ -47,7 +51,8 @@ export class FrontierViewport {
         return anchor.after + (y - anchor.before) * scale;
       };
       const monotonic = anchors.every(
-        (anchor, index) => index === 0 || anchor.after > anchors[index - 1].after,
+        (anchor, index) =>
+          index === 0 || anchor.after > anchors[index - 1].after,
       );
       const columns = this.columns;
       this.columns = new Map();
@@ -60,7 +65,10 @@ export class FrontierViewport {
           // Topological ordering can also move an existing row outside its old neighbors.
           if (!monotonic)
             for (const anchor of anchors)
-              if (anchor.before >= interval.top && anchor.before <= interval.bottom) {
+              if (
+                anchor.before >= interval.top &&
+                anchor.before <= interval.bottom
+              ) {
                 top = Math.min(top, anchor.after);
                 bottom = Math.max(bottom, anchor.after);
               }
@@ -69,7 +77,10 @@ export class FrontierViewport {
       if (this.previous)
         this.previous = {
           ...this.previous,
-          top: this.previous.top > 0 ? Math.max(0, translate(this.previous.top)) : 0,
+          top:
+            this.previous.top > 0
+              ? Math.max(0, translate(this.previous.top))
+              : 0,
           inset,
         };
     } else if (this.rows.length) {
@@ -86,10 +97,14 @@ export class FrontierViewport {
     this.previous = current;
     const first = Math.max(
       0,
-      Math.ceil((Math.min(before.left, current.left) - 22 - this.origin) / this.spacing),
+      Math.ceil(
+        (Math.min(before.left, current.left) - 22 - this.origin) / this.spacing,
+      ),
     );
     const last = Math.floor(
-      (Math.max(before.left + before.width, current.left + current.width) + 22 - this.origin) /
+      (Math.max(before.left + before.width, current.left + current.width) +
+        22 -
+        this.origin) /
         this.spacing,
     );
     for (let column = first; column <= last; column++) {
@@ -107,7 +122,11 @@ export class FrontierViewport {
       // Clip the movement to the time when this column was horizontally visible.
       if (
         !atMost(before.left - 22, current.left - 22, x) ||
-        !atMost(-before.left - before.width - 22, -current.left - current.width - 22, -x)
+        !atMost(
+          -before.left - before.width - 22,
+          -current.left - current.width - 22,
+          -x,
+        )
       )
         continue;
       const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -115,7 +134,10 @@ export class FrontierViewport {
         topAfter = current.top + current.inset - 60;
       const bottomBefore = before.top + before.height + 300,
         bottomAfter = current.top + current.height + 300;
-      const top = Math.min(lerp(topBefore, topAfter, from), lerp(topBefore, topAfter, to));
+      const top = Math.min(
+        lerp(topBefore, topAfter, from),
+        lerp(topBefore, topAfter, to),
+      );
       const bottom = Math.max(
         lerp(bottomBefore, bottomAfter, from),
         lerp(bottomBefore, bottomAfter, to),

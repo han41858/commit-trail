@@ -39,11 +39,14 @@ export function branchTracks(
       incoming.set(parent.sha, list);
     }
   for (const ref of [...branches].sort(
-    (a, b) => Number(b.name === base) - Number(a.name === base) || a.name.localeCompare(b.name),
+    (a, b) =>
+      Number(b.name === base) - Number(a.name === base) ||
+      a.name.localeCompare(b.name),
   )) {
     const head = positions.get(ref.commit.sha);
     if (!head) continue;
-    const color = colors?.branches.get(ref.name) ?? colors?.nodes.get(ref.commit.sha);
+    const color =
+      colors?.branches.get(ref.name) ?? colors?.nodes.get(ref.commit.sha);
     const owner = colors?.paths.branches.get(ref.name);
     const sharesBase = spine.has(ref.commit.sha);
     const points: Point[] = [],
@@ -68,14 +71,19 @@ export function branchTracks(
       }
       const parent: string | undefined = map.get(sha)?.parents[0]?.sha;
       if (parent && !positions.has(parent)) {
-        points.push({ x: point.x, y: point.y + (reverse ? -ROW / 2 : ROW / 2) });
+        points.push({
+          x: point.x,
+          y: point.y + (reverse ? -ROW / 2 : ROW / 2),
+        });
         break;
       }
       sha = parent;
     }
     tracks.push({
       name: ref.name,
-      lane: lanes?.get(ref.commit.sha) ?? Math.max(0, Math.round((head.x - 48) / 34)),
+      lane:
+        lanes?.get(ref.commit.sha) ??
+        Math.max(0, Math.round((head.x - 48) / 34)),
       color,
       points,
       connections,
@@ -109,7 +117,9 @@ function anchor(
 ): Point | undefined {
   if (points.length === 1) {
     const p = points[0];
-    return p.x >= left && p.x <= right && p.y >= top && p.y <= bottom ? p : undefined;
+    return p.x >= left && p.x <= right && p.y >= top && p.y <= bottom
+      ? p
+      : undefined;
   }
   if (points.length < 2) return;
   const direction = points.at(-1)!.y >= points[0].y ? 1 : -1;
@@ -156,7 +166,9 @@ function anchor(
       requested = inverse(fraction, vertical);
     const t = Math.max(start, Math.min(end, requested));
     const actualY =
-      t === requested && fraction > 0 && fraction < 1 ? target : a.y + (b.y - a.y) * vertical(t);
+      t === requested && fraction > 0 && fraction < 1
+        ? target
+        : a.y + (b.y - a.y) * vertical(t);
     const p = {
       x: Math.max(left, Math.min(right, a.x + (b.x - a.x) * horizontal(t))),
       y: Math.max(top, Math.min(bottom, actualY)),
@@ -183,10 +195,17 @@ function sharedHeadTracks(tracks: BranchTrack[]) {
   }
   return [...groups.values()];
 }
-export function branchLabelContentBottom(tracks: BranchTrack[], height: number, gap = 2) {
+export function branchLabelContentBottom(
+  tracks: BranchTrack[],
+  height: number,
+  gap = 2,
+) {
   return sharedHeadTracks(tracks).reduce(
     (bottom, { track, names }) =>
-      Math.max(bottom, track.points[0].y - height / 2 + names.length * (height + gap) - gap),
+      Math.max(
+        bottom,
+        track.points[0].y - height / 2 + names.length * (height + gap) - gap,
+      ),
     0,
   );
 }
@@ -220,16 +239,27 @@ export function visibleBranchLabels(
     }));
   const barriers = () => [...nodes, ...labelBarriers()];
   const intersects = (a: (typeof rects)[number], b: (typeof rects)[number]) =>
-    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y;
   // Prefer clear space farther right before the left side or another path anchor.
-  const beside = (rect: (typeof rects)[number], candidates = nodes, blockers = barriers()) => {
+  const beside = (
+    rect: (typeof rects)[number],
+    candidates = nodes,
+    blockers = barriers(),
+  ) => {
     const nearby = blockers.filter(
-      (other) => rect.y < other.y + other.height && rect.y + rect.height > other.y,
+      (other) =>
+        rect.y < other.y + other.height && rect.y + rect.height > other.y,
     );
     const xs = [
       rect.x,
       ...candidates
-        .filter((other) => rect.y < other.y + other.height && rect.y + rect.height > other.y)
+        .filter(
+          (other) =>
+            rect.y < other.y + other.height && rect.y + rect.height > other.y,
+        )
         .flatMap((other) => [other.x + other.width, other.x - rect.width]),
     ].sort(
       (a, b) =>
@@ -252,7 +282,8 @@ export function visibleBranchLabels(
   groups.sort(
     (a, b) =>
       Number(b === first) - Number(a === first) ||
-      measure(b.names, b.track.points[0]) - measure(a.names, a.track.points[0]) ||
+      measure(b.names, b.track.points[0]) -
+        measure(a.names, a.track.points[0]) ||
       b.names.length - a.names.length,
   );
   for (const { track, names } of groups) {
@@ -267,7 +298,10 @@ export function visibleBranchLabels(
               : Math.max(left + 8, Math.min(point.x + 12, right - width - 8));
       return {
         x,
-        y: Math.max(top + 6, Math.min(point.y - height / 2, bottom - stackHeight)),
+        y: Math.max(
+          top + 6,
+          Math.min(point.y - height / 2, bottom - stackHeight),
+        ),
         width,
         height: stackHeight,
       };
@@ -286,7 +320,13 @@ export function visibleBranchLabels(
     if (stackHeight > bottom - top - 6) {
       const head = track.points[0],
         y = head.y - height / 2;
-      if (head.x < left || head.x > right || y > bottom || y + stackHeight < top) continue;
+      if (
+        head.x < left ||
+        head.x > right ||
+        y > bottom ||
+        y + stackHeight < top
+      )
+        continue;
       const rect = box(head),
         position = beside({ ...rect, y }) || rect;
       place({
@@ -302,8 +342,13 @@ export function visibleBranchLabels(
     }
     let fallback: BranchLabel | undefined,
       placed = false;
-    for (let row = 0; row <= Math.ceil((bottom - top) / (height + gap + 2)); row++) {
-      const target = top + (track.lane % 4) * (height + gap) + row * (height + gap + 2);
+    for (
+      let row = 0;
+      row <= Math.ceil((bottom - top) / (height + gap + 2));
+      row++
+    ) {
+      const target =
+        top + (track.lane % 4) * (height + gap) + row * (height + gap + 2);
       let point: Point | undefined,
         distance = Infinity;
       for (const path of [track.points, ...(track.connections || [])]) {
@@ -338,12 +383,21 @@ export function visibleBranchLabels(
       const width = measure(names, fallback);
       const ys = [
         top + 6,
-        ...barriers().flatMap((rect) => [rect.y + rect.height, rect.y - stackHeight]),
+        ...barriers().flatMap((rect) => [
+          rect.y + rect.height,
+          rect.y - stackHeight,
+        ]),
       ]
         .filter(
-          (y) => y >= top + 6 && y + stackHeight <= bottom && Math.abs(y - fallback!.boxY!) <= ROW,
+          (y) =>
+            y >= top + 6 &&
+            y + stackHeight <= bottom &&
+            Math.abs(y - fallback!.boxY!) <= ROW,
         )
-        .sort((a, b) => Math.abs(a - fallback!.boxY!) - Math.abs(b - fallback!.boxY!));
+        .sort(
+          (a, b) =>
+            Math.abs(a - fallback!.boxY!) - Math.abs(b - fallback!.boxY!),
+        );
       let position: (typeof rects)[number] | undefined;
       // Preserve existing node-clear placement first, then consider badge edges.
       // If no nearby position clears nodes, still keep branch names separate.

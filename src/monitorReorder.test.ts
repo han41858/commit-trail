@@ -16,7 +16,11 @@ test('drop boundaries account for the removed source while retaining the actual 
     [0, 280, 3, 2, 302.5],
     [3, 110, 1, 1, 100.5],
   ])
-    assert.deepEqual(monitorDropTarget(bounds, x, from), { boundary, to, left });
+    assert.deepEqual(monitorDropTarget(bounds, x, from), {
+      boundary,
+      to,
+      left,
+    });
 });
 
 test('32-column first-to-last and last-to-first drops preserve every repository exactly once', () => {
@@ -26,7 +30,10 @@ test('32-column first-to-last and last-to-first drops preserve every repository 
     right: (index + 1) * 9.03125 - 1,
   }));
   const end = monitorDropTarget(bounds, 400, 0)!;
-  assert.deepEqual(moveMonitorRepository(names, names[0], end.to), [...names.slice(1), names[0]]);
+  assert.deepEqual(moveMonitorRepository(names, names[0], end.to), [
+    ...names.slice(1),
+    names[0],
+  ]);
   const start = monitorDropTarget(bounds, -10, 31)!;
   assert.deepEqual(moveMonitorRepository(names, names[31], start.to), [
     names[31],

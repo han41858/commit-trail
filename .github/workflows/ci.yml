@@ -38,7 +38,6 @@ jobs:
         run: node .github/scripts/change-impact.mjs --ci
 
       - name: Set up Node.js
-        if: steps.impact.outputs.docs_only != 'true'
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -46,8 +45,10 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        if: steps.impact.outputs.docs_only != 'true'
         run: npm ci --no-audit --no-fund
+
+      - name: Check formatting
+        run: npm run format:check
 
       - name: Run tests
         if: steps.impact.outputs.docs_only != 'true'
@@ -63,4 +64,4 @@ jobs:
 
       - name: Documentation-only result
         if: steps.impact.outputs.docs_only == 'true'
-        run: echo 'Documentation only; dependency installation, tests and build are unnecessary.'
+        run: echo 'Documentation only; formatting checked, application tests and build are unnecessary.'

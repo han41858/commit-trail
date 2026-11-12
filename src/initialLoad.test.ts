@@ -32,7 +32,8 @@ async function using(
     holds = new Map<string, ReturnType<typeof deferred>>(),
     failures = new Map<string, number>(),
     signals = new Map<string, AbortSignal>();
-  const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), { status });
   globalThis.fetch = async (input, init) => {
     const path = new URL(String(input)).pathname,
       signal = init?.signal;
@@ -51,7 +52,8 @@ async function using(
       ]);
     const failure = failures.get(path);
     if (failure) return json({}, failure);
-    if (path.endsWith('/branches')) return json([{ name: 'main', commit: { sha: 'head' } }]);
+    if (path.endsWith('/branches'))
+      return json([{ name: 'main', commit: { sha: 'head' } }]);
     if (path.endsWith('/commits'))
       return json([
         {
@@ -66,7 +68,11 @@ async function using(
         },
       ]);
     if (path.endsWith('/actions/runs')) return json({ workflow_runs: [] });
-    if (['/tags', '/releases', '/activity'].some((suffix) => path.endsWith(suffix)))
+    if (
+      ['/tags', '/releases', '/activity'].some((suffix) =>
+        path.endsWith(suffix),
+      )
+    )
       return json([]);
     return json({ default_branch: 'main', private: false });
   };
@@ -86,12 +92,18 @@ test('opening requests the repository and its first branch page together', async
     const history = new History();
     const opening = history.open('a/one');
     await until(() => paths.length === 2);
-    assert.deepEqual([...paths].sort(), ['/repos/a/one', '/repos/a/one/branches']);
+    assert.deepEqual([...paths].sort(), [
+      '/repos/a/one',
+      '/repos/a/one/branches',
+    ]);
     repository.release();
     await opening;
     assert.equal(history.getSnapshot().error, '');
     assert.equal(history.getSnapshot().commits.length, 1);
-    assert.equal(paths.filter((path) => path === '/repos/a/one/branches').length, 1);
+    assert.equal(
+      paths.filter((path) => path === '/repos/a/one/branches').length,
+      1,
+    );
     history.cancel();
   });
 });

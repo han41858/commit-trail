@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { History, type HistorySnapshot } from './history';
 import { useRetryCountdown, retryLabel } from './useRetryCountdown';
-import { mergedCount, preferredBranch, recommendBranches } from './recommendations';
+import {
+  mergedCount,
+  preferredBranch,
+  recommendBranches,
+} from './recommendations';
 
 export function BranchPicker({
   history,
@@ -46,7 +50,10 @@ export function BranchPicker({
     state.ranking.counts,
     state.meta?.default_branch || '',
   );
-  const preferred = preferredBranch(state.branches, state.meta?.default_branch || '');
+  const preferred = preferredBranch(
+    state.branches,
+    state.meta?.default_branch || '',
+  );
   const search = query.trim();
   const matches = state.branches
     .filter((b) => b.name.toLowerCase().includes(search.toLowerCase()))
@@ -61,7 +68,10 @@ export function BranchPicker({
   async function find() {
     if (!search) return;
     if (await history.findBranch(search)) {
-      if (history.getSnapshot().repo === state.repo && history.getSnapshot().base !== state.base)
+      if (
+        history.getSnapshot().repo === state.repo &&
+        history.getSnapshot().base !== state.base
+      )
         onPicked(history.getSnapshot().base);
       setOpen(false);
     }
@@ -81,7 +91,11 @@ export function BranchPicker({
         <span aria-hidden="true">⌄</span>
       </button>
       {open && (
-        <section className="branch-menu floating-panel" id="branch-menu" aria-label="Choose branch">
+        <section
+          className="branch-menu floating-panel"
+          id="branch-menu"
+          aria-label="Choose branch"
+        >
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -169,7 +183,10 @@ export function BranchPicker({
               </button>
             )}
             {state.moreBranches && (
-              <button disabled={state.busy} onClick={() => void history.loadBranches()}>
+              <button
+                disabled={state.busy}
+                onClick={() => void history.loadBranches()}
+              >
                 More branch names
               </button>
             )}

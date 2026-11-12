@@ -12,13 +12,20 @@ export type Branch = { name: string; commit: { sha: string } };
 export type HistoryFrontier = { sha: string; sources: string[] };
 export const ROW = 31;
 export function commitTime(commit: Commit) {
-  for (const value of [commit.commit.committer?.date, commit.commit.author?.date]) {
+  for (const value of [
+    commit.commit.committer?.date,
+    commit.commit.author?.date,
+  ]) {
     const time = value ? Date.parse(value) : NaN;
     if (Number.isFinite(time)) return time;
   }
   return NaN;
 }
-export function layout(commits: Commit[], previous = new Map<string, number>(), baseHead?: string) {
+export function layout(
+  commits: Commit[],
+  previous = new Map<string, number>(),
+  baseHead?: string,
+) {
   const map = new Map(commits.map((c) => [c.sha, c]));
   const children = new Map<string, number>();
   for (const c of map.values())
@@ -29,7 +36,10 @@ export function layout(commits: Commit[], previous = new Map<string, number>(), 
   const priority = new Map(
     [...map.values()].map((commit, index) => {
       const time = commitTime(commit);
-      return [commit.sha, { time: Number.isFinite(time) ? time : -Infinity, index }];
+      return [
+        commit.sha,
+        { time: Number.isFinite(time) ? time : -Infinity, index },
+      ];
     }),
   );
   const newer = (a: Commit, b: Commit) => {
@@ -56,7 +66,8 @@ export function layout(commits: Commit[], previous = new Map<string, number>(), 
       let index = 0;
       while (index * 2 + 1 < ready.length) {
         let child = index * 2 + 1;
-        if (child + 1 < ready.length && newer(ready[child + 1], ready[child])) child++;
+        if (child + 1 < ready.length && newer(ready[child + 1], ready[child]))
+          child++;
         if (!newer(ready[child], ready[index])) break;
         [ready[index], ready[child]] = [ready[child], ready[index]];
         index = child;
@@ -64,7 +75,8 @@ export function layout(commits: Commit[], previous = new Map<string, number>(), 
     }
     return commit;
   };
-  for (const commit of map.values()) if (!children.get(commit.sha)) push(commit);
+  for (const commit of map.values())
+    if (!children.get(commit.sha)) push(commit);
   const ordered: Commit[] = [];
   while (ready.length) {
     const c = pop();
@@ -87,7 +99,9 @@ export function layout(commits: Commit[], previous = new Map<string, number>(), 
   const lanes = new Map<string, number>();
   const active: (string | null)[] = Array(minimum).fill(null);
   const free = () => {
-    const slot = active.findIndex((value, index) => index >= minimum && value === null);
+    const slot = active.findIndex(
+      (value, index) => index >= minimum && value === null,
+    );
     return slot < 0 ? active.length : slot;
   };
   for (const c of ordered) {
@@ -95,7 +109,9 @@ export function layout(commits: Commit[], previous = new Map<string, number>(), 
     if (lane < minimum && !spine.has(c.sha)) {
       const preferred = previous.get(c.sha);
       lane =
-        preferred !== undefined && preferred >= minimum && !active[preferred] ? preferred : free();
+        preferred !== undefined && preferred >= minimum && !active[preferred]
+          ? preferred
+          : free();
     }
     lanes.set(c.sha, lane);
     active[lane] = null;
@@ -127,7 +143,10 @@ export function parseRepo(input: string) {
     .replace(/^https:\/\/github\.com\//i, '')
     .replace(/\/$/, '')
     .replace(/\.git$/, '');
-  if (!/^[\w.-]+\/[\w.-]+$/.test(clean) || clean.split('/').some((s) => s === '.' || s === '..'))
+  if (
+    !/^[\w.-]+\/[\w.-]+$/.test(clean) ||
+    clean.split('/').some((s) => s === '.' || s === '..')
+  )
     throw new Error('Enter a GitHub URL or owner/repository.');
   return clean;
 }

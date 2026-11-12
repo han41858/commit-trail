@@ -4,7 +4,10 @@ import { readFileSync } from 'node:fs';
 import { assertMainPromotion } from './check-promotion.mjs';
 
 test('CI preserves a static required check and runs the job for PR edits', () => {
-  const workflow = readFileSync(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+  const workflow = readFileSync(
+    new URL('../workflows/ci.yml', import.meta.url),
+    'utf8',
+  );
   const jobs = workflow.split('  test-build:\n');
   assert.equal(jobs.length, 2);
   const header = jobs[1].split('    steps:\n')[0];
@@ -12,7 +15,10 @@ test('CI preserves a static required check and runs the job for PR edits', () =>
   // even after an older successful run was retried. Keep a real, stable job.
   assert.match(header, /^    name: Test and build$/m);
   assert.doesNotMatch(header, /^    if:/m);
-  assert.match(workflow, /^    types: \[opened, synchronize, reopened, edited\]$/m);
+  assert.match(
+    workflow,
+    /^    types: \[opened, synchronize, reopened, edited\]$/m,
+  );
 });
 
 const promotion = {
@@ -28,14 +34,28 @@ test('main accepts a promotion from the same repository dev branch', () => {
 });
 
 test('feature, release, hotfix and other branches cannot bypass dev', () => {
-  for (const headRef of ['feat/example', 'release/example', 'hotfix/example', 'main', 'Dev', '']) {
-    assert.throws(() => assertMainPromotion({ ...promotion, headRef }), /Merge into dev first/);
+  for (const headRef of [
+    'feat/example',
+    'release/example',
+    'hotfix/example',
+    'main',
+    'Dev',
+    '',
+  ]) {
+    assert.throws(
+      () => assertMainPromotion({ ...promotion, headRef }),
+      /Merge into dev first/,
+    );
   }
 });
 
 test('a fork branch named dev cannot promote directly to main', () => {
   assert.throws(
-    () => assertMainPromotion({ ...promotion, headRepository: 'someone/commit-trail' }),
+    () =>
+      assertMainPromotion({
+        ...promotion,
+        headRepository: 'someone/commit-trail',
+      }),
     /Merge into dev first/,
   );
 });
@@ -46,13 +66,20 @@ test('main fails closed if repository metadata is missing', () => {
     { headRepository: undefined },
     { repository: undefined },
   ]) {
-    assert.throws(() => assertMainPromotion({ ...promotion, ...patch }), /Merge into dev first/);
+    assert.throws(
+      () => assertMainPromotion({ ...promotion, ...patch }),
+      /Merge into dev first/,
+    );
   }
 });
 
 test('feature and fork PRs targeting dev continue through ordinary validation', () => {
   assert.doesNotThrow(() =>
-    assertMainPromotion({ ...promotion, baseRef: 'dev', headRef: 'feat/example' }),
+    assertMainPromotion({
+      ...promotion,
+      baseRef: 'dev',
+      headRef: 'feat/example',
+    }),
   );
   assert.doesNotThrow(() =>
     assertMainPromotion({

@@ -1,6 +1,14 @@
 import { drawGraphCanvas, type BranchBadge } from './graphCanvas';
 import { debug } from './debug';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   graphHoverIndex,
   graphHoverOwner,
@@ -12,15 +20,18 @@ import { GraphOpacity } from './graphOpacity';
 import { GraphPress } from './GraphPress';
 import { ROW, type Commit, type Branch, type HistoryFrontier } from './model';
 import { measuredLayout } from './measuredLayout';
-import {
-  branchTracks,
-  branchLabelContentBottom,
-} from './branchLabels';
+import { branchTracks, branchLabelContentBottom } from './branchLabels';
 import { graphColors } from './graphColors';
 import { monthMarkers } from './monthMarkers';
 import { emojify } from './emoji';
 import { scrollPosition, scrollAnchor } from './scrollPosition';
-import { actionText, attempt, runStatus, runElapsed, type CommitInfo } from './CommitInfo';
+import {
+  actionText,
+  attempt,
+  runStatus,
+  runElapsed,
+  type CommitInfo,
+} from './CommitInfo';
 import {
   graphFrame,
   branchDisplayNames,
@@ -90,7 +101,9 @@ export function Graph({
   const hoverRef = useRef<GraphHoverTarget | null>(null);
   const hoverExit = useRef<number | undefined>(undefined);
   const [hoverTarget, setHoverTarget] = useState<GraphHoverTarget | null>(null);
-  const [canHover, setCanHover] = useState(() => window.matchMedia('(any-hover: hover)').matches);
+  const [canHover, setCanHover] = useState(
+    () => window.matchMedia('(any-hover: hover)').matches,
+  );
   const [opacity] = useState(() => new GraphOpacity());
   const cancelHoverExit = useCallback(() => {
     window.clearTimeout(hoverExit.current);
@@ -100,7 +113,8 @@ export function Graph({
     (target: GraphHoverTarget | null) => {
       cancelHoverExit();
       const previous = hoverRef.current;
-      if (previous?.kind === target?.kind && previous?.id === target?.id) return;
+      if (previous?.kind === target?.kind && previous?.id === target?.id)
+        return;
       hoverRef.current = target;
       setHoverTarget(target);
     },
@@ -119,7 +133,9 @@ export function Graph({
     width: containerResponsive ? 0 : window.innerWidth,
     height: window.innerHeight,
   });
-  const [documentVisible, setDocumentVisible] = useState(() => !document.hidden);
+  const [documentVisible, setDocumentVisible] = useState(
+    () => !document.hidden,
+  );
   const pageVisible = active && documentVisible;
   useEffect(() => {
     const update = () => setDocumentVisible(!document.hidden);
@@ -139,7 +155,10 @@ export function Graph({
   // Split columns use their measured width with the existing responsive rules.
   const narrow = containerResponsive ? view.width <= 800 : screenNarrow;
   const head = baseHead || branches.find((b) => b.name === branch)?.commit.sha;
-  const data = useMemo(() => measuredLayout(commits, prior.current, head), [commits, head]);
+  const data = useMemo(
+    () => measuredLayout(commits, prior.current, head),
+    [commits, head],
+  );
   useEffect(() => {
     prior.current = data.lanes;
   }, [data]);
@@ -151,16 +170,22 @@ export function Graph({
     () => (reverse ? [...data.ordered].reverse() : data.ordered),
     [data, reverse],
   );
-  const months = useMemo(() => monthMarkers(ordered, data.spine), [ordered, data, reverse]);
-  const padding = topInset;
-  const maxLane = Array.from(data.lanes.values()).reduce((a, b) => Math.max(a, b), 0);
-  const { spacing, width, branchWidth, showMessages, messageX, messageWidth } = graphFrame(
-    view.width,
-    maxLane,
-    narrow,
+  const months = useMemo(
+    () => monthMarkers(ordered, data.spine),
+    [ordered, data, reverse],
   );
+  const padding = topInset;
+  const maxLane = Array.from(data.lanes.values()).reduce(
+    (a, b) => Math.max(a, b),
+    0,
+  );
+  const { spacing, width, branchWidth, showMessages, messageX, messageWidth } =
+    graphFrame(view.width, maxLane, narrow);
   // clientWidth rounds fractional columns; an origin on the edge can hit the next column.
-  const origin = containerResponsive && view.width <= GRAPH_ORIGIN ? view.width / 2 : GRAPH_ORIGIN;
+  const origin =
+    containerResponsive && view.width <= GRAPH_ORIGIN
+      ? view.width / 2
+      : GRAPH_ORIGIN;
   const positions = useMemo(
     () =>
       new Map(
@@ -195,7 +220,16 @@ export function Graph({
   }, [ordered, positions, padding, view, info, pageVisible]);
   const tracks = useMemo(
     () =>
-      branchTracks(commits, branches, branch, data.spine, positions, reverse, tones, data.lanes),
+      branchTracks(
+        commits,
+        branches,
+        branch,
+        data.spine,
+        positions,
+        reverse,
+        tones,
+        data.lanes,
+      ),
     [commits, branches, branch, data, positions, reverse, tones],
   );
   const hoverIndex = useMemo(
@@ -216,10 +250,30 @@ export function Graph({
         const path = new Path2D();
         const middle = (edge.from.y + edge.to.y) / 2;
         path.moveTo(edge.from.x, edge.from.y);
-        path.bezierCurveTo(edge.from.x, middle, edge.to.x, middle, edge.to.x, edge.to.y);
-        return { ...edge, path, owner: graphHoverOwner({ kind: 'edge', id: edge.id }, hoverIndex) };
+        path.bezierCurveTo(
+          edge.from.x,
+          middle,
+          edge.to.x,
+          middle,
+          edge.to.x,
+          edge.to.y,
+        );
+        return {
+          ...edge,
+          path,
+          owner: graphHoverOwner({ kind: 'edge', id: edge.id }, hoverIndex),
+        };
       }),
-    [ordered, positions, data.spine, origin, reverse, view.top, view.height, hoverIndex],
+    [
+      ordered,
+      positions,
+      data.spine,
+      origin,
+      reverse,
+      view.top,
+      view.height,
+      hoverIndex,
+    ],
   );
   const selectionFocus = useMemo(
     () =>
@@ -244,11 +298,19 @@ export function Graph({
       selectionFocus &&
       hoverTarget &&
       hoverTarget.kind !== 'branch' &&
-      graphHoverOwner(hoverTarget, hoverIndex) === hoverIndex.owners.get(selected)
+      graphHoverOwner(hoverTarget, hoverIndex) ===
+        hoverIndex.owners.get(selected)
     )
       return selectionFocus;
     return resolveGraphHover(hoverTarget, hoverIndex);
-  }, [canHover, pageVisible, hoverTarget, hoverIndex, selected, selectionFocus]);
+  }, [
+    canHover,
+    pageVisible,
+    hoverTarget,
+    hoverIndex,
+    selected,
+    selectionFocus,
+  ]);
   const focus = hoverFocus || selectionFocus || pathFocus;
   const opacityIndex = useMemo(
     () => ({
@@ -274,13 +336,23 @@ export function Graph({
     };
   }, [updateHover]);
   useLayoutEffect(() => {
-    if (!canHover || !pageVisible || (hoverTarget && !hoverFocus)) updateHover(null);
+    if (!canHover || !pageVisible || (hoverTarget && !hoverFocus))
+      updateHover(null);
     if (!pageVisible) pinnedTooltip.current = false;
-    if ((!canHover && !pinnedTooltip.current) || !pageVisible) setHoveredBadge(null);
+    if ((!canHover && !pinnedTooltip.current) || !pageVisible)
+      setHoveredBadge(null);
   }, [canHover, pageVisible, hoverTarget, hoverFocus, updateHover]);
   useLayoutEffect(() => {
     updateHover(null);
-  }, [columnOrder, view.width, view.height, reverse, branch, theme, updateHover]);
+  }, [
+    columnOrder,
+    view.width,
+    view.height,
+    reverse,
+    branch,
+    theme,
+    updateHover,
+  ]);
   useLayoutEffect(() => {
     pinnedTooltip.current = false;
     setHoveredBadge(null);
@@ -304,7 +376,10 @@ export function Graph({
       badgeX = bounds.left + hoveredBadge.x - graph.scrollLeft,
       badgeY = bounds.top + hoveredBadge.y - graph.scrollTop,
       below = badgeY + hoveredBadge.height + 6,
-      y = below + size.height <= top + height - 8 ? below : badgeY - size.height - 6;
+      y =
+        below + size.height <= top + height - 8
+          ? below
+          : badgeY - size.height - 6;
     tooltip.style.left = `${Math.max(left + 8, Math.min(badgeX, left + width - size.width - 8))}px`;
     tooltip.style.top = `${Math.max(top + 8, Math.min(y, top + height - size.height - 8))}px`;
   }, [hoveredBadge]);
@@ -373,7 +448,8 @@ export function Graph({
     if (!pageVisible) return;
     const el = container.current!,
       after = ordered.map((c) => c.sha);
-    const top = followingLatest.current !== null ? el.scrollTop : scrollTop.current;
+    const top =
+      followingLatest.current !== null ? el.scrollTop : scrollTop.current;
     const next =
       followingLatest.current !== null
         ? reverse
@@ -388,7 +464,13 @@ export function Graph({
             reverse,
             lastRefresh.current !== refreshVersion,
           );
-    const anchor = scrollAnchor(lastOrder.current, after, top, el.clientHeight, padding);
+    const anchor = scrollAnchor(
+      lastOrder.current,
+      after,
+      top,
+      el.clientHeight,
+      padding,
+    );
     if (
       lastOrder.current.length &&
       next !== anchor &&
@@ -410,7 +492,8 @@ export function Graph({
           const top = el.scrollTop;
           scrollTop.current = top;
           setView((v) => (v.top === top ? v : { ...v, top }));
-          if (progress < 1 && top !== target) followingFrame.current = requestAnimationFrame(move);
+          if (progress < 1 && top !== target)
+            followingFrame.current = requestAnimationFrame(move);
           else followingLatest.current = null;
         };
         followingFrame.current = requestAnimationFrame(move);
@@ -418,7 +501,9 @@ export function Graph({
     } else {
       followingLatest.current = null;
       el.scrollTo({ top: next, behavior: 'auto' });
-      setView((v) => (v.top === el.scrollTop ? v : { ...v, top: el.scrollTop }));
+      setView((v) =>
+        v.top === el.scrollTop ? v : { ...v, top: el.scrollTop },
+      );
     }
     scrollTop.current = el.scrollTop;
     lastOrder.current = after;
@@ -445,7 +530,9 @@ export function Graph({
     const el = container.current!;
     const update = () => {
       const { clientWidth: width, clientHeight: height } = el;
-      setView((v) => (v.width === width && v.height === height ? v : { ...v, width, height }));
+      setView((v) =>
+        v.width === width && v.height === height ? v : { ...v, width, height },
+      );
     };
     update();
     const observer = new ResizeObserver(update);
@@ -468,12 +555,15 @@ export function Graph({
         .slice(first, last)
         .filter((c) => {
           const x = positions.get(c.sha)!.x;
-          return x >= el.scrollLeft - 20 && x <= el.scrollLeft + view.width + 20;
+          return (
+            x >= el.scrollLeft - 20 && x <= el.scrollLeft + view.width + 20
+          );
         })
         .map((c) => c.sha),
     );
   }, [ordered, positions, padding, view, onVisible, pageVisible]);
-  const icons = (sha: string, x: number) => commitVersionIcons(info?.get(sha), x);
+  const icons = (sha: string, x: number) =>
+    commitVersionIcons(info?.get(sha), x);
   useLayoutEffect(() => {
     captureFrontiers.current = () => {
       if (!hasMore || !pageVisible || followingLatest.current !== null) return;
@@ -512,10 +602,14 @@ export function Graph({
     const dpr = window.devicePixelRatio || 1;
     const pixelWidth = Math.floor(width * dpr),
       pixelHeight = Math.floor(view.height * dpr);
-    if (canvas.current!.width !== pixelWidth) canvas.current!.width = pixelWidth;
-    if (canvas.current!.height !== pixelHeight) canvas.current!.height = pixelHeight;
+    if (canvas.current!.width !== pixelWidth)
+      canvas.current!.width = pixelWidth;
+    if (canvas.current!.height !== pixelHeight)
+      canvas.current!.height = pixelHeight;
     opacity.setTarget(focus, opacityIndex, performance.now());
-    const rings = container.current!.querySelectorAll<HTMLElement>('.actions-pending-ring');
+    const rings = container.current!.querySelectorAll<HTMLElement>(
+      '.actions-pending-ring',
+    );
     const drawing = {
       dpr,
       width,
@@ -542,7 +636,8 @@ export function Graph({
     let frame: number | undefined;
     const draw = (now: number) => {
       const started = debug.startTime();
-      const alpha = (kind: keyof GraphHoverFocus, id: string) => opacity.value(kind, id, now);
+      const alpha = (kind: keyof GraphHoverFocus, id: string) =>
+        opacity.value(kind, id, now);
       const painted = drawGraphCanvas(
         ctx,
         container.current!,
@@ -647,7 +742,8 @@ export function Graph({
     const candidates = preferred.length ? preferred : nearest;
     // At an indistinguishable crossing, keep an existing flow or wait for clarity.
     if (new Set(candidates.map(identity)).size !== 1) return;
-    if (inMerge && identity(candidates[0]) === current) return (hoverRef.current || pathTarget)!;
+    if (inMerge && identity(candidates[0]) === current)
+      return (hoverRef.current || pathTarget)!;
     return { kind: 'edge', id: candidates[0].edge.id } as const;
   }
   function badgeAt(clientX: number, clientY: number) {
@@ -660,10 +756,18 @@ export function Graph({
     if (point && Math.hypot(x - point.x, y - point.y) <= 12) return;
     return badgeHits.current.find(
       (label) =>
-        x >= label.x && x <= label.x + label.width && y >= label.y && y <= label.y + label.height,
+        x >= label.x &&
+        x <= label.x + label.width &&
+        y >= label.y &&
+        y <= label.y + label.height,
     );
   }
-  function pick(clientX: number, clientY: number, forHover = false, includeIcons = !forHover) {
+  function pick(
+    clientX: number,
+    clientY: number,
+    forHover = false,
+    includeIcons = !forHover,
+  ) {
     const el = container.current!,
       rect = el.getBoundingClientRect();
     const x = clientX - rect.left + el.scrollLeft,
@@ -672,9 +776,14 @@ export function Graph({
     if (!c) return;
     const p = positions.get(c.sha)!;
     return Math.abs(y - p.y) <= 22 &&
-      ((forHover ? Math.hypot(x - p.x, y - p.y) <= 12 : Math.abs(x - p.x) <= 22) ||
-        (includeIcons && icons(c.sha, p.x).some((icon) => Math.abs(x - icon.x) <= 9)) ||
-        (showMessages && x >= messageX && x <= messageX + (messageHits.current.get(c.sha) || 0)))
+      ((forHover
+        ? Math.hypot(x - p.x, y - p.y) <= 12
+        : Math.abs(x - p.x) <= 22) ||
+        (includeIcons &&
+          icons(c.sha, p.x).some((icon) => Math.abs(x - icon.x) <= 9)) ||
+        (showMessages &&
+          x >= messageX &&
+          x <= messageX + (messageHits.current.get(c.sha) || 0)))
       ? c
       : undefined;
   }
@@ -711,7 +820,17 @@ export function Graph({
           setPathTarget(null);
           updateHover(null);
         }
-        if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key))
+        if (
+          [
+            'ArrowUp',
+            'ArrowDown',
+            'PageUp',
+            'PageDown',
+            'Home',
+            'End',
+            ' ',
+          ].includes(event.key)
+        )
           stopFollowing();
       }}
       onScroll={(e) => {
@@ -746,13 +865,16 @@ export function Graph({
             gesture.current = null;
             if (start && !start.acceptsClick(performance.now())) return;
             const badge = badgeAt(e.clientX, e.clientY);
-            let commit = badge ? undefined : pick(e.clientX, e.clientY, true, true);
+            let commit = badge
+              ? undefined
+              : pick(e.clientX, e.clientY, true, true);
             const target: GraphHoverTarget | null = badge
               ? { kind: 'branch', id: badge.name }
               : commit
                 ? null
                 : (edgeAt(e.clientX, e.clientY, start?.radius ?? 5) ?? null);
-            if (!badge && !commit && !target) commit = pick(e.clientX, e.clientY);
+            if (!badge && !commit && !target)
+              commit = pick(e.clientX, e.clientY);
             updateHover(null);
             pinnedTooltip.current = !!badge && badge.text !== badge.name;
             setHoveredBadge(pinnedTooltip.current ? badge! : null);
@@ -822,11 +944,14 @@ export function Graph({
               p = positions.get(c.sha)!,
               el = container.current!,
               x = e.clientX - el.getBoundingClientRect().left + el.scrollLeft;
-            const icon = icons(c.sha, p.x).find((icon) => Math.abs(x - icon.x) <= 9);
+            const icon = icons(c.sha, p.x).find(
+              (icon) => Math.abs(x - icon.x) <= 9,
+            );
             e.currentTarget.title = [
               `${c.sha.slice(0, 7)} · ${emojify(c.commit.message.split('\n')[0])}`,
               icon?.title,
-              extra?.actions && ['running', 'queued'].includes(extra.actions.state)
+              extra?.actions &&
+              ['running', 'queued'].includes(extra.actions.state)
                 ? `${actionText(extra.actions.state)}${extra.actions.ratio !== null ? ` · ${extra.actions.done}/${extra.actions.total} jobs` : ''}`
                 : '',
               ...(extra?.runs || []).map(
@@ -860,7 +985,12 @@ export function Graph({
         })}
       </div>
       {hoveredBadge && (
-        <div id={branchTooltipId} ref={branchTooltip} className="branch-tooltip" role="tooltip">
+        <div
+          id={branchTooltipId}
+          ref={branchTooltip}
+          className="branch-tooltip"
+          role="tooltip"
+        >
           {hoveredBadge.name}
         </div>
       )}

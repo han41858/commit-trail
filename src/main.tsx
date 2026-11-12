@@ -1,3 +1,4 @@
+import { BrandMark } from './BrandMark';
 import React, {
   useCallback,
   useEffect,
@@ -36,11 +37,21 @@ import { useRepositoryLocation } from './useRepositoryLocation';
 import { repositoryLocationKey } from './repositoryLocation';
 import { lowercaseRepoInput, parseRepo, type Commit } from './model';
 import { RepositoryInput } from './RepositoryInput';
-import { RecentRepositories, RECENT_REPOSITORIES_KEY } from './RecentRepositories';
+import {
+  RecentRepositories,
+  RECENT_REPOSITORIES_KEY,
+} from './RecentRepositories';
 import { BranchSelections, BRANCH_SELECTIONS_KEY } from './BranchSelections';
 import type { RepositoryLocation } from './repositoryLocation';
-import logo from '../assets/logo-320.png';
-import { readStoredToken, saveStoredToken, TOKEN_STORAGE_KEY } from './tokenStorage';
+import darkLogo from '../assets/logo.svg';
+import lightLogo from '../assets/logo-light.svg';
+import darkAnimatedLogo from '../assets/logo-animated.svg';
+import lightAnimatedLogo from '../assets/logo-light-animated.svg';
+import {
+  readStoredToken,
+  saveStoredToken,
+  TOKEN_STORAGE_KEY,
+} from './tokenStorage';
 import { AccessTokenPanel } from './AccessTokenPanel';
 import { ViewOptions } from './ViewOptions';
 import { readViewOptions, saveViewOptions } from './viewOptions';
@@ -72,7 +83,11 @@ function App() {
       new RecentRepositories({
         allowPrivate: () => {
           const saved = readStoredToken();
-          return !!authToken.current && !saved.error && authToken.current === saved.token;
+          return (
+            !!authToken.current &&
+            !saved.error &&
+            authToken.current === saved.token
+          );
         },
       }),
   );
@@ -81,7 +96,11 @@ function App() {
       new BranchSelections({
         allowPrivate: () => {
           const saved = readStoredToken();
-          return !!authToken.current && !saved.error && authToken.current === saved.token;
+          return (
+            !!authToken.current &&
+            !saved.error &&
+            authToken.current === saved.token
+          );
         },
         canWrite: () => {
           const saved = readStoredToken();
@@ -99,7 +118,11 @@ function App() {
             .map((entry) => entry.repository),
         allowPrivate: () => {
           const saved = readStoredToken();
-          return !!authToken.current && !saved.error && authToken.current === saved.token;
+          return (
+            !!authToken.current &&
+            !saved.error &&
+            authToken.current === saved.token
+          );
         },
         canWrite: () => {
           const saved = readStoredToken();
@@ -107,18 +130,28 @@ function App() {
         },
       }),
   );
-  const repositoryMetadata = (repository: string, isPrivate: boolean, visit: boolean) => {
+  const repositoryMetadata = (
+    repository: string,
+    isPrivate: boolean,
+    visit: boolean,
+  ) => {
     recent.repositoryMetadata(repository, isPrivate, visit);
     branchSelections.repositoryMetadata(repository, isPrivate);
     monitorRepositories.repositoryMetadata(repository, isPrivate);
   };
-  const [history] = useState(() => new History(repositoryMetadata, branchSelections));
+  const [history] = useState(
+    () => new History(repositoryMetadata, branchSelections),
+  );
   const [info] = useState(() => new CommitInfoStore());
   const extras = useSyncExternalStore(info.subscribe, info.getSnapshot);
   const [monitor] = useState(
-    () => new MonitorSession(history, info, repositoryMetadata, branchSelections),
+    () =>
+      new MonitorSession(history, info, repositoryMetadata, branchSelections),
   );
-  const monitorState = useSyncExternalStore(monitor.subscribe, monitor.getSnapshot);
+  const monitorState = useSyncExternalStore(
+    monitor.subscribe,
+    monitor.getSnapshot,
+  );
   const reorderMonitor = useCallback(
     (repository: string, to: number) => {
       const current = monitor.getSnapshot();
@@ -126,7 +159,9 @@ function App() {
       const names = current.entries.map((entry) => entry.repository);
       const reordered = moveMonitorRepository(names, repository, to);
       if (reordered === names || !monitor.reorder(reordered)) return;
-      const entries = new Map(current.entries.map((entry) => [entry.repository, entry]));
+      const entries = new Map(
+        current.entries.map((entry) => [entry.repository, entry]),
+      );
       const branches = reordered.map((name) => {
         const entry = entries.get(name)!,
           state = entry.history.getSnapshot();
@@ -138,7 +173,10 @@ function App() {
       });
       lastMonitorSelection.current = reordered;
       monitorRepositories.set(reordered);
-      navigate({ mode: 'monitor', repositories: reordered, branches }, { replace: true });
+      navigate(
+        { mode: 'monitor', repositories: reordered, branches },
+        { replace: true },
+      );
     },
     [monitor, monitorRepositories, navigate],
   );
@@ -161,7 +199,9 @@ function App() {
     () =>
       new RefreshLoop(
         (kind) =>
-          monitor.getSnapshot().active ? monitor.refreshAll(kind) : monitor.refreshPrimary(kind),
+          monitor.getSnapshot().active
+            ? monitor.refreshAll(kind)
+            : monitor.refreshPrimary(kind),
         () => !document.hidden && navigator.onLine,
       ),
   );
@@ -175,9 +215,13 @@ function App() {
     [authRevision, setAuthRevision] = useState(0),
     [savedOptions] = useState(readViewOptions),
     [autoRefresh, setAutoRefresh] = useState(savedOptions.autoRefresh),
-    [intervalChoice, setIntervalChoice] = useState<number | null>(savedOptions.interval);
+    [intervalChoice, setIntervalChoice] = useState<number | null>(
+      savedOptions.interval,
+    );
   const seconds =
-    intervalChoice === 30 && !appliedToken ? 300 : (intervalChoice ?? (appliedToken ? 60 : 300));
+    intervalChoice === 30 && !appliedToken
+      ? 300
+      : (intervalChoice ?? (appliedToken ? 60 : 300));
   const refreshRetrySeconds = useRetryCountdown(refreshState.retryAt || null);
   const [token, setToken] = useState(savedToken.token),
     [tokenStorageError, setTokenStorageError] = useState(savedToken.error),
@@ -194,9 +238,14 @@ function App() {
     setErrorDismissed(false);
   }, [state.repo, state.error, state.retryAt]);
   const [systemTheme, setSystemTheme] = useState(() =>
-    window.matchMedia('(prefers-color-scheme:light)').matches ? 'light' : 'dark',
+    window.matchMedia('(prefers-color-scheme:light)').matches
+      ? 'light'
+      : 'dark',
   );
   const resolvedTheme = theme === 'system' ? systemTheme : theme;
+  const logo = resolvedTheme === 'light' ? lightLogo : darkLogo;
+  const animatedLogo =
+    resolvedTheme === 'light' ? lightAnimatedLogo : darkAnimatedLogo;
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme:light)');
     const update = () => setSystemTheme(media.matches ? 'light' : 'dark');
@@ -206,7 +255,10 @@ function App() {
   useEffect(() => {
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', resolvedTheme === 'light' ? '#f2f6fc' : '#070a11');
+      ?.setAttribute(
+        'content',
+        resolvedTheme === 'light' ? '#f2f6fc' : '#070a11',
+      );
   }, [resolvedTheme]);
   const appRef = useRef<HTMLDivElement>(null);
   const optionsRef = useRef<HTMLDivElement>(null),
@@ -230,22 +282,28 @@ function App() {
   }, [leaveMonitor, monitorState.active]);
   const wasMonitoring = useRef(false);
   useEffect(() => {
-    if (wasMonitoring.current && !monitorState.active) monitorButtonRef.current?.focus();
+    if (wasMonitoring.current && !monitorState.active)
+      monitorButtonRef.current?.focus();
     wasMonitoring.current = monitorState.active;
   }, [monitorState.active]);
   const primaryEntry = monitorState.entries.find((entry) => entry.primary);
-  const primaryOrder = primaryEntry ? monitorState.entries.indexOf(primaryEntry) : 0;
+  const primaryOrder = primaryEntry
+    ? monitorState.entries.indexOf(primaryEntry)
+    : 0;
   const primaryActive = !monitorState.active || !!primaryEntry;
   const monitorScope = monitorState.entries
     .map((entry) => entry.repository)
     .sort()
     .join('|');
   const monitorLimited = monitorState.retryAt > Date.now();
-  const [topInset, setTopInset] = useState(window.innerWidth <= 800 ? 136 : 108);
+  const [topInset, setTopInset] = useState(
+    window.innerWidth <= 800 ? 136 : 108,
+  );
   useLayoutEffect(() => {
     const el = toolbarRef.current!;
     const update = () => {
-      if (el.offsetHeight) setTopInset(Math.ceil(el.getBoundingClientRect().bottom) + 20);
+      if (el.offsetHeight)
+        setTopInset(Math.ceil(el.getBoundingClientRect().bottom) + 20);
     };
     update();
     const observer = new ResizeObserver(update);
@@ -256,10 +314,15 @@ function App() {
       window.removeEventListener('resize', update);
     };
   }, []);
-  const [selection, setSelection] = useState<{ repository: string; commit: Commit } | null>(null);
-  const selected = selection?.repository === state.repo ? selection.commit : null;
+  const [selection, setSelection] = useState<{
+    repository: string;
+    commit: Commit;
+  } | null>(null);
+  const selected =
+    selection?.repository === state.repo ? selection.commit : null;
   const selectCommit = useCallback(
-    (repository: string, commit: Commit) => setSelection({ repository, commit }),
+    (repository: string, commit: Commit) =>
+      setSelection({ repository, commit }),
     [],
   );
   const clearSelection = useCallback(() => setSelection(null), []);
@@ -312,11 +375,21 @@ function App() {
   }, [loop]);
   useEffect(() => {
     const primarySettled =
-      !state.busy && (!state.meta || (extras.repo === state.repo && !extras.busy));
+      !state.busy &&
+      (!state.meta || (extras.repo === state.repo && !extras.busy));
     // Child layout effects can accept more visible history before this effect runs.
     const monitorSettled = monitor.getSnapshot().settled;
-    if (monitorState.active ? monitorSettled : state.meta && primarySettled) loop.loaded();
-  }, [loop, monitor, state.meta, state.busy, extras, monitorState.active, monitorState.settled]);
+    if (monitorState.active ? monitorSettled : state.meta && primarySettled)
+      loop.loaded();
+  }, [
+    loop,
+    monitor,
+    state.meta,
+    state.busy,
+    extras,
+    monitorState.active,
+    monitorState.settled,
+  ]);
   useEffect(() => {
     if (extras.repo === state.repo) {
       if (selected && monitor.canRequest()) void info.inspect(selected.sha);
@@ -357,7 +430,13 @@ function App() {
     };
     window.addEventListener('storage', changed);
     return () => window.removeEventListener('storage', changed);
-  }, [recent, branchSelections, monitorRepositories, leaveMonitor, ownerRepositories]);
+  }, [
+    recent,
+    branchSelections,
+    monitorRepositories,
+    leaveMonitor,
+    ownerRepositories,
+  ]);
   useEffect(
     () => () => {
       measured.cancel();
@@ -381,15 +460,21 @@ function App() {
     const currentIndex = configuration.repositories.indexOf(current.repo),
       previousIndex = previous?.repositories.indexOf(current.repo) ?? -1;
     const changedBranch =
-      !!previous && previous.branches?.[previousIndex] !== configuration.branches?.[currentIndex];
+      !!previous &&
+      previous.branches?.[previousIndex] !==
+        configuration.branches?.[currentIndex];
     if (configuration.mode === 'monitor' && repository) {
       setSelection((chosen) =>
-        chosen && configuration.repositories.includes(chosen.repository) ? chosen : null,
+        chosen && configuration.repositories.includes(chosen.repository)
+          ? chosen
+          : null,
       );
       lastMonitorSelection.current = [...configuration.repositories];
       const session = monitor.getSnapshot();
       const sameBranches = configuration.repositories.every((name, index) => {
-        const entry = session.entries.find((entry) => entry.repository === name);
+        const entry = session.entries.find(
+          (entry) => entry.repository === name,
+        );
         if (!entry) return false;
         const requested = configuration.branches?.[index];
         const priorIndex = previous?.repositories.indexOf(name) ?? -1;
@@ -397,11 +482,20 @@ function App() {
         const state = entry.history.getSnapshot();
         return !!state.meta && !!state.baseHead && requested === state.base;
       });
-      if (session.active && sameBranches && monitor.reorder(configuration.repositories)) return;
+      if (
+        session.active &&
+        sameBranches &&
+        monitor.reorder(configuration.repositories)
+      )
+        return;
       if (!current.repo) {
         setInput(repository);
         setSelection(null);
-        void measured.open(repository, authToken.current, configuration.branches?.[0]);
+        void measured.open(
+          repository,
+          authToken.current,
+          configuration.branches?.[0],
+        );
       }
       if (changedBranch) setSelection(null);
       monitor.start(
@@ -411,7 +505,9 @@ function App() {
         changedBranch,
       );
     } else {
-      setSelection((chosen) => (chosen?.repository === repository ? chosen : null));
+      setSelection((chosen) =>
+        chosen?.repository === repository ? chosen : null,
+      );
       monitor.stop();
       setInput(repository);
       if (!repository) {
@@ -424,7 +520,11 @@ function App() {
         (!current.meta && !current.busy && !current.error)
       ) {
         setSelection(null);
-        void measured.open(repository, authToken.current, configuration.branches?.[0]);
+        void measured.open(
+          repository,
+          authToken.current,
+          configuration.branches?.[0],
+        );
       } else if (changedBranch && !userPicked) {
         setSelection(null);
         void history.restoreBase(configuration.branches?.[0]);
@@ -435,15 +535,25 @@ function App() {
     if (!options && !auth && !selection) return;
     const outside = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (target instanceof Element && target.closest('[data-debug-ui],[data-pwa-ui]')) return;
+      if (
+        target instanceof Element &&
+        target.closest('[data-debug-ui],[data-pwa-ui]')
+      )
+        return;
       if (options && !optionsRef.current?.contains(target)) setOptions(false);
-      if (auth && !authRef.current?.contains(target) && !tokenButtonRef.current?.contains(target))
+      if (
+        auth &&
+        !authRef.current?.contains(target) &&
+        !tokenButtonRef.current?.contains(target)
+      )
         setAuth(false);
       if (
         selection &&
         !(
           target instanceof Element &&
-          target.closest('.details,.graph-scroll,.monitor-exit,.monitor-reorder-handle')
+          target.closest(
+            '.details,.graph-scroll,.monitor-exit,.monitor-reorder-handle',
+          )
         )
       )
         setSelection(null);
@@ -491,7 +601,9 @@ function App() {
       void measured.open(
         state.repo,
         value,
-        configuration.branches?.[configuration.repositories.indexOf(state.repo)],
+        configuration.branches?.[
+          configuration.repositories.indexOf(state.repo)
+        ],
       );
     }
   }
@@ -563,14 +675,19 @@ function App() {
     setSelection(null);
     if (typeof state.meta?.private === 'boolean')
       branchSelections.record(state.repo, name, state.meta.private);
-    const target = { mode: 'single' as const, repositories: [state.repo], branches: [name] };
+    const target = {
+      mode: 'single' as const,
+      repositories: [state.repo],
+      branches: [name],
+    };
     pickedLocation.current = repositoryLocationKey(target);
     navigate(target);
   }
   const shareBranches = new Map(lastMonitorBranches.current);
   for (const entry of monitorState.entries) {
     const value = entry.history.getSnapshot();
-    if (value.meta && value.baseHead) shareBranches.set(entry.repository, value.base);
+    if (value.meta && value.baseHead)
+      shareBranches.set(entry.repository, value.base);
     else shareBranches.delete(entry.repository);
   }
   if (state.meta && state.baseHead) shareBranches.set(state.repo, state.base);
@@ -580,7 +697,9 @@ function App() {
       ref={appRef}
       className={`app${monitorState.active ? ' app-monitor' : ''}`}
       data-theme={resolvedTheme}
-      style={{ '--toolbar-bottom': `${topInset - 20}px` } as React.CSSProperties}
+      style={
+        { '--toolbar-bottom': `${topInset - 20}px` } as React.CSSProperties
+      }
     >
       {monitorState.active && (
         <MonitorControls
@@ -599,18 +718,26 @@ function App() {
         aria-label={monitorState.active ? 'Repository monitor' : undefined}
       >
         <section
-          className={monitorState.active ? 'monitor-column' : 'single-repository'}
+          className={
+            monitorState.active ? 'monitor-column' : 'single-repository'
+          }
           ref={primaryPaneRef}
           hidden={!primaryActive}
           style={{ order: primaryOrder }}
-          aria-label={monitorState.active ? `Repository ${state.repo}` : undefined}
+          aria-label={
+            monitorState.active ? `Repository ${state.repo}` : undefined
+          }
         >
           {state.commits.length > 0 ? (
             <Graph
               active={primaryActive}
               containerResponsive={monitorState.active}
               columnOrder={primaryOrder}
-              label={monitorState.active ? `Commit graph for ${state.repo}` : undefined}
+              label={
+                monitorState.active
+                  ? `Commit graph for ${state.repo}`
+                  : undefined
+              }
               key={`${state.repo}:${state.base}:${reverse}`}
               theme={resolvedTheme}
               commits={state.commits}
@@ -637,13 +764,21 @@ function App() {
             />
           ) : monitorState.active ? (
             <div className="monitor-empty" role="status">
-              {state.busy ? 'Loading…' : state.error ? 'Repository unavailable' : 'No commits'}
+              {state.busy
+                ? 'Loading…'
+                : state.error
+                  ? 'Repository unavailable'
+                  : 'No commits'}
             </div>
           ) : (
             <div className="empty">
-              <img className="empty-mark" src={logo} alt="" width="160" height="160" />
-              <h1>{state.busy ? 'Loading...' : 'Watch your Git history unfold.'}</h1>
-              {!state.busy && <p>Choose a repository. Explore its branches as they evolve.</p>}
+              <BrandMark staticSrc={logo} animatedSrc={animatedLogo} />
+              <h1>
+                {state.busy ? 'Loading...' : 'Watch your Git history unfold.'}
+              </h1>
+              {!state.busy && (
+                <p>Choose a repository. Explore its branches as they evolve.</p>
+              )}
               {!state.busy && (
                 <button
                   type="button"
@@ -675,7 +810,9 @@ function App() {
             <MonitorStatus
               state={state}
               extras={extras}
-              refreshing={!!primaryEntry && monitorState.running.has(primaryEntry)}
+              refreshing={
+                !!primaryEntry && monitorState.running.has(primaryEntry)
+              }
               limited={monitorLimited}
               anonymous={!appliedToken}
             />
@@ -693,7 +830,11 @@ function App() {
                 refreshing={monitorState.running.has(entry)}
                 limited={monitorLimited}
                 anonymous={!appliedToken}
-                selected={selection?.repository === entry.repository ? selection.commit : null}
+                selected={
+                  selection?.repository === entry.repository
+                    ? selection.commit
+                    : null
+                }
                 onSelect={selectCommit}
                 onClose={clearSelection}
               />
@@ -716,15 +857,23 @@ function App() {
         />
         <div className="view-controls">
           <div className="base-control">
-            <BranchPicker history={history} state={state} onPicked={pickedBranch} />
+            <BranchPicker
+              history={history}
+              state={state}
+              onPicked={pickedBranch}
+            />
           </div>
           <button
             className="direction-toggle"
             aria-label={
-              reverse ? 'Oldest first; newer commits below' : 'Newest first; older commits below'
+              reverse
+                ? 'Oldest first; newer commits below'
+                : 'Newest first; older commits below'
             }
             title={
-              reverse ? 'Oldest first; newer commits below' : 'Newest first; older commits below'
+              reverse
+                ? 'Oldest first; newer commits below'
+                : 'Newest first; older commits below'
             }
             aria-pressed={reverse}
             onClick={() => {
@@ -756,7 +905,9 @@ function App() {
           <button
             className="token-button"
             ref={tokenButtonRef}
-            aria-label={tokenApplied ? 'Access token (applied)' : 'Access token'}
+            aria-label={
+              tokenApplied ? 'Access token (applied)' : 'Access token'
+            }
             title={tokenApplied ? 'Access token applied' : 'Access token'}
             aria-expanded={auth}
             onClick={() => {
@@ -836,7 +987,10 @@ function App() {
         <div className="error floating-panel" role="alert">
           <span className="error-message">{state.error}</span>
           <div className="error-actions">
-            <button disabled={state.busy || retrySeconds > 0} onClick={() => void history.retry()}>
+            <button
+              disabled={state.busy || retrySeconds > 0}
+              onClick={() => void history.retry()}
+            >
               {retryLabel(retrySeconds)}
             </button>
             {state.error.includes('GitHub') && (
@@ -863,7 +1017,9 @@ function App() {
             navigate({
               mode: 'monitor',
               repositories,
-              branches: repositories.map((repository) => shareBranches.get(repository)),
+              branches: repositories.map((repository) =>
+                shareBranches.get(repository),
+              ),
             });
           }}
         />
@@ -885,7 +1041,9 @@ function App() {
     </div>
   );
 }
-debug.setMode(new URLSearchParams(location.search).get('debug') === '1' ? 'button' : 'off');
+debug.setMode(
+  new URLSearchParams(location.search).get('debug') === '1' ? 'button' : 'off',
+);
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

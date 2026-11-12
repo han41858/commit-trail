@@ -8,7 +8,11 @@ export type RecentRepository = Readonly<{
   visitedAt: number;
 }>;
 type StorageAccess = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-type Options = { storage?: () => StorageAccess; now?: () => number; allowPrivate?: () => boolean };
+type Options = {
+  storage?: () => StorageAccess;
+  now?: () => number;
+  allowPrivate?: () => boolean;
+};
 type Snapshot = { available: boolean; entries: readonly RecentRepository[] };
 
 function repositoryName(value: unknown) {
@@ -19,7 +23,9 @@ function repositoryName(value: unknown) {
     return null;
   }
 }
-export function normalizeRecentRepositories(value: unknown): RecentRepository[] {
+export function normalizeRecentRepositories(
+  value: unknown,
+): RecentRepository[] {
   if (!Array.isArray(value)) return [];
   const entries = new Map<string, RecentRepository>();
   for (const item of value) {
@@ -58,7 +64,10 @@ export function matchingRecentRepositories(
           .replace(/\.git$/, '');
   return entries.filter((entry) => entry.repository.includes(query));
 }
-const sameEntries = (a: readonly RecentRepository[], b: readonly RecentRepository[]) =>
+const sameEntries = (
+  a: readonly RecentRepository[],
+  b: readonly RecentRepository[],
+) =>
   a.length === b.length &&
   a.every(
     (entry, i) =>
@@ -109,7 +118,11 @@ export class RecentRepositories {
         ? this.entries
         : this.entries.filter((entry) => entry.visibility === 'public')
       : [];
-    if (available === this.state.available && sameEntries(entries, this.state.entries)) return;
+    if (
+      available === this.state.available &&
+      sameEntries(entries, this.state.entries)
+    )
+      return;
     this.state = { available, entries };
     for (const listener of this.listeners) listener();
   }
@@ -126,7 +139,10 @@ export class RecentRepositories {
   private persist() {
     try {
       if (this.entries.length)
-        this.storage!.setItem(RECENT_REPOSITORIES_KEY, JSON.stringify(this.entries));
+        this.storage!.setItem(
+          RECENT_REPOSITORIES_KEY,
+          JSON.stringify(this.entries),
+        );
       else this.storage!.removeItem(RECENT_REPOSITORIES_KEY);
       this.publish();
     } catch {
@@ -166,16 +182,18 @@ export class RecentRepositories {
       visibility: isPrivate ? 'private' : 'public',
       visitedAt,
     };
-    this.entries = [entry, ...this.entries.filter((value) => value.repository !== name)].slice(
-      0,
-      RECENT_REPOSITORIES_LIMIT,
-    );
+    this.entries = [
+      entry,
+      ...this.entries.filter((value) => value.repository !== name),
+    ].slice(0, RECENT_REPOSITORIES_LIMIT);
     this.persist();
   };
   touch = (repository: string) => {
     this.reload();
     if (!this.state.available) return;
-    const entry = this.entries.find((entry) => entry.repository === repositoryName(repository));
+    const entry = this.entries.find(
+      (entry) => entry.repository === repositoryName(repository),
+    );
     if (entry) this.record(entry.repository, entry.visibility === 'private');
   };
   updateVisibility = (repository: string, isPrivate: boolean) => {
@@ -190,7 +208,11 @@ export class RecentRepositories {
     );
     this.persist();
   };
-  repositoryMetadata = (repository: string, isPrivate: boolean, visit: boolean) => {
+  repositoryMetadata = (
+    repository: string,
+    isPrivate: boolean,
+    visit: boolean,
+  ) => {
     if (visit) this.record(repository, isPrivate);
     else this.updateVisibility(repository, isPrivate);
   };
@@ -198,7 +220,9 @@ export class RecentRepositories {
     if (previous === next && this.privateAllowed()) return;
     this.reload();
     if (!this.state.available) return;
-    const entries = this.entries.filter((entry) => entry.visibility === 'public');
+    const entries = this.entries.filter(
+      (entry) => entry.visibility === 'public',
+    );
     if (entries.length === this.entries.length) return;
     this.entries = entries;
     this.persist();

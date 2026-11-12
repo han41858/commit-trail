@@ -20,7 +20,11 @@ export function graphPaths(
   const firstParentChildren = new Map<string, number>();
   for (const commit of ordered) {
     const parent = commit.parents[0]?.sha;
-    if (parent) firstParentChildren.set(parent, (firstParentChildren.get(parent) ?? 0) + 1);
+    if (parent)
+      firstParentChildren.set(
+        parent,
+        (firstParentChildren.get(parent) ?? 0) + 1,
+      );
   }
   const nodes = new Map<string, string>();
   const heads = new Map<string, string>();
@@ -35,14 +39,20 @@ export function graphPaths(
   };
   if (baseHead && commits.has(baseHead)) claim(baseHead);
   const refs = [...branches].sort((a, b) => compare(a.name, b.name));
-  const defaultHead = refs.find((ref) => ref.name === defaultBranch)?.commit.sha;
+  const defaultHead = refs.find((ref) => ref.name === defaultBranch)?.commit
+    .sha;
   if (defaultHead && commits.has(defaultHead)) claim(defaultHead);
   const protectedHistory = new Set(nodes.keys());
   const firstParentAncestor = firstParentAncestry(ordered, commits);
   const tips = new Map<string, { integration: boolean; startTime: number }>();
   for (const ref of refs) {
     const head = ref.commit.sha;
-    if (!commits.has(head) || firstParentChildren.has(head) || nodes.has(head) || tips.has(head))
+    if (
+      !commits.has(head) ||
+      firstParentChildren.has(head) ||
+      nodes.has(head) ||
+      tips.has(head)
+    )
       continue;
     let integration = false;
     let sha = head;
@@ -74,11 +84,15 @@ export function graphPaths(
       sha = parent;
     }
     const time = commitTime(start);
-    tips.set(head, { integration, startTime: Number.isFinite(time) ? time : Infinity });
+    tips.set(head, {
+      integration,
+      startTime: Number.isFinite(time) ? time : Infinity,
+    });
   }
   for (const [head] of [...tips].sort(([a, x], [b, y]) => {
     const integrationOrder = Number(y.integration) - Number(x.integration);
-    const timeOrder = x.startTime === y.startTime ? 0 : x.startTime < y.startTime ? -1 : 1;
+    const timeOrder =
+      x.startTime === y.startTime ? 0 : x.startTime < y.startTime ? -1 : 1;
     return integrationOrder || timeOrder || compare(a, b);
   }))
     claim(head);
@@ -113,7 +127,10 @@ export function compare(a: string, b: string) {
 
 // DFS intervals answer first-parent ancestry in O(1), without repeatedly
 // walking the shared history for each candidate merge or terminal reference.
-function firstParentAncestry(ordered: Commit[], commits: ReadonlyMap<string, Commit>) {
+function firstParentAncestry(
+  ordered: Commit[],
+  commits: ReadonlyMap<string, Commit>,
+) {
   const children = new Map<string, string[]>();
   const roots: string[] = [];
   for (const commit of ordered) {
@@ -129,7 +146,9 @@ function firstParentAncestry(ordered: Commit[], commits: ReadonlyMap<string, Com
   const ends = new Map<string, number>();
   let clock = 0;
   for (const root of roots) {
-    const pending: { sha: string; exit: boolean }[] = [{ sha: root, exit: false }];
+    const pending: { sha: string; exit: boolean }[] = [
+      { sha: root, exit: false },
+    ];
     while (pending.length) {
       const { sha, exit } = pending.pop()!;
       if (exit) {
@@ -138,7 +157,8 @@ function firstParentAncestry(ordered: Commit[], commits: ReadonlyMap<string, Com
       }
       starts.set(sha, clock++);
       pending.push({ sha, exit: true });
-      for (const child of children.get(sha) ?? []) pending.push({ sha: child, exit: false });
+      for (const child of children.get(sha) ?? [])
+        pending.push({ sha: child, exit: false });
     }
   }
   return (ancestor: string, descendant: string) =>

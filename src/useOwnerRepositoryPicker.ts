@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import type { OwnerRepositories } from './OwnerRepositories';
 import { ownerFromInput } from './repoInput';
@@ -15,7 +21,10 @@ export function useOwnerRepositoryPicker(
   const owner = useRef('');
   const [requested, setRequested] = useState('');
   const showing =
-    enabled && !!requested && snapshot.owner === requested && ownerFromInput(value) === requested;
+    enabled &&
+    !!requested &&
+    snapshot.owner === requested &&
+    ownerFromInput(value) === requested;
   const close = useCallback(
     (restoreFocus = false) => {
       if (!owner.current) return;
@@ -27,7 +36,8 @@ export function useOwnerRepositoryPicker(
     [model, input],
   );
   useEffect(() => {
-    if (owner.current && (!enabled || ownerFromInput(value) !== owner.current)) close();
+    if (owner.current && (!enabled || ownerFromInput(value) !== owner.current))
+      close();
   }, [value, enabled, close]);
   useEffect(
     () => () => {
@@ -38,7 +48,11 @@ export function useOwnerRepositoryPicker(
   useEffect(() => {
     if (!showing) return;
     const outside = (event: Event) => {
-      if (event.target instanceof Node && !container.current?.contains(event.target)) close();
+      if (
+        event.target instanceof Node &&
+        !container.current?.contains(event.target)
+      )
+        close();
     };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('focusin', outside);
@@ -66,7 +80,9 @@ export function useOwnerRepositoryPicker(
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      container.current?.querySelector<HTMLInputElement>('[data-owner-filter]')?.focus();
+      container.current
+        ?.querySelector<HTMLInputElement>('[data-owner-filter]')
+        ?.focus();
       return true;
     }
     return false;

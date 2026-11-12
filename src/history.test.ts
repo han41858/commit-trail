@@ -15,11 +15,15 @@ const response = (data: unknown, next = false, lastPage?: number) =>
     headers: {
       Link: [
         ...(next ? ['<https://api.github.com/next>; rel="next"'] : []),
-        ...(lastPage ? [`<https://api.github.com/commits?page=${lastPage}>; rel="last"`] : []),
+        ...(lastPage
+          ? [`<https://api.github.com/commits?page=${lastPage}>; rel="last"`]
+          : []),
       ].join(', '),
     },
   });
-type Handler = (url: URL) => Response | undefined | Promise<Response | undefined>;
+type Handler = (
+  url: URL,
+) => Response | undefined | Promise<Response | undefined>;
 async function using(
   handler: Handler,
   check: (history: History, requests: URL[]) => Promise<void>,
@@ -33,11 +37,15 @@ async function using(
       requests.push(url);
       const handled = await handler(url);
       if (handled) return handled;
-      if (url.pathname.endsWith('/branches')) return response([ref('main', 'm')]);
-      if (url.pathname.includes('/branches/')) return new Response('', { status: 404 });
+      if (url.pathname.endsWith('/branches'))
+        return response([ref('main', 'm')]);
+      if (url.pathname.includes('/branches/'))
+        return new Response('', { status: 404 });
       if (url.pathname.endsWith('/pulls')) return response([]);
       if (url.pathname.endsWith('/commits'))
-        throw new Error(`Unexpected history request: ${url.pathname}${url.search}`);
+        throw new Error(
+          `Unexpected history request: ${url.pathname}${url.search}`,
+        );
       return response({ default_branch: 'main', stargazers_count: 0 });
     };
     await check(history, requests);
@@ -62,7 +70,10 @@ for (const mode of ['squash', 'merge', 'gap'])
       dormant = gitSha(6),
       gap = gitSha(7);
     let updated = false;
-    const baseline = [dated(main, '2026-11-02', root), dated(root, '2026-10-01')],
+    const baseline = [
+        dated(main, '2026-11-02', root),
+        dated(root, '2026-10-01'),
+      ],
       oldDev = dated(dev, '2026-11-01', root),
       side = dated(feature, '2026-11-02', dev);
     await using(
@@ -75,7 +86,10 @@ for (const mode of ['squash', 'merge', 'gap'])
             ...(!updated ? [ref('feature', feature)] : []),
           ]);
         if (url.pathname.endsWith('/activity'))
-          return response([push('feature', '2026-11-02'), push('dev', '2026-11-01')]);
+          return response([
+            push('feature', '2026-11-02'),
+            push('dev', '2026-11-01'),
+          ]);
         if (url.pathname.endsWith('/commits')) {
           const sha = url.searchParams.get('sha');
           if (sha === 'main') return response(baseline);
@@ -86,12 +100,22 @@ for (const mode of ['squash', 'merge', 'gap'])
               mode === 'gap'
                 ? [dated(head, '2026-11-02', gap)]
                 : [
-                    dated(head, '2026-11-02', dev, ...(mode === 'merge' ? [feature] : [])),
+                    dated(
+                      head,
+                      '2026-11-02',
+                      dev,
+                      ...(mode === 'merge' ? [feature] : []),
+                    ),
                     oldDev,
                     baseline[1],
                   ],
             );
-          if (sha === gap) return response([dated(gap, '2026-11-01', dev), oldDev, baseline[1]]);
+          if (sha === gap)
+            return response([
+              dated(gap, '2026-11-01', dev),
+              oldDev,
+              baseline[1],
+            ]);
         }
       },
       async (h, requests) => {
@@ -149,13 +173,21 @@ for (const outcome of ['success', 'missing', 'limited'])
           return metaGate;
         }
         if (url.pathname.endsWith('/branches'))
-          return response([ref('main', main), ...(!updating ? [ref('feature', feature)] : [])]);
-        if (url.pathname.endsWith('/activity')) return response([push('feature', '2026-11-02')]);
+          return response([
+            ref('main', main),
+            ...(!updating ? [ref('feature', feature)] : []),
+          ]);
+        if (url.pathname.endsWith('/activity'))
+          return response([push('feature', '2026-11-02')]);
         if (url.pathname.endsWith('/commits')) {
           const sha = url.searchParams.get('sha');
           if (sha === 'main')
-            return response([dated(main, '2026-11-02', root), dated(root, '2026-10-01')]);
-          if (sha === feature) return response([dated(feature, '2026-11-02', parent)]);
+            return response([
+              dated(main, '2026-11-02', root),
+              dated(root, '2026-10-01'),
+            ]);
+          if (sha === feature)
+            return response([dated(feature, '2026-11-02', parent)]);
           if (sha === parent) {
             enterParent();
             return parentGate;
@@ -174,7 +206,10 @@ for (const outcome of ['success', 'missing', 'limited'])
         assert.ok(!h.getSnapshot().commits.some((c) => c.sha === feature));
         releaseParent(
           outcome === 'limited'
-            ? new Response('', { status: 429, headers: { 'Retry-After': '30' } })
+            ? new Response('', {
+                status: 429,
+                headers: { 'Retry-After': '30' },
+              })
             : outcome === 'missing'
               ? new Response('', { status: 404 })
               : response([dated(parent, '2026-11-01', root)]),
@@ -214,12 +249,16 @@ for (const pending of ['lookup', 'history'])
         if (url.pathname.endsWith('/branches'))
           return response([
             ref('main', main),
-            ...(!updating && pending === 'history' ? [ref('feature', feature)] : []),
+            ...(!updating && pending === 'history'
+              ? [ref('feature', feature)]
+              : []),
           ]);
         if (url.pathname.endsWith('/activity'))
           return activityPage++ === 0
             ? new Response('[]', {
-                headers: { Link: '<https://api.github.com/next?after=older>; rel="next"' },
+                headers: {
+                  Link: '<https://api.github.com/next?after=older>; rel="next"',
+                },
               })
             : response([push('feature', '2026-11-02')]);
         if (url.pathname.endsWith('/branches/feature')) {
@@ -229,7 +268,10 @@ for (const pending of ['lookup', 'history'])
         if (url.pathname.endsWith('/commits')) {
           const sha = url.searchParams.get('sha');
           if (sha === 'main')
-            return response([dated(main, '2026-11-02', root), dated(root, '2026-10-01')]);
+            return response([
+              dated(main, '2026-11-02', root),
+              dated(root, '2026-10-01'),
+            ]);
           if (sha === feature) {
             if (pending === 'history') {
               enterStale();
@@ -289,7 +331,8 @@ test('a late branch-picker page cannot restore a deleted ref after an authoritat
         return response([ref('main', main)], !updating);
       }
       if (url.pathname.endsWith('/activity')) return response([]);
-      if (url.pathname.endsWith('/commits')) return response([commit(main, root), commit(root)]);
+      if (url.pathname.endsWith('/commits'))
+        return response([commit(main, root), commit(root)]);
     },
     async (h) => {
       await h.open('a/b');
@@ -306,6 +349,81 @@ test('a late branch-picker page cannot restore a deleted ref after an authoritat
       assert.equal(h.getSnapshot().moreBranches, false);
     },
   );
+});
+
+test('a pending boundary load does not postpone removing a merged and deleted branch', async () => {
+  const main = gitSha(61),
+    root = gitSha(62),
+    feature = gitSha(63),
+    parent = gitSha(64);
+  let deleted = false;
+  let enterParent!: () => void, releaseParent!: (value: Response) => void;
+  const parentEntered = new Promise<void>((r) => (enterParent = r)),
+    parentGate = new Promise<Response>((r) => (releaseParent = r));
+  await using(
+    (url) => {
+      if (url.pathname.endsWith('/branches'))
+        return response([
+          ref('main', main),
+          ...(deleted ? [] : [ref('feature', feature)]),
+        ]);
+      if (url.pathname.endsWith('/activity')) return response([]);
+      if (url.pathname.endsWith('/commits')) {
+        const sha = url.searchParams.get('sha');
+        if (sha === 'main') return response([commit(main, root)]);
+        if (sha === root) {
+          enterParent();
+          return parentGate;
+        }
+      }
+    },
+    async (h) => {
+      await h.open('a/b');
+      assert.ok(h.getSnapshot().branches.some((b) => b.name === 'feature'));
+      const boundary = h.loadMore([root]);
+      await parentEntered;
+      assert.equal(h.getSnapshot().busy, true);
+      deleted = true;
+      await h.refresh();
+      assert.deepEqual(
+        h.getSnapshot().branches.map((b) => b.name),
+        ['main'],
+      );
+      releaseParent(response([commit(root, parent), commit(parent)]));
+      await boundary;
+      assert.ok(h.getSnapshot().commits.some((c) => c.sha === root));
+      assert.ok(!h.getSnapshot().branches.some((b) => b.name === 'feature'));
+    },
+  );
+});
+
+test('branch state requests bypass the browser HTTP cache', async () => {
+  const original = globalThis.fetch,
+    modes = new Map<string, RequestCache | undefined>(),
+    history = new History();
+  try {
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      modes.set(
+        `${url.pathname}?${url.searchParams.get('page') ?? ''}`,
+        init?.cache,
+      );
+      if (url.pathname.endsWith('/branches'))
+        return response([ref('main', 'm')]);
+      if (url.pathname.endsWith('/activity')) return response([]);
+      if (url.pathname.endsWith('/commits')) return response([commit('m')]);
+      return response({ default_branch: 'main', stargazers_count: 0 });
+    };
+    await history.open('a/b');
+    await history.refresh();
+    assert.equal(modes.get('/repos/a/b/branches?1'), 'no-cache');
+    assert.equal(modes.get('/repos/a/b/commits?1'), undefined);
+    await history.findBranch('missing');
+    assert.equal(modes.get('/repos/a/b/branches/missing?'), 'no-cache');
+  } finally {
+    history.cancel();
+    globalThis.fetch = original;
+  }
 });
 
 for (const source of ['ranking', 'search'])
@@ -329,7 +447,10 @@ for (const source of ['ranking', 'search'])
           return metaGate;
         }
         if (url.pathname.endsWith('/branches'))
-          return response([ref('main', main)], !updating && source === 'ranking');
+          return response(
+            [ref('main', main)],
+            !updating && source === 'ranking',
+          );
         if (url.pathname.endsWith('/branches/feature')) {
           enterLookup();
           return lookupGate;
@@ -344,14 +465,18 @@ for (const source of ['ranking', 'search'])
               base: { ref: 'feature' },
             },
           ]);
-        if (url.pathname.endsWith('/commits')) return response([commit(main, root), commit(root)]);
+        if (url.pathname.endsWith('/commits'))
+          return response([commit(main, root), commit(root)]);
       },
       async (h) => {
         await h.open('a/b');
         updating = true;
         const refresh = h.refresh();
         await metaEntered;
-        const lookup = source === 'ranking' ? h.loadRecommendations() : h.findBranch('feature');
+        const lookup =
+          source === 'ranking'
+            ? h.loadRecommendations()
+            : h.findBranch('feature');
         await lookupEntered;
         releaseMeta(response({ default_branch: 'main' }));
         await refresh;
@@ -398,14 +523,19 @@ test('a parent pruned after branch deletion can be restored when a later merge n
           ...(phase === 'initial' ? [ref('feature', feature)] : []),
         ]);
       if (url.pathname.endsWith('/activity'))
-        return response(phase === 'initial' ? [push('feature', '2026-11-01')] : []);
+        return response(
+          phase === 'initial' ? [push('feature', '2026-11-01')] : [],
+        );
       if (url.pathname.endsWith('/commits')) {
         const sha = url.searchParams.get('sha');
         if (sha === 'main') return response(baseline);
         if (sha === head) return response(merged, true);
         if (sha === feature) return response(side, true);
         if (sha === parent)
-          return response([dated(parent, '2026-10-31T20:00:00Z', root), baseline[1]]);
+          return response([
+            dated(parent, '2026-10-31T20:00:00Z', root),
+            baseline[1],
+          ]);
       }
     },
     async (h, requests) => {
@@ -414,7 +544,10 @@ test('a parent pruned after branch deletion can be restored when a later merge n
       assert.ok(h.getSnapshot().commits.some((c) => c.sha === parent));
       phase = 'deleted';
       await h.refresh();
-      assert.deepEqual(new Set(h.getSnapshot().commits.map((c) => c.sha)), new Set([main, root]));
+      assert.deepEqual(
+        new Set(h.getSnapshot().commits.map((c) => c.sha)),
+        new Set([main, root]),
+      );
       phase = 'merged';
       await h.refresh();
       await h.loadMore([feature]);
@@ -427,7 +560,8 @@ test('a parent pruned after branch deletion can be restored when a later merge n
         known = new Set(state.commits.map((c) => c.sha));
       assert.ok(known.has(parent));
       assert.equal(state.more, false);
-      for (const c of state.commits) for (const p of c.parents) assert.ok(known.has(p.sha));
+      for (const c of state.commits)
+        for (const p of c.parents) assert.ok(known.has(p.sha));
       assert.equal(
         histories(requests).filter(([sha]) => sha === parent).length,
         1,
@@ -445,7 +579,8 @@ for (const invalid of ['empty', 'wrong-head'])
     let failed = true;
     await using(
       (url) => {
-        if (url.pathname.endsWith('/branches')) return response([ref('main', main)]);
+        if (url.pathname.endsWith('/branches'))
+          return response([ref('main', main)]);
         if (url.pathname.endsWith('/activity')) return response([]);
         if (url.pathname.endsWith('/commits'))
           return response(
@@ -468,7 +603,10 @@ for (const invalid of ['empty', 'wrong-head'])
         assert.equal(h.getSnapshot().error, '');
         assert.equal(h.getSnapshot().more, false);
         assert.ok(h.getSnapshot().commits.some((c) => c.sha === parent));
-        assert.equal(histories(requests).filter(([sha]) => sha === parent).length, 2);
+        assert.equal(
+          histories(requests).filter(([sha]) => sha === parent).length,
+          2,
+        );
       },
     );
   });
@@ -481,7 +619,8 @@ test('a refresh missing its immutable head keeps the old graph and retries the h
     failed = true;
   await using(
     (url) => {
-      if (url.pathname.endsWith('/branches')) return response([ref('main', changed ? head : main)]);
+      if (url.pathname.endsWith('/branches'))
+        return response([ref('main', changed ? head : main)]);
       if (url.pathname.endsWith('/activity')) return response([]);
       if (url.pathname.endsWith('/commits'))
         return response(
@@ -504,7 +643,10 @@ test('a refresh missing its immutable head keeps the old graph and retries the h
       assert.equal(h.getSnapshot().baseHead, head);
       assert.equal(h.getSnapshot().refreshError, '');
       assert.ok(h.getSnapshot().commits.some((c) => c.sha === head));
-      assert.equal(histories(requests).filter(([sha]) => sha === head).length, 2);
+      assert.equal(
+        histories(requests).filter(([sha]) => sha === head).length,
+        2,
+      );
     },
   );
 });
@@ -515,7 +657,8 @@ test('immutable forward pages do not need to contain the pinned head', async () 
     root = gitSha(3);
   await using(
     (url) => {
-      if (url.pathname.endsWith('/branches')) return response([ref('main', head)]);
+      if (url.pathname.endsWith('/branches'))
+        return response([ref('main', head)]);
       if (url.pathname.endsWith('/activity')) return response([]);
       if (url.pathname.endsWith('/commits'))
         return url.searchParams.get('page') === '3'
@@ -545,8 +688,10 @@ test('a since-filtered immutable branch page may legitimately omit an old head',
     old = gitSha(3);
   await using(
     (url) => {
-      if (url.pathname.endsWith('/branches')) return response([ref('main', main), ref('old', old)]);
-      if (url.pathname.endsWith('/activity')) return response([push('old', '2026-10-31')]);
+      if (url.pathname.endsWith('/branches'))
+        return response([ref('main', main), ref('old', old)]);
+      if (url.pathname.endsWith('/activity'))
+        return response([push('old', '2026-10-31')]);
       if (url.pathname.endsWith('/commits'))
         return response(
           url.searchParams.get('sha') === 'main'
@@ -561,7 +706,9 @@ test('a since-filtered immutable branch page may legitimately omit an old head',
       assert.ok(!h.getSnapshot().commits.some((c) => c.sha === old));
       assert.ok(
         requests.some(
-          (url) => url.searchParams.get('sha') === old && url.searchParams.has('since'),
+          (url) =>
+            url.searchParams.get('sha') === old &&
+            url.searchParams.has('since'),
         ),
       );
     },
@@ -571,26 +718,35 @@ test('a since-filtered immutable branch page may legitimately omit an old head',
 test('a crossed long path keeps loading across layouts until it rejoins known ancestry above the viewport', async () => {
   for (const reverse of [false, true]) {
     const date = (index: number) =>
-      new Date(Date.parse('2026-11-01T00:00:00Z') - index * 60000).toISOString();
+      new Date(
+        Date.parse('2026-11-01T00:00:00Z') - index * 60000,
+      ).toISOString();
     const main = (i: number) =>
       dated(
         `m${i}`,
         date(i),
         ...(i < 999 ? [`m${i + 1}`] : []),
-        ...(i === 40 ? ['g0'] : i === 950 && !reverse ? ['below-viewport'] : []),
+        ...(i === 40
+          ? ['g0']
+          : i === 950 && !reverse
+            ? ['below-viewport']
+            : []),
       );
-    const side = (i: number) => dated(`g${i}`, date(40.5 + i), i === 299 ? 'm500' : `g${i + 1}`);
+    const side = (i: number) =>
+      dated(`g${i}`, date(40.5 + i), i === 299 ? 'm500' : `g${i + 1}`);
     await using(
       (url) => {
-        if (url.pathname.endsWith('/branches')) return response([ref('main', 'm0')]);
+        if (url.pathname.endsWith('/branches'))
+          return response([ref('main', 'm0')]);
         if (url.pathname.endsWith('/activity')) return response([]);
         if (url.pathname.endsWith('/commits')) {
           const sha = url.searchParams.get('sha')!,
             isSide = sha.startsWith('g'),
             index = sha === 'main' ? 0 : Number(sha.slice(1));
           return response(
-            Array.from({ length: Math.min(100, (isSide ? 300 : 1000) - index) }, (_, n) =>
-              (isSide ? side : main)(index + n),
+            Array.from(
+              { length: Math.min(100, (isSide ? 300 : 1000) - index) },
+              (_, n) => (isSide ? side : main)(index + n),
             ),
           );
         }
@@ -627,7 +783,11 @@ test('a crossed long path keeps loading across layouts until it rejoins known an
           scan();
           for (let i = 0; i < 20; i++) await turn();
           await Promise.all(tasks);
-          assert.equal(h.getSnapshot().commits.length, 1300, reverse ? 'Newer' : 'Older');
+          assert.equal(
+            h.getSnapshot().commits.length,
+            1300,
+            reverse ? 'Newer' : 'Older',
+          );
           assert.deepEqual(
             histories(requests).filter(([sha]) => sha?.startsWith('g')),
             [
@@ -636,7 +796,9 @@ test('a crossed long path keeps loading across layouts until it rejoins known an
               ['g200', '1'],
             ],
           );
-          assert.ok(!histories(requests).some(([sha]) => sha === 'below-viewport'));
+          assert.ok(
+            !histories(requests).some(([sha]) => sha === 'below-viewport'),
+          );
           assert.ok(
             !h
               .getSnapshot()
@@ -656,8 +818,14 @@ test('initial history ignores alphabetically listed branch heads and starts only
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches'))
-        return response([ref('2.0.x'), ref('2.1.x'), ref('feature'), ref('main', 'm')], true);
-      if (url.pathname.endsWith('/commits') && url.searchParams.get('sha') === 'main')
+        return response(
+          [ref('2.0.x'), ref('2.1.x'), ref('feature'), ref('main', 'm')],
+          true,
+        );
+      if (
+        url.pathname.endsWith('/commits') &&
+        url.searchParams.get('sha') === 'main'
+      )
         return response([commit('m', 'parent')], true);
     },
     async (h, requests) => {
@@ -668,7 +836,9 @@ test('initial history ignores alphabetically listed branch heads and starts only
         h.getSnapshot().commits.map((c) => c.sha),
         ['m'],
       );
-      assert.deepEqual(h.getSnapshot().frontiers, [{ sha: 'm', sources: ['parent'] }]);
+      assert.deepEqual(h.getSnapshot().frontiers, [
+        { sha: 'm', sources: ['parent'] },
+      ]);
     },
   );
 });
@@ -684,19 +854,30 @@ test('encountered merge parents are fetched by SHA even without a live branch re
             commit('root'),
           ]);
         if (url.searchParams.get('sha') === 'deleted-side')
-          return response([commit('deleted-side', 'root'), commit('root')], true);
+          return response(
+            [commit('deleted-side', 'root'), commit('root')],
+            true,
+          );
       }
     },
     async (h, requests) => {
       await h.open('a/b');
-      assert.deepEqual(h.getSnapshot().frontiers, [{ sha: 'm', sources: ['deleted-side'] }]);
-      await Promise.all([h.loadMore(['deleted-side']), h.loadMore(['deleted-side'])]);
+      assert.deepEqual(h.getSnapshot().frontiers, [
+        { sha: 'm', sources: ['deleted-side'] },
+      ]);
+      await Promise.all([
+        h.loadMore(['deleted-side']),
+        h.loadMore(['deleted-side']),
+      ]);
       assert.deepEqual(histories(requests), [
         ['main', '1'],
         ['deleted-side', '1'],
       ]);
       assert.equal(h.getSnapshot().more, false);
-      assert.equal(h.getSnapshot().commits.filter((c) => c.sha === 'root').length, 1);
+      assert.equal(
+        h.getSnapshot().commits.filter((c) => c.sha === 'root').length,
+        1,
+      );
       const count = requests.length;
       await h.loadMore();
       assert.equal(requests.length, count);
@@ -728,8 +909,16 @@ test('a short unresolved path loads independently of a longer visible path', asy
         ['main', '1'],
         ['short-parent', '1'],
       ]);
-      assert.ok(h.getSnapshot().frontiers.some((f) => f.sources.includes('long-parent')));
-      assert.ok(!h.getSnapshot().frontiers.some((f) => f.sources.includes('short-parent')));
+      assert.ok(
+        h
+          .getSnapshot()
+          .frontiers.some((f) => f.sources.includes('long-parent')),
+      );
+      assert.ok(
+        !h
+          .getSnapshot()
+          .frontiers.some((f) => f.sources.includes('short-parent')),
+      );
     },
   );
 });
@@ -755,14 +944,20 @@ test('parallel unknown parent paths deduplicate their shared commits when they j
         ['b', '1'],
       ]);
       assert.equal(h.getSnapshot().more, false);
-      assert.equal(h.getSnapshot().commits.filter((c) => c.sha === 'b').length, 1);
+      assert.equal(
+        h.getSnapshot().commits.filter((c) => c.sha === 'b').length,
+        1,
+      );
     },
   );
 });
 
 test('unknown branch names cannot be injected as history cursors', async () => {
   await using(
-    (url) => (url.pathname.endsWith('/commits') ? response([commit('m', 'parent')]) : undefined),
+    (url) =>
+      url.pathname.endsWith('/commits')
+        ? response([commit('m', 'parent')])
+        : undefined,
     async (h, requests) => {
       await h.open('a/b');
       await h.loadMore(['2.0.x']);
@@ -779,7 +974,9 @@ test('branch name pagination does not fetch histories or keep an exhausted graph
           ? response([ref('main', 'm')], true)
           : response([ref('2.0.x', 'old')]);
       if (url.pathname.endsWith('/commits'))
-        return response([commit(url.searchParams.get('sha') === 'main' ? 'm' : 'old')]);
+        return response([
+          commit(url.searchParams.get('sha') === 'main' ? 'm' : 'old'),
+        ]);
     },
     async (h, requests) => {
       await h.open('a/b');
@@ -808,7 +1005,8 @@ test('continuation errors pause automatic loading and Retry resumes the same par
   await using(
     (url) => {
       if (url.pathname.endsWith('/commits')) {
-        if (url.searchParams.get('sha') === 'main') return response([commit('m', 'side')]);
+        if (url.searchParams.get('sha') === 'main')
+          return response([commit('m', 'side')]);
         if (url.searchParams.get('sha') === 'side')
           return fail
             ? new Response('', { status: 429, headers: { 'Retry-After': '0' } })
@@ -846,7 +1044,10 @@ test('rate reset blocks premature Retry and permits it after the deadline', asyn
           return url.searchParams.get('sha') === 'main'
             ? response([commit('m', 'parent')])
             : fail
-              ? new Response('{}', { status: 429, headers: { 'Retry-After': '2' } })
+              ? new Response('{}', {
+                  status: 429,
+                  headers: { 'Retry-After': '2' },
+                })
               : response([commit('parent')]);
       },
       async (h, requests) => {
@@ -912,7 +1113,9 @@ test('oldest-first starts at the last page and advances toward newer pages under
         ['m', '3'],
       ]);
       await h.loadMore();
-      assert.deepEqual(h.getSnapshot().frontiers, [{ sha: 'middle', sources: ['page:1'] }]);
+      assert.deepEqual(h.getSnapshot().frontiers, [
+        { sha: 'middle', sources: ['page:1'] },
+      ]);
       await h.loadMore();
       assert.equal(h.getSnapshot().more, false);
       const chronological = layout(h.getSnapshot().commits)
@@ -949,7 +1152,9 @@ test('single-page histories reverse without extra page requests and both ends st
 test('oldest-first refuses unbounded downloads when the API omits last-page pagination', async () => {
   await using(
     (url) =>
-      url.pathname.endsWith('/commits') ? response([commit('m', 'parent')], true) : undefined,
+      url.pathname.endsWith('/commits')
+        ? response([commit('m', 'parent')], true)
+        : undefined,
     async (h, requests) => {
       await h.open('a/b');
       await h.setDirection(true);
@@ -1041,10 +1246,13 @@ test('failed branch name pagination retries only names, not commit history', asy
 test('main is selected beyond the first names page and PR ranking is deferred', async () => {
   await using(
     (url) => {
-      if (url.pathname.endsWith('/branches')) return response([ref('develop', 'd')], true);
-      if (url.pathname.endsWith('/branches/main')) return response(ref('main', 'm'));
+      if (url.pathname.endsWith('/branches'))
+        return response([ref('develop', 'd')], true);
+      if (url.pathname.endsWith('/branches/main'))
+        return response(ref('main', 'm'));
       if (url.pathname.endsWith('/commits')) return response([commit('m')]);
-      if (url.pathname === '/repos/a/b') return response({ default_branch: 'develop' });
+      if (url.pathname === '/repos/a/b')
+        return response({ default_branch: 'develop' });
     },
     async (h, requests) => {
       await h.open('a/b');
@@ -1060,7 +1268,8 @@ test('main is selected beyond the first names page and PR ranking is deferred', 
 test('PR ranking filters deleted refs and exact lookup can select a branch outside recommendations', async () => {
   await using(
     (url) => {
-      if (url.pathname.endsWith('/branches')) return response([ref('master', 'm')]);
+      if (url.pathname.endsWith('/branches'))
+        return response([ref('master', 'm')]);
       if (url.pathname.endsWith('/branches/hidden%2Fwork'))
         return response(ref('hidden/work', 'h'));
       if (url.pathname.endsWith('/pulls'))
@@ -1073,8 +1282,11 @@ test('PR ranking filters deleted refs and exact lookup can select a branch outsi
           },
         ]);
       if (url.pathname.endsWith('/commits'))
-        return response([commit(url.searchParams.get('sha') === 'master' ? 'm' : 'h')]);
-      if (url.pathname === '/repos/a/b') return response({ default_branch: 'master' });
+        return response([
+          commit(url.searchParams.get('sha') === 'master' ? 'm' : 'h'),
+        ]);
+      if (url.pathname === '/repos/a/b')
+        return response({ default_branch: 'master' });
     },
     async (h) => {
       await h.open('a/b');
@@ -1099,9 +1311,17 @@ test('PR scans remain bounded and never cause history requests for ranked branch
         return response([ref('main', 'm'), ref('release', 'r')]);
       if (url.pathname.endsWith('/pulls')) {
         pulls++;
-        const date = pulls === 4 ? '2020-01-01T00:00:00Z' : new Date().toISOString();
+        const date =
+          pulls === 4 ? '2020-01-01T00:00:00Z' : new Date().toISOString();
         return response(
-          [{ id: pulls, merged_at: date, updated_at: date, base: { ref: 'release' } }],
+          [
+            {
+              id: pulls,
+              merged_at: date,
+              updated_at: date,
+              base: { ref: 'release' },
+            },
+          ],
           true,
         );
       }
@@ -1131,7 +1351,9 @@ test('oldest-first page failures retry the same page before advancing toward new
         if (page === '1') return response([commit('m', 'middle')], true, 3);
         if (page === '3') return response([commit('root')]);
         if (page === '2')
-          return fail ? new Response('', { status: 500 }) : response([commit('middle', 'root')]);
+          return fail
+            ? new Response('', { status: 500 })
+            : response([commit('middle', 'root')]);
       }
     },
     async (h, requests) => {
@@ -1139,7 +1361,9 @@ test('oldest-first page failures retry the same page before advancing toward new
       await h.setDirection(true);
       await h.loadMore();
       assert.ok(h.getSnapshot().error);
-      assert.deepEqual(h.getSnapshot().frontiers, [{ sha: 'root', sources: ['page:2'] }]);
+      assert.deepEqual(h.getSnapshot().frontiers, [
+        { sha: 'root', sources: ['page:2'] },
+      ]);
       fail = false;
       await h.retry();
       assert.equal(h.getSnapshot().error, '');
@@ -1147,7 +1371,9 @@ test('oldest-first page failures retry the same page before advancing toward new
         ['m', '2'],
         ['m', '2'],
       ]);
-      assert.deepEqual(h.getSnapshot().frontiers, [{ sha: 'middle', sources: ['page:1'] }]);
+      assert.deepEqual(h.getSnapshot().frontiers, [
+        { sha: 'middle', sources: ['page:1'] },
+      ]);
     },
   );
 });
@@ -1166,14 +1392,27 @@ test('recent push activity discovers independent 22.x history without querying a
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches'))
-        return response([ref('2.0.x', 'old'), ref('22.2.x', 'release'), ref('main', 'm')]);
+        return response([
+          ref('2.0.x', 'old'),
+          ref('22.2.x', 'release'),
+          ref('main', 'm'),
+        ]);
       if (url.pathname.endsWith('/activity'))
-        return response([push('22.2.x', '2026-10-28'), push('main', '2026-10-28')]);
+        return response([
+          push('22.2.x', '2026-10-28'),
+          push('main', '2026-10-28'),
+        ]);
       if (url.pathname.endsWith('/commits')) {
         if (url.searchParams.get('sha') === 'main')
-          return response([dated('m', '2026-10-29', 'base'), dated('base', '2026-10-25', 'older')]);
+          return response([
+            dated('m', '2026-10-29', 'base'),
+            dated('base', '2026-10-25', 'older'),
+          ]);
         if (url.searchParams.get('sha') === 'release') {
-          assert.equal(url.searchParams.get('since'), '2026-10-25T00:00:00.000Z');
+          assert.equal(
+            url.searchParams.get('since'),
+            '2026-10-25T00:00:00.000Z',
+          );
           return response([dated('release', '2026-10-28', 'side-parent')]);
         }
       }
@@ -1185,7 +1424,11 @@ test('recent push activity discovers independent 22.x history without querying a
         ['release', '1'],
       ]);
       assert.ok(h.getSnapshot().commits.some((c) => c.sha === 'release'));
-      assert.ok(h.getSnapshot().frontiers.some((f) => f.sources.includes('side-parent')));
+      assert.ok(
+        h
+          .getSnapshot()
+          .frontiers.some((f) => f.sources.includes('side-parent')),
+      );
       assert.equal(h.getSnapshot().discoveryError, '');
     },
   );
@@ -1195,18 +1438,28 @@ test('unknown active refs are resolved lazily and deleted refs are not restored'
   await using(
     (url) => {
       if (url.pathname.endsWith('/activity'))
-        return response([push('removed', '2026-10-28'), push('hidden/release', '2026-10-28')]);
+        return response([
+          push('removed', '2026-10-28'),
+          push('hidden/release', '2026-10-28'),
+        ]);
       if (url.pathname.endsWith('/branches/hidden%2Frelease'))
         return response(ref('hidden/release', 'r'));
       if (url.pathname.endsWith('/commits'))
         return url.searchParams.get('sha') === 'main'
-          ? response([dated('m', '2026-10-29', 'base'), dated('base', '2026-10-25')])
+          ? response([
+              dated('m', '2026-10-29', 'base'),
+              dated('base', '2026-10-25'),
+            ])
           : response([dated('r', '2026-10-28', 'base')]);
     },
     async (h, requests) => {
       await h.open('a/b');
-      assert.ok(h.getSnapshot().branches.some((ref) => ref.name === 'hidden/release'));
-      assert.ok(!h.getSnapshot().branches.some((ref) => ref.name === 'removed'));
+      assert.ok(
+        h.getSnapshot().branches.some((ref) => ref.name === 'hidden/release'),
+      );
+      assert.ok(
+        !h.getSnapshot().branches.some((ref) => ref.name === 'removed'),
+      );
       assert.deepEqual(histories(requests), [
         ['main', '1'],
         ['r', '1'],
@@ -1221,7 +1474,8 @@ test('recent pushes of ancient heads cannot inject old commits into the current 
     (url) => {
       if (url.pathname.endsWith('/branches'))
         return response([ref('2.0.x', 'old'), ref('main', 'm')]);
-      if (url.pathname.endsWith('/activity')) return response([push('2.0.x', '2026-10-28')]);
+      if (url.pathname.endsWith('/activity'))
+        return response([push('2.0.x', '2026-10-28')]);
       if (url.pathname.endsWith('/commits'))
         return url.searchParams.get('sha') === 'main'
           ? response([dated('m', '2026-10-29')])
@@ -1242,20 +1496,33 @@ test('activity scans and histories stay bounded and older events become eligible
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches'))
-        return response([ref('main', 'm'), ref('22.2.x', 'r22'), ref('22.1.x', 'r21')]);
+        return response([
+          ref('main', 'm'),
+          ref('22.2.x', 'r22'),
+          ref('22.1.x', 'r21'),
+        ]);
       if (url.pathname.endsWith('/activity'))
         return !url.searchParams.has('after')
           ? new Response(
-              JSON.stringify([push('22.2.x', '2026-10-28'), push('22.1.x', '2026-09-25')]),
-              { headers: { Link: '<https://api.github.com/next?after=older>; rel="next"' } },
+              JSON.stringify([
+                push('22.2.x', '2026-10-28'),
+                push('22.1.x', '2026-09-25'),
+              ]),
+              {
+                headers: {
+                  Link: '<https://api.github.com/next?after=older>; rel="next"',
+                },
+              },
             )
           : response([]);
       if (url.pathname.endsWith('/commits')) {
         const sha = url.searchParams.get('sha');
-        if (sha === 'main') return response([dated('m', '2026-10-29', 'older')]);
+        if (sha === 'main')
+          return response([dated('m', '2026-10-29', 'older')]);
         if (sha === 'older') return response([dated('older', '2026-09-20')]);
         if (sha === 'r22') return response([dated('r22', '2026-10-29', 'm')]);
-        if (sha === 'r21') return response([dated('r21', '2026-09-25', 'older')]);
+        if (sha === 'r21')
+          return response([dated('r21', '2026-09-25', 'older')]);
       }
     },
     async (h, requests) => {
@@ -1263,7 +1530,10 @@ test('activity scans and histories stay bounded and older events become eligible
       assert.ok(!h.getSnapshot().commits.some((c) => c.sha === 'r21'));
       await h.loadMore(['older']);
       assert.ok(h.getSnapshot().commits.some((c) => c.sha === 'r21'));
-      assert.equal(requests.filter((url) => url.pathname.endsWith('/activity')).length, 2);
+      assert.equal(
+        requests.filter((url) => url.pathname.endsWith('/activity')).length,
+        2,
+      );
     },
   );
 });
@@ -1284,7 +1554,10 @@ test('activity errors preserve base history, stop automatic retries, and allow e
       assert.equal(h.getSnapshot().error, '');
       assert.match(h.getSnapshot().discoveryError, /denied access/);
       await h.loadMore(['older']);
-      assert.equal(requests.filter((url) => url.pathname.endsWith('/activity')).length, 1);
+      assert.equal(
+        requests.filter((url) => url.pathname.endsWith('/activity')).length,
+        1,
+      );
       fail = false;
       await h.retryDiscovery();
       assert.equal(h.getSnapshot().discoveryError, '');
@@ -1306,7 +1579,8 @@ test('clearing history while activity is loading cannot restore the previous rep
           release = resolve;
         });
       }
-      if (url.pathname.endsWith('/commits')) return response([dated('m', '2026-10-29')]);
+      if (url.pathname.endsWith('/commits'))
+        return response([dated('m', '2026-10-29')]);
     },
     async (h) => {
       const opening = h.open('a/b');
@@ -1326,13 +1600,25 @@ test('active branch histories are batched by push time rather than by name', asy
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches'))
-        return response([ref('main', 'm'), ...names.map((name) => ref(name, `head-${name}`))]);
+        return response([
+          ref('main', 'm'),
+          ...names.map((name) => ref(name, `head-${name}`)),
+        ]);
       if (url.pathname.endsWith('/activity'))
-        return response(names.map((name, index) => push(name, `2026-10-28T12:00:0${5 - index}Z`)));
+        return response(
+          names.map((name, index) =>
+            push(name, `2026-10-28T12:00:0${5 - index}Z`),
+          ),
+        );
       if (url.pathname.endsWith('/commits'))
         return url.searchParams.get('sha') === 'main'
-          ? response([dated('m', '2026-10-29', 'root'), dated('root', '2026-10-25')])
-          : response([dated(url.searchParams.get('sha')!, '2026-10-28', 'root')]);
+          ? response([
+              dated('m', '2026-10-29', 'root'),
+              dated('root', '2026-10-25'),
+            ])
+          : response([
+              dated(url.searchParams.get('sha')!, '2026-10-28', 'root'),
+            ]);
     },
     async (h, requests) => {
       await h.open('a/b');
@@ -1340,7 +1626,9 @@ test('active branch histories are batched by push time rather than by name', asy
         histories(requests).map(([sha]) => sha),
         ['main', 'head-z', 'head-a', 'head-q'],
       );
-      assert.ok(h.getSnapshot().frontiers.some((f) => f.sources.includes('activity')));
+      assert.ok(
+        h.getSnapshot().frontiers.some((f) => f.sources.includes('activity')),
+      );
       await h.loadMore(['activity']);
       assert.deepEqual(
         histories(requests).map(([sha]) => sha),
@@ -1356,15 +1644,20 @@ test('oldest-first never inserts current active heads into its historical starti
     (url) => {
       if (url.pathname.endsWith('/branches'))
         return response([ref('main', 'm'), ref('22.2.x', 'r')]);
-      if (url.pathname.endsWith('/activity')) return response([push('22.2.x', '2026-10-28')]);
+      if (url.pathname.endsWith('/activity'))
+        return response([push('22.2.x', '2026-10-28')]);
       if (url.pathname.endsWith('/commits')) {
         const sha = url.searchParams.get('sha'),
           page = url.searchParams.get('page');
         if (sha === 'r') return response([dated('r', '2026-10-28', 'root')]);
         if (page === '3') return response([dated('root', '2014-09-18')]);
-        if (page === '2') return response([dated('middle', '2020-01-01', 'root')]);
+        if (page === '2')
+          return response([dated('middle', '2020-01-01', 'root')]);
         return response(
-          [dated('m', '2026-10-29', 'recent'), dated('recent', '2026-10-25', 'middle')],
+          [
+            dated('m', '2026-10-29', 'recent'),
+            dated('recent', '2026-10-25', 'middle'),
+          ],
           true,
           3,
         );
@@ -1411,9 +1704,18 @@ test('PR and merge queue updates discover 21.x and 20.x after the active 22.x br
       if (url.pathname.endsWith('/activity'))
         return cursorResponse([
           push('22.2.x', '2026-10-29T17:00:00Z'),
-          { ...push('21.2.x', '2026-10-29T15:00:00Z'), activity_type: 'pr_merge' },
-          { ...push('20.3.x', '2026-10-29T14:00:00Z'), activity_type: 'merge_queue_merge' },
-          { ...push('removed', '2026-10-29T13:00:00Z'), activity_type: 'branch_deletion' },
+          {
+            ...push('21.2.x', '2026-10-29T15:00:00Z'),
+            activity_type: 'pr_merge',
+          },
+          {
+            ...push('20.3.x', '2026-10-29T14:00:00Z'),
+            activity_type: 'merge_queue_merge',
+          },
+          {
+            ...push('removed', '2026-10-29T13:00:00Z'),
+            activity_type: 'branch_deletion',
+          },
         ]);
       if (url.pathname.endsWith('/commits')) {
         const sha = url.searchParams.get('sha');
@@ -1427,7 +1729,8 @@ test('PR and merge queue updates discover 21.x and 20.x after the active 22.x br
           r21: '2026-10-29T15:00:00Z',
           r20: '2026-10-29T14:00:00Z',
         };
-        if (sha && dates[sha]) return response([dated(sha, dates[sha], 'root')]);
+        if (sha && dates[sha])
+          return response([dated(sha, dates[sha], 'root')]);
       }
     },
     async (h, requests) => {
@@ -1440,7 +1743,9 @@ test('PR and merge queue updates discover 21.x and 20.x after the active 22.x br
         layout(h.getSnapshot().commits).ordered.map((c) => c.sha),
         ['m', 'r22', 'r21', 'r20', 'root'],
       );
-      assert.ok(!requests.some((url) => url.pathname.endsWith('/branches/removed')));
+      assert.ok(
+        !requests.some((url) => url.pathname.endsWith('/branches/removed')),
+      );
     },
   );
 });
@@ -1449,17 +1754,28 @@ test('a branch on the next real activity cursor is discovered without repeating 
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches'))
-        return response([ref('main', 'm'), ref('22.2.x', 'r22'), ref('21.2.x', 'r21')]);
+        return response([
+          ref('main', 'm'),
+          ref('22.2.x', 'r22'),
+          ref('21.2.x', 'r21'),
+        ]);
       if (url.pathname.endsWith('/activity')) {
         assert.equal(url.searchParams.has('page'), false);
         return url.searchParams.get('after') === 'older/cursor+='
-          ? cursorResponse([{ ...push('21.2.x', '2026-10-28'), activity_type: 'pr_merge' }])
+          ? cursorResponse([
+              { ...push('21.2.x', '2026-10-28'), activity_type: 'pr_merge' },
+            ])
           : cursorResponse([push('22.2.x', '2026-10-29')], 'older/cursor+=');
       }
       if (url.pathname.endsWith('/commits'))
         return url.searchParams.get('sha') === 'main'
-          ? response([dated('m', '2026-10-29', 'root'), dated('root', '2026-10-25')])
-          : response([dated(url.searchParams.get('sha')!, '2026-10-28', 'root')]);
+          ? response([
+              dated('m', '2026-10-29', 'root'),
+              dated('root', '2026-10-25'),
+            ])
+          : response([
+              dated(url.searchParams.get('sha')!, '2026-10-28', 'root'),
+            ]);
     },
     async (h, requests) => {
       await h.open('a/b');
@@ -1483,15 +1799,24 @@ test('repeated activity cursors pause discovery instead of exhausting the API qu
   await using(
     (url) => {
       if (url.pathname.endsWith('/activity'))
-        return repeat ? cursorResponse([push('main', '2026-10-29')], 'same') : cursorResponse([]);
-      if (url.pathname.endsWith('/commits')) return response([dated('m', '2026-10-29')]);
+        return repeat
+          ? cursorResponse([push('main', '2026-10-29')], 'same')
+          : cursorResponse([]);
+      if (url.pathname.endsWith('/commits'))
+        return response([dated('m', '2026-10-29')]);
     },
     async (h, requests) => {
       await h.open('a/b');
       await h.loadMore(['activity']);
-      assert.match(h.getSnapshot().discoveryError, /pagination did not advance/);
+      assert.match(
+        h.getSnapshot().discoveryError,
+        /pagination did not advance/,
+      );
       await h.loadMore();
-      assert.equal(requests.filter((url) => url.pathname.endsWith('/activity')).length, 2);
+      assert.equal(
+        requests.filter((url) => url.pathname.endsWith('/activity')).length,
+        2,
+      );
       repeat = false;
       await h.retryDiscovery();
       assert.equal(h.getSnapshot().discoveryError, '');
@@ -1505,11 +1830,16 @@ test('an empty filtered branch is reconsidered when exploration reaches its head
       if (url.pathname.endsWith('/branches'))
         return response([ref('main', 'm'), ref('21.2.x', 'r21')]);
       if (url.pathname.endsWith('/activity'))
-        return cursorResponse([{ ...push('21.2.x', '2026-10-28'), activity_type: 'pr_merge' }]);
+        return cursorResponse([
+          { ...push('21.2.x', '2026-10-28'), activity_type: 'pr_merge' },
+        ]);
       if (url.pathname.endsWith('/commits')) {
         const sha = url.searchParams.get('sha');
         if (sha === 'main')
-          return response([dated('m', '2026-10-29', 'base'), dated('base', '2026-10-25', 'older')]);
+          return response([
+            dated('m', '2026-10-29', 'base'),
+            dated('base', '2026-10-25', 'older'),
+          ]);
         if (sha === 'older') return response([dated('older', '2026-09-20')]);
         if (sha === 'r21')
           return url.searchParams.get('since')!.startsWith('2026-10')
@@ -1522,7 +1852,10 @@ test('an empty filtered branch is reconsidered when exploration reaches its head
       assert.ok(!h.getSnapshot().commits.some((c) => c.sha === 'r21'));
       await h.loadMore(['older']);
       assert.ok(h.getSnapshot().commits.some((c) => c.sha === 'r21'));
-      assert.equal(histories(requests).filter(([sha]) => sha === 'r21').length, 2);
+      assert.equal(
+        histories(requests).filter(([sha]) => sha === 'r21').length,
+        2,
+      );
     },
   );
 });
@@ -1559,7 +1892,10 @@ test('a newly visible path starts while another path is blocked and duplicate ca
       await h.loadMore(['b']);
       assert.ok(h.getSnapshot().commits.some((c) => c.sha === 'b'));
       assert.equal(h.getSnapshot().busy, true);
-      assert.equal(histories(requests).filter(([sha]) => sha === 'a').length, 1);
+      assert.equal(
+        histories(requests).filter(([sha]) => sha === 'a').length,
+        1,
+      );
       a.resolve(response([commit('a')]));
       await Promise.all([first, duplicate]);
       assert.equal(h.getSnapshot().busy, false);
@@ -1598,13 +1934,17 @@ test('all captured paths stay queued while sixteen commit requests run concurren
       gates.get('b')!.resolve(response([commit('b')]));
       await turn();
       assert.ok(histories(requests).some(([sha]) => sha === 'r'));
-      for (const name of names) gates.get(name)!.resolve(response([commit(name)]));
+      for (const name of names)
+        gates.get(name)!.resolve(response([commit(name)]));
       await pending;
       assert.equal(peak, 16);
       assert.equal(h.getSnapshot().commits.length, 19);
       assert.equal(h.getSnapshot().busy, false);
       for (const name of names)
-        assert.equal(histories(requests).filter(([sha]) => sha === name).length, 1);
+        assert.equal(
+          histories(requests).filter(([sha]) => sha === name).length,
+          1,
+        );
     },
   );
 });
@@ -1617,7 +1957,10 @@ test('one failed parallel path does not hide successful paths and Retry repeats 
       if (url.pathname.endsWith('/commits')) {
         const sha = url.searchParams.get('sha');
         if (sha === 'main') return response([commit('m', 'a', 'b')]);
-        if (sha === 'a') return fail ? new Response('', { status: 500 }) : response([commit('a')]);
+        if (sha === 'a')
+          return fail
+            ? new Response('', { status: 500 })
+            : response([commit('a')]);
         if (sha === 'b') return slow.promise;
       }
     },
@@ -1632,8 +1975,14 @@ test('one failed parallel path does not hide successful paths and Retry repeats 
       fail = false;
       await h.retry();
       assert.equal(h.getSnapshot().error, '');
-      assert.equal(histories(requests).filter(([sha]) => sha === 'a').length, 2);
-      assert.equal(histories(requests).filter(([sha]) => sha === 'b').length, 1);
+      assert.equal(
+        histories(requests).filter(([sha]) => sha === 'a').length,
+        2,
+      );
+      assert.equal(
+        histories(requests).filter(([sha]) => sha === 'b').length,
+        1,
+      );
     },
   );
 });
@@ -1659,14 +2008,17 @@ test('changing repositories cancels queued work and ignores all old parallel res
         h.getSnapshot().commits.map((c) => c.sha),
         ['new'],
       );
-      for (const name of names) gates.get(name)!.resolve(response([commit(name)]));
+      for (const name of names)
+        gates.get(name)!.resolve(response([commit(name)]));
       await pending;
       assert.deepEqual(
         h.getSnapshot().commits.map((c) => c.sha),
         ['new'],
       );
       assert.equal(h.getSnapshot().repo, 'other/repo');
-      assert.ok(!histories(requests).some(([sha]) => sha === 'q' || sha === 'r'));
+      assert.ok(
+        !histories(requests).some(([sha]) => sha === 'q' || sha === 'r'),
+      );
     },
   );
 });
@@ -1679,11 +2031,17 @@ test('active branch histories publish independently while another discovered bra
       if (url.pathname.endsWith('/branches'))
         return response([ref('main', 'm'), ref('slow', 's'), ref('fast', 'f')]);
       if (url.pathname.endsWith('/activity'))
-        return cursorResponse([push('slow', '2026-10-28'), push('fast', '2026-10-27')]);
+        return cursorResponse([
+          push('slow', '2026-10-28'),
+          push('fast', '2026-10-27'),
+        ]);
       if (url.pathname.endsWith('/commits')) {
         const sha = url.searchParams.get('sha');
         if (sha === 'main')
-          return response([dated('m', '2026-10-29', 'root'), dated('root', '2026-10-25')]);
+          return response([
+            dated('m', '2026-10-29', 'root'),
+            dated('root', '2026-10-25'),
+          ]);
         if (sha === 's') {
           started.resolve();
           return slow.promise;
@@ -1708,18 +2066,34 @@ test('discovered branch aliases share one in-flight commit request', async () =>
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches'))
-        return response([ref('main', 'm'), ref('alias-one', 'same'), ref('alias-two', 'same')]);
+        return response([
+          ref('main', 'm'),
+          ref('alias-one', 'same'),
+          ref('alias-two', 'same'),
+        ]);
       if (url.pathname.endsWith('/activity'))
-        return cursorResponse([push('alias-one', '2026-10-28'), push('alias-two', '2026-10-28')]);
+        return cursorResponse([
+          push('alias-one', '2026-10-28'),
+          push('alias-two', '2026-10-28'),
+        ]);
       if (url.pathname.endsWith('/commits'))
         return url.searchParams.get('sha') === 'main'
-          ? response([dated('m', '2026-10-29', 'root'), dated('root', '2026-10-25')])
+          ? response([
+              dated('m', '2026-10-29', 'root'),
+              dated('root', '2026-10-25'),
+            ])
           : response([dated('same', '2026-10-28', 'root')]);
     },
     async (h, requests) => {
       await h.open('a/b');
-      assert.equal(histories(requests).filter(([sha]) => sha === 'same').length, 1);
-      assert.equal(h.getSnapshot().commits.filter((c) => c.sha === 'same').length, 1);
+      assert.equal(
+        histories(requests).filter(([sha]) => sha === 'same').length,
+        1,
+      );
+      assert.equal(
+        h.getSnapshot().commits.filter((c) => c.sha === 'same').length,
+        1,
+      );
     },
   );
 });
@@ -1740,7 +2114,9 @@ test('an empty boundary response cannot silently mark a broken branch complete',
       await h.loadMore(['gap']);
       assert.match(h.getSnapshot().error, /requested commit/);
       assert.equal(h.getSnapshot().more, true);
-      assert.deepEqual(h.getSnapshot().frontiers, [{ sha: 'm', sources: ['gap'] }]);
+      assert.deepEqual(h.getSnapshot().frontiers, [
+        { sha: 'm', sources: ['gap'] },
+      ]);
       await h.loadMore();
       assert.equal(histories(requests).length, 2);
       empty = false;
@@ -1768,7 +2144,10 @@ test('settled cursors notify subscribers after cleanup so a visible boundary kee
         cursors.push(cursor);
         return cursor === 'third'
           ? cursorResponse([push('found', '2026-10-28')])
-          : cursorResponse([push('main', '2026-10-29')], cursor === 'first' ? 'second' : 'third');
+          : cursorResponse(
+              [push('main', '2026-10-29')],
+              cursor === 'first' ? 'second' : 'third',
+            );
       }
     },
     async (h, requests) => {
@@ -1778,9 +2157,9 @@ test('settled cursors notify subscribers after cleanup so a visible boundary kee
       const scan = () => {
         const state = h.getSnapshot();
         if (state.error) return;
-        const ready = [...new Set(state.frontiers.flatMap((frontier) => frontier.sources))].filter(
-          (source) => !state.pendingSources.includes(source),
-        );
+        const ready = [
+          ...new Set(state.frontiers.flatMap((frontier) => frontier.sources)),
+        ].filter((source) => !state.pendingSources.includes(source));
         if (ready.length) tasks.push(h.loadMore(ready));
       };
       const stop = h.subscribe(scan);
@@ -1808,7 +2187,11 @@ test('reentrant viewport scans retain new main boundaries without duplicating ac
       if (url.pathname.endsWith('/commits')) {
         const sha = url.searchParams.get('sha');
         return response(
-          sha === 'main' ? [commit('m', 'a')] : sha === 'a' ? [commit('a', 'b')] : [commit('b')],
+          sha === 'main'
+            ? [commit('m', 'a')]
+            : sha === 'a'
+              ? [commit('a', 'b')]
+              : [commit('b')],
         );
       }
     },
@@ -1834,7 +2217,11 @@ test('reentrant viewport scans retain new main boundaries without duplicating ac
           ['a', '1'],
           ['b', '1'],
         ]);
-        assert.ok(states.some((sources) => sources.includes('a') && sources.includes('b')));
+        assert.ok(
+          states.some(
+            (sources) => sources.includes('a') && sources.includes('b'),
+          ),
+        );
         assert.deepEqual(h.getSnapshot().pendingSources, []);
         assert.equal(h.getSnapshot().more, false);
       } finally {
@@ -1849,7 +2236,9 @@ test('changing base before accepted work starts cannot run that work in the new 
     (url) => {
       if (url.pathname.endsWith('/commits'))
         return response(
-          url.searchParams.get('sha') === 'main' ? [commit('m', 'gap')] : [commit('new')],
+          url.searchParams.get('sha') === 'main'
+            ? [commit('m', 'gap')]
+            : [commit('new')],
         );
     },
     async (h, requests) => {
@@ -1877,7 +2266,9 @@ test('PR ranking permission denial names the missing permission and keeps the gr
       const url = new URL(String(input));
       if (url.pathname.endsWith('/pulls'))
         return new Response(
-          JSON.stringify({ message: 'Resource not accessible by personal access token' }),
+          JSON.stringify({
+            message: 'Resource not accessible by personal access token',
+          }),
           { status: 403 },
         );
       if (url.pathname.endsWith('/branches'))
@@ -1888,7 +2279,10 @@ test('PR ranking permission denial names the missing permission and keeps the gr
     const h = new History();
     await h.open('a/b', 'token');
     await h.loadRecommendations();
-    assert.equal(h.getSnapshot().ranking.error, 'Needs Pull requests: Read-only.');
+    assert.equal(
+      h.getSnapshot().ranking.error,
+      'Needs Pull requests: Read-only.',
+    );
     assert.equal(h.getSnapshot().error, '');
     assert.equal(h.getSnapshot().commits.length, 1);
   } finally {
@@ -1936,7 +2330,10 @@ test('refresh deduplicates a new shared head and keeps known commit objects', as
         h.getSnapshot().commits.find((c) => c.sha === 'm'),
         old,
       );
-      assert.equal(histories(requests).filter(([sha]) => sha === 'new').length, 1);
+      assert.equal(
+        histories(requests).filter(([sha]) => sha === 'new').length,
+        1,
+      );
     },
   );
 });
@@ -1946,11 +2343,14 @@ test('a partial or failed branch listing cannot delete refs; a later complete li
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches')) {
-        if (!refresh) return response([ref('main', 'm'), ref('feature', 'root')]);
-        if (url.searchParams.get('page') === '1') return response([ref('main', 'm')], true);
+        if (!refresh)
+          return response([ref('main', 'm'), ref('feature', 'root')]);
+        if (url.searchParams.get('page') === '1')
+          return response([ref('main', 'm')], true);
         return fail ? new Response('', { status: 500 }) : response([]);
       }
-      if (url.pathname.endsWith('/commits')) return response([commit('m', 'root'), commit('root')]);
+      if (url.pathname.endsWith('/commits'))
+        return response([commit('m', 'root'), commit('root')]);
     },
     async (h, requests) => {
       await h.open('a/b');
@@ -1999,7 +2399,10 @@ test('an actually new branch after a complete baseline is fetched incrementally'
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches'))
-        return response([ref('main', 'm'), ...(added ? [ref('new-feature', 'n')] : [])]);
+        return response([
+          ref('main', 'm'),
+          ...(added ? [ref('new-feature', 'n')] : []),
+        ]);
       if (url.pathname.endsWith('/commits'))
         return response(
           url.searchParams.get('sha') === 'n'
@@ -2022,9 +2425,16 @@ test('a new branch is detected on the first poll when the initial branch catalog
   await using(
     (url) => {
       if (url.pathname.endsWith('/branches'))
-        return response([ref('main', 'm'), ...(created ? [ref('fresh', 'n')] : [])]);
+        return response([
+          ref('main', 'm'),
+          ...(created ? [ref('fresh', 'n')] : []),
+        ]);
       if (url.pathname.endsWith('/commits'))
-        return response(url.searchParams.get('sha') === 'n' ? [commit('n', 'm')] : [commit('m')]);
+        return response(
+          url.searchParams.get('sha') === 'n'
+            ? [commit('n', 'm')]
+            : [commit('m')],
+        );
     },
     async (h) => {
       await h.open('a/b');
@@ -2067,9 +2477,12 @@ test('a deleted selected branch stops HEAD fetching and retains cached history w
     (url) => {
       if (url.pathname.endsWith('/branches'))
         return response(
-          deleted ? [ref('other', 'root')] : [ref('main', 'm'), ref('other', 'root')],
+          deleted
+            ? [ref('other', 'root')]
+            : [ref('main', 'm'), ref('other', 'root')],
         );
-      if (url.pathname.endsWith('/commits')) return response([commit('m', 'root'), commit('root')]);
+      if (url.pathname.endsWith('/commits'))
+        return response([commit('m', 'root'), commit('root')]);
     },
     async (h, requests) => {
       await h.open('a/b');

@@ -23,11 +23,10 @@ test('branch records normalize only repository names and restore independently',
   store.record('owner/repo', 'Main', false);
   assert.equal(store.get('owner/repo'), 'Main');
   assert.equal(store.get('other/repo'), 'dev');
-  assert.deepEqual(Object.keys(JSON.parse(storage.getItem(BRANCH_SELECTIONS_KEY)!)[0]).sort(), [
-    'branch',
-    'repository',
-    'visibility',
-  ]);
+  assert.deepEqual(
+    Object.keys(JSON.parse(storage.getItem(BRANCH_SELECTIONS_KEY)!)[0]).sort(),
+    ['branch', 'repository', 'visibility'],
+  );
 });
 test('PAT registration, replacement and removal drop private records while retaining public choices', () => {
   for (const [previous, next] of [
@@ -158,6 +157,12 @@ test('malformed local values and invalid ref names are ignored without losing va
     'a\n',
   ])
     assert.equal(branchName(value), undefined, value);
-  for (const value of ['main', 'Feature/Fix', 'release+hotfix', '日本語', 'a|b'])
+  for (const value of [
+    'main',
+    'Feature/Fix',
+    'release+hotfix',
+    '日本語',
+    'a|b',
+  ])
     assert.equal(branchName(value), value);
 });

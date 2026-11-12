@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +19,11 @@ function repository(t) {
   const cwd = mkdtempSync(join(tmpdir(), 'commit-trail-impact-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const git = (...args) =>
-    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
   git('init', '-q', '--initial-branch=fixture');
   git('config', 'user.name', 'Impact test');
   git('config', 'user.email', 'test@example.invalid');
@@ -70,7 +81,11 @@ test('source, public documents, templates, settings and unknown paths run all ch
   ]) {
     repo.git('reset', '--hard', repo.base);
     repo.write(path);
-    assert.equal(changeImpact({ ...repo, head: repo.commit() }).docsOnly, false, path);
+    assert.equal(
+      changeImpact({ ...repo, head: repo.commit() }).docsOnly,
+      false,
+      path,
+    );
   }
 });
 
@@ -120,7 +135,8 @@ test('a PR compares its complete tested merge against the current base', (t) => 
   repo.commit();
   repo.write('README.md', 'final PR docs');
   assert.equal(
-    changeImpact({ cwd: repo.cwd, base: currentBase, head: repo.commit() }).docsOnly,
+    changeImpact({ cwd: repo.cwd, base: currentBase, head: repo.commit() })
+      .docsOnly,
     false,
   );
 });
@@ -134,7 +150,10 @@ test('renames consider both original and destination paths', (t) => {
   const moved = repo.commit();
   assert.equal(changeImpact({ ...repo, base, head: moved }).docsOnly, false);
   repo.git('mv', 'docs/specification.md', 'src/template.md');
-  assert.equal(changeImpact({ ...repo, base: moved, head: repo.commit() }).docsOnly, false);
+  assert.equal(
+    changeImpact({ ...repo, base: moved, head: repo.commit() }).docsOnly,
+    false,
+  );
 });
 
 test('symlinks under an audited documentation name cannot skip checks', (t) => {
@@ -146,8 +165,18 @@ test('symlinks under an audited documentation name cannot skip checks', (t) => {
 
 test('missing history, zero SHA, empty range and invalid metadata run all checks', (t) => {
   const repo = repository(t);
-  for (const base of [undefined, '', '0'.repeat(40), 'f'.repeat(40), 'HEAD^', repo.base]) {
-    assert.equal(changeImpact({ ...repo, base, head: repo.base }).docsOnly, false);
+  for (const base of [
+    undefined,
+    '',
+    '0'.repeat(40),
+    'f'.repeat(40),
+    'HEAD^',
+    repo.base,
+  ]) {
+    assert.equal(
+      changeImpact({ ...repo, base, head: repo.base }).docsOnly,
+      false,
+    );
   }
 });
 
@@ -160,17 +189,27 @@ test('unrelated histories cannot be treated as a docs-only range', (t) => {
 
 test('PRs compare the base with the tested merge tree and pushes compare before/after', () => {
   assert.deepEqual(
-    ciComparison('pull_request', { pull_request: { base: { sha: 'base' } } }, 'merge'),
+    ciComparison(
+      'pull_request',
+      { pull_request: { base: { sha: 'base' } } },
+      'merge',
+    ),
     {
       base: 'base',
       head: 'merge',
     },
   );
-  assert.deepEqual(ciComparison('push', { before: 'before', after: 'head' }, 'head'), {
-    base: 'before',
-    head: 'head',
-  });
-  assert.deepEqual(ciComparison('push', { before: 'before', after: 'different' }, 'head'), {});
+  assert.deepEqual(
+    ciComparison('push', { before: 'before', after: 'head' }, 'head'),
+    {
+      base: 'before',
+      head: 'head',
+    },
+  );
+  assert.deepEqual(
+    ciComparison('push', { before: 'before', after: 'different' }, 'head'),
+    {},
+  );
   assert.deepEqual(ciComparison('workflow_dispatch', {}, 'head'), {});
 });
 
@@ -185,7 +224,8 @@ test('Vercel exits 0 only for verified documentation; first/repeated/missing dep
       encoding: 'utf8',
     });
   assert.equal(run(repo.base).status, 0);
-  for (const base of ['', head, 'f'.repeat(40)]) assert.equal(run(base).status, 1);
+  for (const base of ['', head, 'f'.repeat(40)])
+    assert.equal(run(base).status, 1);
   repo.write('src/main.tsx');
   repo.commit();
   assert.equal(run(repo.base).status, 1);
@@ -212,5 +252,8 @@ test('CI always emits a result and fails open to full validation on metadata err
   assert.equal(readFileSync(output, 'utf8'), 'docs_only=true\n');
   writeFileSync(eventPath, 'invalid JSON');
   assert.equal(run().status, 0);
-  assert.equal(readFileSync(output, 'utf8'), 'docs_only=true\ndocs_only=false\n');
+  assert.equal(
+    readFileSync(output, 'utf8'),
+    'docs_only=true\ndocs_only=false\n',
+  );
 });

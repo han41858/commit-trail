@@ -1,4 +1,9 @@
-import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react';
+import {
+  useLayoutEffect,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from 'react';
 import { monitorDetailsFrame } from './monitorDetailsPosition';
 
 // Fixed positioning escapes each column's clipping while retaining DOM ownership.
@@ -24,19 +29,30 @@ export function useMonitorDetailsPosition(
       const left = viewport?.offsetLeft ?? 0,
         top = viewport?.offsetTop ?? 0;
       const clearance = app
-        ? parseFloat(getComputedStyle(app).getPropertyValue('--notices-clearance')) || 0
+        ? parseFloat(
+            getComputedStyle(app).getPropertyValue('--notices-clearance'),
+          ) || 0
         : 0;
       // The frame already adds its own 8px bottom gap.
-      const noticeTop = clearance ? window.innerHeight - clearance + 8 : undefined;
-      const frame = monitorDetailsFrame(anchor, {
-        left: Math.max(area.left, left),
-        right: Math.min(
-          area.right,
-          left + (viewport?.width ?? document.documentElement.clientWidth),
-        ),
-        top: Math.max(area.top, top),
-        bottom: Math.min(area.bottom, top + (viewport?.height ?? window.innerHeight)),
-      }, noticeTop);
+      const noticeTop = clearance
+        ? window.innerHeight - clearance + 8
+        : undefined;
+      const frame = monitorDetailsFrame(
+        anchor,
+        {
+          left: Math.max(area.left, left),
+          right: Math.min(
+            area.right,
+            left + (viewport?.width ?? document.documentElement.clientWidth),
+          ),
+          top: Math.max(area.top, top),
+          bottom: Math.min(
+            area.bottom,
+            top + (viewport?.height ?? window.innerHeight),
+          ),
+        },
+        noticeTop,
+      );
       const next = {
         left: frame.left,
         width: frame.width,

@@ -2,7 +2,8 @@ import { lowercaseRepoInput, parseRepo } from './model';
 
 export const MONITOR_LIMIT = 32;
 export const MONITOR_REPOSITORIES_KEY = 'commit-trail.monitor-repositories';
-export const MONITOR_PUBLIC_REPOSITORIES_KEY = 'commit-trail.monitor-public-repositories';
+export const MONITOR_PUBLIC_REPOSITORIES_KEY =
+  'commit-trail.monitor-public-repositories';
 type StorageAccess = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export function monitorRepository(value: string) {
   return parseRepo(lowercaseRepoInput(value));
@@ -21,7 +22,11 @@ export function normalizeMonitorRepositories(value: unknown): string[] {
   }
   return [...names];
 }
-export function moveMonitorRepository(names: string[], repository: string, to: number): string[] {
+export function moveMonitorRepository(
+  names: string[],
+  repository: string,
+  to: number,
+): string[] {
   const from = names.indexOf(repository);
   if (from < 0 || !Number.isInteger(to)) return names;
   const target = Math.max(0, Math.min(names.length - 1, to));
@@ -79,12 +84,19 @@ export class MonitorRepositories {
     if (this.options.canWrite())
       try {
         const names = this.allowed();
-        if (names.length) this.storage?.setItem(MONITOR_REPOSITORIES_KEY, JSON.stringify(names));
+        if (names.length)
+          this.storage?.setItem(
+            MONITOR_REPOSITORIES_KEY,
+            JSON.stringify(names),
+          );
         else this.storage?.removeItem(MONITOR_REPOSITORIES_KEY);
         const publicNames = this.confirmedPublic();
         const confirmed = names.filter((name) => publicNames.has(name));
         if (confirmed.length)
-          this.storage?.setItem(MONITOR_PUBLIC_REPOSITORIES_KEY, JSON.stringify(confirmed));
+          this.storage?.setItem(
+            MONITOR_PUBLIC_REPOSITORIES_KEY,
+            JSON.stringify(confirmed),
+          );
         else this.storage?.removeItem(MONITOR_PUBLIC_REPOSITORIES_KEY);
       } catch {
         /* Keep the selection in this tab. */
@@ -103,14 +115,19 @@ export class MonitorRepositories {
       this.names = normalizeMonitorRepositories(decoded);
       let confirmed: unknown;
       try {
-        confirmed = JSON.parse(this.storage?.getItem(MONITOR_PUBLIC_REPOSITORIES_KEY) || '[]');
+        confirmed = JSON.parse(
+          this.storage?.getItem(MONITOR_PUBLIC_REPOSITORIES_KEY) || '[]',
+        );
       } catch {
         confirmed = [];
       }
       this.publicNames = new Set(
-        normalizeMonitorRepositories(confirmed).filter((name) => this.names.includes(name)),
+        normalizeMonitorRepositories(confirmed).filter((name) =>
+          this.names.includes(name),
+        ),
       );
-      if (raw && raw !== JSON.stringify(this.names) && this.options.canWrite()) this.reconcile();
+      if (raw && raw !== JSON.stringify(this.names) && this.options.canWrite())
+        this.reconcile();
       else this.publish();
     } catch {
       this.storage = undefined;
@@ -131,8 +148,13 @@ export class MonitorRepositories {
     this.publicNames.delete(repository);
     if (!isPrivate) this.publicNames.add(repository);
     // Retain selected classifications plus the latest possible incoming selection.
-    const unselected = [...this.publicNames].filter((name) => !this.names.includes(name));
-    for (const name of unselected.slice(0, Math.max(0, unselected.length - MONITOR_LIMIT)))
+    const unselected = [...this.publicNames].filter(
+      (name) => !this.names.includes(name),
+    );
+    for (const name of unselected.slice(
+      0,
+      Math.max(0, unselected.length - MONITOR_LIMIT),
+    ))
       this.publicNames.delete(name);
     this.reconcile();
   };

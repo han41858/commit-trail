@@ -9,7 +9,9 @@ const publish = () => {
 };
 export const requestActivity = {
   getSnapshot: (repository?: string) =>
-    repository === undefined ? active : (repositories.get(repository.toLowerCase()) ?? 0),
+    repository === undefined
+      ? active
+      : (repositories.get(repository.toLowerCase()) ?? 0),
   getQueuedSnapshot: () => queued,
   subscribeQueue: (listener: () => void) => {
     queueListeners.add(listener);

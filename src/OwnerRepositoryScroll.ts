@@ -25,7 +25,11 @@ export class OwnerRepositoryScroll {
     if (movement <= 0) return false;
     const previous = this.nextGestureAt;
     this.nextGestureAt = now + 300;
-    return ready && !filtered && now >= previous &&
-      area.scrollTop + area.clientHeight >= area.scrollHeight - 120;
+    return (
+      ready &&
+      !filtered &&
+      now >= previous &&
+      area.scrollTop + area.clientHeight >= area.scrollHeight - 120
+    );
   }
 }

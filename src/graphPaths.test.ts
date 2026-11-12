@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { graphColors } from './graphColors';
-import { graphHoverIndex, resolveGraphHover, type GraphHoverTarget } from './graphHover';
+import {
+  graphHoverIndex,
+  resolveGraphHover,
+  type GraphHoverTarget,
+} from './graphHover';
 import { branchTracks } from './branchLabels';
 import { layout, type Branch, type Commit } from './model';
 
@@ -10,13 +14,22 @@ function commit(sha: string, minute: number, ...parents: string[]): Commit {
   return {
     sha,
     parents: parents.map((sha) => ({ sha })),
-    commit: { message: sha, author: { name: 'Author', date }, committer: { date } },
+    commit: {
+      message: sha,
+      author: { name: 'Author', date },
+      committer: { date },
+    },
     html_url: '',
   };
 }
 
 const ref = (name: string, sha: string): Branch => ({ name, commit: { sha } });
-const branches = [ref('main', 'm'), ref('dev', 'a4'), ref('feature', 'f2'), ref('topic', 'a2')];
+const branches = [
+  ref('main', 'm'),
+  ref('dev', 'a4'),
+  ref('feature', 'f2'),
+  ref('topic', 'a2'),
+];
 const workingHistory = () => [
   commit('f2', 100, 'f1'),
   commit('f1', 90, 'a3'),
@@ -28,8 +41,18 @@ const workingHistory = () => [
   commit('root', 0),
 ];
 
-function graph(commits: Commit[], references = branches, defaultBranch?: string) {
-  const colors = graphColors(commits, references, 'main', undefined, defaultBranch);
+function graph(
+  commits: Commit[],
+  references = branches,
+  defaultBranch?: string,
+) {
+  const colors = graphColors(
+    commits,
+    references,
+    'main',
+    undefined,
+    defaultBranch,
+  );
   const data = layout(
     commits,
     new Map(),
@@ -51,7 +74,12 @@ function graph(commits: Commit[], references = branches, defaultBranch?: string)
     colors,
     data.lanes,
   );
-  return { colors, index: graphHoverIndex(data.ordered, tracks, colors.paths), tracks, positions };
+  return {
+    colors,
+    index: graphHoverIndex(data.ordered, tracks, colors.paths),
+    tracks,
+    positions,
+  };
 }
 
 function focus(target: GraphHoverTarget, value: ReturnType<typeof graph>) {
@@ -72,15 +100,28 @@ function assertWorkingOwnership(
       colors.paths.nodes.get(devHead),
       `${sha} belongs to dev`,
     );
-    assert.equal(colors.nodes.get(sha), colors.branches.get('dev'), `${sha} keeps dev's color`);
+    assert.equal(
+      colors.nodes.get(sha),
+      colors.branches.get('dev'),
+      `${sha} keeps dev's color`,
+    );
   }
   for (const sha of ['f1', 'f2']) {
-    assert.equal(colors.paths.nodes.get(sha), colors.paths.nodes.get(featureHead));
+    assert.equal(
+      colors.paths.nodes.get(sha),
+      colors.paths.nodes.get(featureHead),
+    );
     assert.equal(colors.nodes.get(sha), colors.branches.get('feature'));
   }
-  assert.notEqual(colors.paths.nodes.get(devHead), colors.paths.nodes.get(featureHead));
+  assert.notEqual(
+    colors.paths.nodes.get(devHead),
+    colors.paths.nodes.get(featureHead),
+  );
   assert.notEqual(colors.branches.get('dev'), colors.branches.get('feature'));
-  assert.equal(colors.paths.branches.get('topic'), colors.paths.branches.get('dev'));
+  assert.equal(
+    colors.paths.branches.get('topic'),
+    colors.paths.branches.get('dev'),
+  );
 }
 
 test('a newer feature from the middle of dev cannot take ownership of dev history', () => {
@@ -93,9 +134,18 @@ test('a newer feature from the middle of dev cannot take ownership of dev histor
   assert.deepEqual(feature.nodes, new Set(['f2', 'f1', 'a3']));
   assert.deepEqual(feature.edges, new Set(['f2:f1', 'f1:a3']));
   assert.deepEqual(focus({ kind: 'commit', id: 'a2' }, value).nodes, dev.nodes);
-  assert.deepEqual(focus({ kind: 'branch', id: 'topic' }, value).nodes, dev.nodes);
-  assert.deepEqual(focus({ kind: 'edge', id: 'a3:a2' }, value).nodes, dev.nodes);
-  assert.deepEqual(focus({ kind: 'edge', id: 'f1:a3' }, value).nodes, feature.nodes);
+  assert.deepEqual(
+    focus({ kind: 'branch', id: 'topic' }, value).nodes,
+    dev.nodes,
+  );
+  assert.deepEqual(
+    focus({ kind: 'edge', id: 'a3:a2' }, value).nodes,
+    dev.nodes,
+  );
+  assert.deepEqual(
+    focus({ kind: 'edge', id: 'f1:a3' }, value).nodes,
+    feature.nodes,
+  );
   const featureTrack = value.tracks.find((track) => track.name === 'feature')!;
   assert.equal(featureTrack.headSha, 'f2');
   assert.deepEqual(
@@ -117,8 +167,14 @@ test('independent arrival orders give the same named owners and colors', () => {
     const actual = graph(permutation, [...branches].reverse());
     assertWorkingOwnership(actual);
     for (const kind of ['nodes', 'edges', 'branches'] as const) {
-      assert.deepEqual(sorted(actual.colors.paths[kind]), sorted(expected.colors.paths[kind]));
-      assert.deepEqual(sorted(actual.colors[kind]), sorted(expected.colors[kind]));
+      assert.deepEqual(
+        sorted(actual.colors.paths[kind]),
+        sorted(expected.colors.paths[kind]),
+      );
+      assert.deepEqual(
+        sorted(actual.colors[kind]),
+        sorted(expected.colors[kind]),
+      );
     }
   }
 });
@@ -126,10 +182,26 @@ test('independent arrival orders give the same named owners and colors', () => {
 test('appending heads with inverted dates leaves the observed post-fork age unchanged', () => {
   const original = workingHistory();
   const cases = [
-    { commits: [commit('f3', 110, 'f2'), ...original], dev: 'a4', feature: 'f3' },
-    { commits: [commit('a5', 120, 'a4'), ...original], dev: 'a5', feature: 'f2' },
-    { commits: [commit('a5', 10, 'a4'), ...original], dev: 'a5', feature: 'f2' },
-    { commits: [commit('f3', 10, 'f2'), ...original], dev: 'a4', feature: 'f3' },
+    {
+      commits: [commit('f3', 110, 'f2'), ...original],
+      dev: 'a4',
+      feature: 'f3',
+    },
+    {
+      commits: [commit('a5', 120, 'a4'), ...original],
+      dev: 'a5',
+      feature: 'f2',
+    },
+    {
+      commits: [commit('a5', 10, 'a4'), ...original],
+      dev: 'a5',
+      feature: 'f2',
+    },
+    {
+      commits: [commit('f3', 10, 'f2'), ...original],
+      dev: 'a4',
+      feature: 'f3',
+    },
   ];
   for (const scenario of cases) {
     const references = [
@@ -138,12 +210,19 @@ test('appending heads with inverted dates leaves the observed post-fork age unch
       ref('feature', scenario.feature),
       ref('topic', 'a2'),
     ];
-    assertWorkingOwnership(graph(scenario.commits, references), scenario.dev, scenario.feature);
+    assertWorkingOwnership(
+      graph(scenario.commits, references),
+      scenario.dev,
+      scenario.feature,
+    );
   }
 });
 
 test('a synchronization merge preserves the known repository default as a separate flow', () => {
-  const commits = [commit('feature-sync', 110, 'f2', 'a4'), ...workingHistory()];
+  const commits = [
+    commit('feature-sync', 110, 'f2', 'a4'),
+    ...workingHistory(),
+  ];
   const references = [
     ref('main', 'm'),
     ref('dev', 'a4'),
@@ -175,7 +254,10 @@ test('a ref inside an unnamed merged path stays an alias of the actual path head
     commit('root', 0),
   ];
   const value = graph(commits, [ref('main', 'm'), ref('middle-ref', 'middle')]);
-  assert.equal(value.colors.paths.nodes.get('middle'), value.colors.paths.nodes.get('former-tip'));
+  assert.equal(
+    value.colors.paths.nodes.get('middle'),
+    value.colors.paths.nodes.get('former-tip'),
+  );
   assert.equal(
     value.colors.paths.branches.get('middle-ref'),
     value.colors.paths.nodes.get('former-tip'),
@@ -195,8 +277,14 @@ test('a branch reached only through a merge parent retains its own terminal flow
     commit('root', 0),
   ];
   const value = graph(commits, [ref('main', 'm'), ref('dev', 'a4')]);
-  assert.notEqual(value.colors.paths.branches.get('dev'), value.colors.paths.branches.get('main'));
-  assert.equal(value.colors.paths.nodes.get('a3'), value.colors.paths.branches.get('dev'));
+  assert.notEqual(
+    value.colors.paths.branches.get('dev'),
+    value.colors.paths.branches.get('main'),
+  );
+  assert.equal(
+    value.colors.paths.nodes.get('a3'),
+    value.colors.paths.branches.get('dev'),
+  );
   assert.deepEqual(
     focus({ kind: 'branch', id: 'dev' }, value).nodes,
     new Set(['a4', 'a3', 'root', 'm']),
@@ -224,7 +312,10 @@ test('an exclusive integration merge outranks an older lower-SHA work head witho
     const value = graph(ordered, [...references].reverse());
     for (const sha of ['a3', 'a2', 'a1']) {
       assert.equal(value.colors.paths.nodes.get(sha), 'z-line-tip');
-      assert.equal(value.colors.nodes.get(sha), value.colors.branches.get('harbor'));
+      assert.equal(
+        value.colors.nodes.get(sha),
+        value.colors.branches.get('harbor'),
+      );
     }
     assert.equal(value.colors.paths.branches.get('old-marker'), 'z-line-tip');
     assert.deepEqual(
@@ -254,7 +345,8 @@ test('repository default metadata outranks integration evidence and SHA without 
   const value = graph(commits, references, 'unexpected-name');
   for (const sha of ['a3', 'a2', 'a1'])
     assert.equal(value.colors.paths.nodes.get(sha), 'z-default');
-  for (const sha of ['m', 'root']) assert.equal(value.colors.paths.nodes.get(sha), 'm');
+  for (const sha of ['m', 'root'])
+    assert.equal(value.colors.paths.nodes.get(sha), 'm');
   assert.equal(value.colors.paths.nodes.get('a-integration'), 'a-integration');
 });
 
@@ -268,7 +360,11 @@ test('an inherited merge before a common fork does not promote every descendant 
     commit('a2', 50, 'root'),
     commit('root', 0),
   ];
-  const value = graph(commits, [ref('main', 'm'), ref('dev', 'z-tip'), ref('feature', 'a-tip')]);
+  const value = graph(commits, [
+    ref('main', 'm'),
+    ref('dev', 'z-tip'),
+    ref('feature', 'a-tip'),
+  ]);
   assert.equal(value.colors.paths.nodes.get('common-merge'), 'a-tip');
   assert.equal(value.colors.paths.nodes.get('a2'), 'a-tip');
   assert.equal(value.colors.paths.nodes.get('z-tip'), 'z-tip');
@@ -376,7 +472,9 @@ test('a repository default inside a newer feature retains ownership and focus ac
   ];
   let defaultColor: number | undefined;
   for (const advanced of [false, true]) {
-    const commits = advanced ? [commit(ids.f3, 200, ids.f2), ...original] : original;
+    const commits = advanced
+      ? [commit(ids.f3, 200, ids.f2), ...original]
+      : original;
     const references = [
       ref('main', ids.main),
       ref('arbitraryriver', ids.a3),
@@ -387,7 +485,10 @@ test('a repository default inside a newer feature retains ownership and focus ac
       const value = graph(values, [...references].reverse(), 'arbitraryriver');
       for (const sha of [ids.a3, ids.a2, ids.a1]) {
         assert.equal(value.colors.paths.nodes.get(sha), ids.a3);
-        assert.equal(value.colors.nodes.get(sha), value.colors.branches.get('arbitraryriver'));
+        assert.equal(
+          value.colors.nodes.get(sha),
+          value.colors.branches.get('arbitraryriver'),
+        );
       }
       assert.equal(value.colors.paths.branches.get('marker'), ids.a3);
       assert.notEqual(
@@ -427,7 +528,8 @@ test('rewriting the actual first post-fork commit can change the observed owners
     ref('topic', 'a2'),
   ];
   const after = graph(commits, references);
-  for (const sha of ['a1', 'a2', 'a3']) assert.equal(after.colors.paths.nodes.get(sha), 'f2');
+  for (const sha of ['a1', 'a2', 'a3'])
+    assert.equal(after.colors.paths.nodes.get(sha), 'f2');
   assert.deepEqual(
     focus({ kind: 'branch', id: 'dev' }, after).nodes,
     new Set(['rewritten-dev-start', 'a3']),
@@ -444,7 +546,12 @@ const competitionIds = {
   root: '1edcaf3c6c126e130e28004a421f11d4a240ebdb',
 };
 
-function competition(leftHead: string, rightHead: string, leftMinute = 40, rightMinute = 60) {
+function competition(
+  leftHead: string,
+  rightHead: string,
+  leftMinute = 40,
+  rightMinute = 60,
+) {
   const ids = competitionIds;
   const leftStart = commit(ids.leftStart, leftMinute, ids.fork);
   const rightStart = commit(ids.rightStart, rightMinute, ids.fork);
@@ -460,7 +567,11 @@ function competition(leftHead: string, rightHead: string, leftMinute = 40, right
       commit(ids.fork, 20, ids.root),
       commit(ids.root, 0),
     ],
-    references: [ref('main', ids.main), ref('left-work', leftHead), ref('right-work', rightHead)],
+    references: [
+      ref('main', ids.main),
+      ref('left-work', leftHead),
+      ref('right-work', rightHead),
+    ],
   };
 }
 
@@ -477,12 +588,22 @@ test('first post-fork age wins for real SHAs in either ordering and after invert
         ? [commit(nextHead, 1, leftHead), ...original.commits]
         : original.commits;
       const references = advanced
-        ? [ref('main', ids.main), ref('left-work', nextHead), ref('right-work', rightHead)]
+        ? [
+            ref('main', ids.main),
+            ref('left-work', nextHead),
+            ref('right-work', rightHead),
+          ]
         : original.references;
       for (const values of [commits, [...commits].reverse()]) {
         const value = graph(values, [...references].reverse());
-        assert.equal(value.colors.paths.nodes.get(ids.fork), advanced ? nextHead : leftHead);
-        assert.equal(value.colors.nodes.get(ids.fork), value.colors.branches.get('left-work'));
+        assert.equal(
+          value.colors.paths.nodes.get(ids.fork),
+          advanced ? nextHead : leftHead,
+        );
+        assert.equal(
+          value.colors.nodes.get(ids.fork),
+          value.colors.branches.get('left-work'),
+        );
       }
     }
   }
@@ -512,12 +633,18 @@ test('unknown and malformed post-fork dates fall after known dates and remain de
     fixture.leftStart.commit.author = null;
     fixture.leftStart.commit.committer = { date: 'not-a-date' };
     if (unknownRight) {
-      fixture.rightStart.commit.author = { name: 'Author', date: 'invalid-author-date' };
+      fixture.rightStart.commit.author = {
+        name: 'Author',
+        date: 'invalid-author-date',
+      };
       fixture.rightStart.commit.committer = null;
     }
     const expected = unknownRight ? ids.lowHead : ids.highHead;
     for (const values of [fixture.commits, [...fixture.commits].reverse()]) {
-      assert.equal(graph(values, fixture.references).colors.paths.nodes.get(ids.fork), expected);
+      assert.equal(
+        graph(values, fixture.references).colors.paths.nodes.get(ids.fork),
+        expected,
+      );
     }
   }
 });
