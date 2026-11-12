@@ -1,3 +1,4 @@
+import { BrandMark } from './BrandMark';
 import React, {
   useCallback,
   useEffect,
@@ -42,7 +43,10 @@ import {
 } from './RecentRepositories';
 import { BranchSelections, BRANCH_SELECTIONS_KEY } from './BranchSelections';
 import type { RepositoryLocation } from './repositoryLocation';
-import logo from '../assets/logo-320.png';
+import darkLogo from '../assets/logo.svg';
+import lightLogo from '../assets/logo-light.svg';
+import darkAnimatedLogo from '../assets/logo-animated.svg';
+import lightAnimatedLogo from '../assets/logo-light-animated.svg';
 import {
   readStoredToken,
   saveStoredToken,
@@ -239,6 +243,9 @@ function App() {
       : 'dark',
   );
   const resolvedTheme = theme === 'system' ? systemTheme : theme;
+  const logo = resolvedTheme === 'light' ? lightLogo : darkLogo;
+  const animatedLogo =
+    resolvedTheme === 'light' ? lightAnimatedLogo : darkAnimatedLogo;
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme:light)');
     const update = () => setSystemTheme(media.matches ? 'light' : 'dark');
@@ -765,13 +772,7 @@ function App() {
             </div>
           ) : (
             <div className="empty">
-              <img
-                className="empty-mark"
-                src={logo}
-                alt=""
-                width="160"
-                height="160"
-              />
+              <BrandMark staticSrc={logo} animatedSrc={animatedLogo} />
               <h1>
                 {state.busy ? 'Loading...' : 'Watch your Git history unfold.'}
               </h1>

@@ -1,5 +1,11 @@
 <p align="center">
-  <img src="public/icons/icon-192.png" alt="Commit Trail logo" width="96" height="96" />
+  <picture>
+    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: light)" srcset="assets/logo-light.svg" />
+    <source media="(prefers-reduced-motion: reduce)" srcset="assets/logo.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-light-animated.svg" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-animated.svg" />
+    <img src="assets/logo-animated.svg" alt="Commit Trail logo" width="96" height="96" />
+  </picture>
 </p>
 
 <h1 align="center">Commit Trail</h1>
@@ -37,7 +43,7 @@
 
 </details>
 
-![Commit Trail Split view showing Commit Trail, AI Template, Angular and VS Code in four columns in a wide viewport](docs/images/split-desktop.png)
+![Commit Trail Split view showing Commit Trail, AI Native, Angular and VS Code in four columns in a wide viewport](docs/images/split-desktop.png)
 
 Choose **Split view** to select repositories. Drag a header handle to reorder columns; on touch screens, press and hold the handle first. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
 

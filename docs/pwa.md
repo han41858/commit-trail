@@ -325,11 +325,12 @@ PWA 설치 후 사용하는 대표 주소는 Vercel Production의 안정적인 �
 
 - `vite.config.ts`: `vite-plugin-pwa` 2.x의 `generateSW`, `registerType: prompt`를 사용한다. 커스텀 Service Worker와 별도 배포 워크플로는 추가하지 않는다. PWA 빌드 의존성은 `package.json`과 잠금 파일에서 관리한다.
 - Manifest는 `/manifest.webmanifest`, Service Worker는 `/sw.js`에서 제공한다. ID·시작 주소·범위는 `/`로 고정하고 방향은 제한하지 않는다. 페이지의 기존 쿼리(반복 `repo`·`mode`·`debug` 포함)와 fragment는 업데이트 후에도 유지한다.
-- `public/icons/`: 원본 `assets/logo.png`를 그대로 보존하고 192/512 PNG, Apple 180 PNG와 maskable 512 PNG를 파생 생성했다. 파일 크기를 줄이기 위해 256색 PNG로 인코딩한다. Maskable은 원본 전체를 중앙 288px 정사각형 안에 넣어 반지름 40%의 안전 원에 모두 들어가도록 했다. 새 디자인·문자는 추가하지 않았다.
+- `assets/logo.svg`와 `assets/logo-light.svg`를 어두운/밝은 테마의 정지형 원본으로 사용한다. 첫 화면의 큰 로고는 대응하는 `*-animated.svg`를 표시하고, `prefers-reduced-motion: reduce`이면 `<picture>`의 정지형 source로 전환한다. 큰 로고는 표시 후 최대 10초만 재생하며, 탭을 숨기면 정지형으로 전환하고 복귀 시 자동 재시작하지 않는다. 헤더는 정지형 SVG를 사용하며 앱의 시스템/수동 테마 선택을 따른다.
+- `public/icons/`의 192/512 PNG와 Apple 180 PNG는 어두운 배경(`#070a11`) 위에 `assets/logo.svg`를 렌더링한다. Maskable 512 PNG는 SVG 전체를 중앙 288px 정사각형에 넣어 반지름 40%의 안전 원 안에 보존한다. 탭 아이콘은 원본 정지형 SVG의 경로·색상을 유지하되 `viewBox`를 줄여 확대하고 궤적 두께를 보강한 `favicon.svg`를 사용한다. 어두운 브랜드 배경으로 밝은 탭에서도 대비를 확보하며, 32px PNG fallback은 같은 favicon에서 생성한다. 홈 화면·공유 이미지용 PNG는 앱 테마와 무관하게 같은 브랜드 배경을 사용한다.
 - `src/PwaUpdates.ts`, `src/pwa.ts`, `src/PwaUpdatePrompt.tsx`: 등록·새 버전 안내·적용을 API 갱신과 분리한다. 최초 설치 안내나 설치 유도 배너는 없다. 같은 worker의 Later는 반복 안내하지 않으며 새 버전은 다시 알릴 수 있다.
 - 배포 빌드에서만 SW를 등록한다. 기본 갱신 검사는 브라우저 등록 시, 열린 화면에서는 1시간 주기 및 온라인·탭 복귀 시 수행한다. 후자는 1분 이내 중복 검사, 숨긴 탭·오프라인·설치 중 검사를 생략한다. GitHub API를 호출하지 않는다.
 - 적용 버튼을 누른 창만 새 controller가 준비된 후 새로고침한다. 다른 창에서 업데이트를 적용해도 현재 창을 강제 새로고침하지 않는다. 적용 실패·15초 이내 제어권 미전환 시 기존 화면과 오류 안내를 유지하고 재시도할 수 있다.
-- Workbox는 빌드된 HTML·JS·CSS·PNG와 Manifest만 precache한다. 런타임 캐시 경로는 없다. `/` 및 쿼리를 가진 `/` 탐색만 캐시된 `index.html`로 처리하고 쿼리·저장소별 HTML 캐시를 만들지 않는다. GitHub 응답·Authorization·PAT를 SW에 전달하거나 저장하는 코드는 없다. PAT는 새 제품명에 맞춘 localStorage 키를 사용하며, 이전 제품의 데이터는 이전하지 않는다. 복원·삭제 정책은 유지한다.
+- Workbox는 빌드된 HTML·JS·CSS·PNG·SVG와 Manifest만 precache한다. 런타임 캐시 경로는 없다. `/` 및 쿼리를 가진 `/` 탐색만 캐시된 `index.html`로 처리하고 쿼리·저장소별 HTML 캐시를 만들지 않는다. GitHub 응답·Authorization·PAT를 SW에 전달하거나 저장하는 코드는 없다. PAT는 새 제품명에 맞춘 localStorage 키를 사용하며, 이전 제품의 데이터는 이전하지 않는다. 복원·삭제 정책은 유지한다.
 - 새 worker 설치가 실패하면 기존 worker와 앱 셸을 유지한다. 활성화 때 현재 정적 자산을 보존하고 오래된 precache 항목을 정리한다. 이미 열린 다른 창의 앱 코드는 사용자 적용·재시작 전까지 유지될 수 있다.
 - `index.html`의 `viewport-fit=cover`, Chromium의 `interactive-widget=resizes-content`, iOS 홈 화면 메타데이터를 사용한다. 기존 동적 theme-color는 유지한다. Safe Area를 그래프 좌우·하단과 오버레이에 적용하고 그래프 상단은 기존 toolbar 측정값만 사용하여 여백을 이중 적용하지 않는다. 좁은 화면의 입력 글자 크기는 16px로 맞춘다.
 - CSP는 기존 제한에 정적 자산 접근용 `connect-src 'self'`, 명시적 `worker-src 'self'`, `manifest-src 'self'`만 추가한다. SW는 재검증하며 immutable 캐시를 쓰지 않고, 기존 해시 자산은 immutable 정책을 유지한다. Preview/Production은 같은 코드이며 SW·캐시·설치는 Origin별로 분리된다.
@@ -393,5 +394,5 @@ location.reload();
 - 디버그 JS·CSS도 정적 precache에 포함하므로 오프라인에서 진단 패널을 사용할 수 있다. 별도 청크이더라도 SW 설치 시 내려받는다.
 - 설치 스플래시의 초기 색은 기본 어두운 브랜드 색으로 고정하고 실행 후에는 기존 시스템/앱 테마를 적용한다.
 - 업데이트 안내는 오른쪽 아래에 고정한다. 디버그 진입 버튼·로딩 실패 안내가 함께 표시되면 같은 알림 영역에서 업데이트 안내의 8px 위에 쌓아, 안내 높이나 줄바꿈에 관계없이 겹치지 않게 한다. 업데이트 안내가 없을 때의 디버그 위치는 유지하며, 패널이 열려 있어도 업데이트 안내를 조작하고 닫을 수 있다.
-- 앱 화면은 최대 표시 크기 160px의 2배인 320px PNG(`assets/logo-320.png`)를 사용한다. 원본 `assets/logo.png`는 보존하지만 앱 번들과 precache에는 포함하지 않는다. 앱 로고와 `public/icons/`는 256색 PNG를 사용한다. precache 크기는 빌드 산출물에 따라 달라지며 API 데이터는 포함하지 않는다.
+- 기존 `assets/logo.png`·`assets/logo-320.png`는 원본 이력으로 보존하며 앱 번들과 precache에는 포함하지 않는다. 실제 캐시 크기는 빌드 산출물에 따라 달라지고 API 데이터는 포함하지 않는다.
 - 의존성 감사는 현재 잠금 파일과 조회 시점의 권고를 기준으로 `npm audit` 및 `npm audit --omit=dev`로 구분해 확인한다. 과거 감사 건수를 현재 상태로 간주하지 않으며, 자동 수정이 제안돼도 사용 중인 PWA API·호환성을 확인한 뒤 적용한다.
