@@ -43,7 +43,7 @@
 
 </details>
 
-![Commit Trail Split view showing Commit Trail, AI Template, Angular and VS Code in four columns in a wide viewport](docs/images/split-desktop.png)
+![Commit Trail Split view showing Commit Trail, AI Native, Angular and VS Code in four columns in a wide viewport](docs/images/split-desktop.png)
 
 Choose **Split view** to select repositories. Drag a header handle to reorder columns; on touch screens, press and hold the handle first. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
 
