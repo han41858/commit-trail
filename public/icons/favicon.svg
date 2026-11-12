@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Commit Trail</title>
+  <defs>
+    <radialGradient id="sun" cx="35%" cy="30%">
+      <stop stop-color="#fff1cc" />
+      <stop offset="1" stop-color="#ffca61" />
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#070a11" />
+  <path
+    d="M10 51 43 22"
+    stroke="#ffca61"
+    stroke-width="4"
+    stroke-linecap="round"
+  />
+  <ellipse
+    cx="32"
+    cy="32"
+    rx="23"
+    ry="10"
+    transform="rotate(45 32 32)"
+    fill="none"
+    stroke="#55c8ff"
+    stroke-width="3"
+  />
+  <circle cx="43" cy="22" r="10" fill="url(#sun)" />
+  <circle cx="17" cy="18" r="4" fill="#5eead4" />
+</svg>

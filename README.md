@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="public/icons/icon-192.png" alt="Commit Trail logo" width="96" height="96" />
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo.svg" />
+    <img src="assets/logo.svg" alt="Commit Trail logo" width="96" height="96" />
+  </picture>
 </p>
 
 <h1 align="center">Commit Trail</h1>
