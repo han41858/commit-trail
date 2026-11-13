@@ -341,7 +341,7 @@ export function MonitorSetup({
               <input
                 ref={field}
                 aria-label="Repository to monitor"
-                placeholder="owner or owner/repository"
+                placeholder="owner or owner/repo"
                 autoComplete="off"
                 autoCapitalize="none"
                 autoCorrect="off"
