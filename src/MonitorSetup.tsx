@@ -107,7 +107,7 @@ export function MonitorSetup({
     try {
       repository = monitorRepository(value);
     } catch {
-      setError('Enter a GitHub URL or owner/repository.');
+      setError('Enter a GitHub URL or owner/repo.');
       return;
     }
     if (selected.includes(repository)) {
