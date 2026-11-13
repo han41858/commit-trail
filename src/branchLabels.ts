@@ -243,11 +243,12 @@ export function visibleBranchLabels(
     a.x + a.width > b.x &&
     a.y < b.y + b.height &&
     a.y + a.height > b.y;
-  // Prefer clear space farther right before the left side or another path anchor.
+  // Try both sides near the path before accepting a distant horizontal fallback.
   const beside = (
     rect: (typeof rects)[number],
     candidates = nodes,
     blockers = barriers(),
+    anchorX?: number,
   ) => {
     const nearby = blockers.filter(
       (other) =>
@@ -271,6 +272,9 @@ export function visibleBranchLabels(
       (x) =>
         x >= left + 8 &&
         x + rect.width <= right - 8 &&
+        (anchorX === undefined ||
+          Math.max(x - anchorX, anchorX - (x + rect.width)) <=
+            Math.max(12, height)) &&
         !nearby.some((other) => intersects({ ...rect, x }, other)),
     );
     return x === undefined ? undefined : { ...rect, x };
@@ -328,7 +332,10 @@ export function visibleBranchLabels(
       )
         continue;
       const rect = box(head),
-        position = beside({ ...rect, y }) || rect;
+        position =
+          beside({ ...rect, y }, nodes, barriers(), head.x) ||
+          beside({ ...rect, y }) ||
+          rect;
       place({
         ...head,
         names,
@@ -340,80 +347,98 @@ export function visibleBranchLabels(
       });
       continue;
     }
-    let fallback: BranchLabel | undefined,
-      placed = false;
-    for (
-      let row = 0;
-      row <= Math.ceil((bottom - top) / (height + gap + 2));
-      row++
-    ) {
-      const target =
-        top + (track.lane % 4) * (height + gap) + row * (height + gap + 2);
-      let point: Point | undefined,
-        distance = Infinity;
-      for (const path of [track.points, ...(track.connections || [])]) {
-        const candidate = anchor(path, target, top, bottom, left, right);
-        if (!candidate) continue;
-        const delta = Math.abs(candidate.y - target);
-        if (delta < distance) {
-          point = candidate;
-          distance = delta;
+    let placed = false;
+    for (const nearPath of [true, false]) {
+      let fallback: BranchLabel | undefined;
+      for (
+        let row = 0;
+        row <= Math.ceil((bottom - top) / (height + gap + 2));
+        row++
+      ) {
+        const target =
+          top + (track.lane % 4) * (height + gap) + row * (height + gap + 2);
+        let point: Point | undefined,
+          distance = Infinity;
+        for (const path of [track.points, ...(track.connections || [])]) {
+          const candidate = anchor(path, target, top, bottom, left, right);
+          if (!candidate) continue;
+          const delta = Math.abs(candidate.y - target);
+          if (delta < distance) {
+            point = candidate;
+            distance = delta;
+          }
         }
+        if (!point) break;
+        const label: BranchLabel = {
+            ...point,
+            names,
+            lane: track.lane,
+            color: track.color,
+            boxHeight: stackHeight,
+          },
+          rect = box(point),
+          position = beside(
+            rect,
+            nodes,
+            barriers(),
+            nearPath ? point.x : undefined,
+          );
+        label.boxX = position?.x ?? rect.x;
+        label.boxY = rect.y;
+        fallback ??= label;
+        if (!position) continue;
+        place(label);
+        placed = true;
+        break;
       }
-      if (!point) break;
-      const label: BranchLabel = {
-          ...point,
-          names,
-          lane: track.lane,
-          color: track.color,
-          boxHeight: stackHeight,
-        },
-        rect = box(point),
-        position = beside(rect);
-      label.boxX = position?.x ?? rect.x;
-      label.boxY = rect.y;
-      fallback ??= label;
-      if (!position) continue;
-      place(label);
-      placed = true;
-      break;
-    }
-    // Keep short-path fallbacks nearby so a badge cannot name an unrelated older row.
-    if (!placed && fallback) {
-      const width = measure(names, fallback);
-      const ys = [
-        top + 6,
-        ...barriers().flatMap((rect) => [
-          rect.y + rect.height,
-          rect.y - stackHeight,
-        ]),
-      ]
-        .filter(
-          (y) =>
-            y >= top + 6 &&
-            y + stackHeight <= bottom &&
-            Math.abs(y - fallback!.boxY!) <= ROW,
-        )
-        .sort(
-          (a, b) =>
-            Math.abs(a - fallback!.boxY!) - Math.abs(b - fallback!.boxY!),
-        );
-      let position: (typeof rects)[number] | undefined;
-      // Preserve existing node-clear placement first, then consider badge edges.
-      // If no nearby position clears nodes, still keep branch names separate.
-      for (const blockers of [undefined, barriers(), labelBarriers()]) {
-        for (const y of ys) {
-          const rect = { x: fallback.boxX!, y, width, height: stackHeight };
-          position = blockers ? beside(rect, blockers, blockers) : beside(rect);
+      // Keep short-path fallbacks nearby so a badge cannot name an unrelated older row.
+      if (!placed && fallback) {
+        const width = measure(names, fallback);
+        const ys = [
+          top + 6,
+          ...barriers().flatMap((rect) => [
+            rect.y + rect.height,
+            rect.y - stackHeight,
+          ]),
+        ]
+          .filter(
+            (y) =>
+              y >= top + 6 &&
+              y + stackHeight <= bottom &&
+              Math.abs(y - fallback!.boxY!) <= ROW,
+          )
+          .sort(
+            (a, b) =>
+              Math.abs(a - fallback!.boxY!) - Math.abs(b - fallback!.boxY!),
+          );
+        let position: (typeof rects)[number] | undefined;
+        // Preserve existing node-clear placement first, then consider badge edges.
+        // If no nearby position clears nodes, still keep branch names separate.
+        for (const blockers of nearPath
+          ? [barriers()]
+          : [undefined, barriers(), labelBarriers()]) {
+          for (const y of ys) {
+            const rect = { x: fallback.boxX!, y, width, height: stackHeight };
+            position = beside(
+              rect,
+              blockers || nodes,
+              blockers || barriers(),
+              nearPath ? fallback.x : undefined,
+            );
+            if (position) break;
+          }
           if (position) break;
         }
-        if (position) break;
+        if (position) {
+          fallback.boxX = position.x;
+          fallback.boxY = position.y;
+        }
+        if (position || !nearPath) {
+          place(fallback);
+          placed = true;
+        }
       }
-      if (position) {
-        fallback.boxX = position.x;
-        fallback.boxY = position.y;
-      }
-      place(fallback);
+      if (placed) break;
     }
   }
   return labels;
