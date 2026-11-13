@@ -778,7 +778,7 @@ function App() {
                   className="empty-tagline"
                   aria-hidden={state.busy || undefined}
                 >
-                  Watch your Git history unfold.
+                  Follow your commit trail.
                 </span>
                 {state.busy && (
                   <span className="empty-loading">Loading...</span>
