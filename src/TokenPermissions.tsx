@@ -7,6 +7,10 @@ import {
 } from './tokenAccess';
 import { useRetryCountdown, retryLabel } from './useRetryCountdown';
 
+const permissions = [...tokenFeatures].sort((a, b) =>
+  a.permission.localeCompare(b.permission),
+);
+
 const labels: Record<AccessStatus, string> = {
   unchecked: 'Not checked',
   available: 'Available',
@@ -90,27 +94,24 @@ export function TokenPermissions({
           {message}
         </p>
       )}
-      <table className="token-permissions" aria-label="Feature permissions">
+      <table className="token-permissions" aria-label="Token permission access">
         <thead>
           <tr>
-            <th scope="col">Feature</th>
             <th scope="col">Permission</th>
-            <th scope="col">Access</th>
+            <th scope="col">Used for</th>
+            <th scope="col">Check</th>
           </tr>
         </thead>
         <tbody>
-          {tokenFeatures.map((feature) => {
+          {permissions.map((feature) => {
             const check = report.checks[feature.key];
             return (
               <tr key={feature.key}>
                 <th scope="row">
-                  {feature.name}
-                  <small>{feature.description}</small>
-                </th>
-                <td>
                   {feature.permission}
                   <small>Read-only</small>
-                </td>
+                </th>
+                <td>{feature.description}</td>
                 <td>
                   {busy ? (
                     <span

@@ -38,7 +38,7 @@ Split view는 최대 32개 저장소를 가로 한 줄로 표시하며, 열별 �
 - 토큰 패널에서 토큰 유무에 따른 API 한도(IP당 시간당 약 60회 / 약 5,000회)를 짧게 안내
 - PAT 발급 안내: Actions 모니터링에는 선택적으로 `Actions: Read-only` 권한을 추가하며 권한 부족 시 그래프는 유지.
 - PAT 발급 안내: 저장소 선택 및 `Contents: Read-only` 권한; PR 추천 집계에는 `Pull requests: Read-only`도 필요
-- 토큰 팝업은 기능·필요 권한·접근 상태를 표로 표시. 적용한 토큰의 인증과 현재 저장소의 Contents·Pull requests·Actions 접근을 확인하며 재확인 제공. 접근 가능은 ✅, 접근 차단·만료는 🚫로 표시하고 요청 제한·확인 실패는 별도 상태로 구분. 로그인 ID·Access to·반복되는 Public repository 문구는 생략하고 토큰 생성 링크는 눈에 띄는 버튼으로 표시. 추가 정보 아이콘과 중첩 설명 팝업은 제공하지 않음
+- 토큰 팝업은 Permission·Used for·Check 순서로 표시하고 권한명 알파벳순(Actions·Contents·Pull requests)으로 정렬. 권한명 아래 Read-only를 보조 표시하고 기능은 용도 설명 하나로 합침. 적용한 토큰의 인증과 현재 저장소의 Contents·Pull requests·Actions 접근을 확인하며 재확인 제공. 접근 가능은 ✅, 접근 차단·만료는 🚫로 표시하고 요청 제한·확인 실패는 별도 상태로 구분. 로그인 ID·Access to·반복되는 Public repository 문구는 생략하고 토큰 생성 링크는 눈에 띄는 버튼으로 표시. 추가 정보 아이콘과 중첩 설명 팝업은 제공하지 않음
 - 토큰·설정·브랜치·커밋 상세 팝업은 바깥 누르기와 Escape로 닫고, 내부 입력과 버튼 조작은 유지. API 제한 안내에서 토큰 팝업을 열면 이전 안내는 닫되 재시도 제한은 유지하며, GitHub 토큰 발급 링크를 열 때도 토큰 팝업을 닫음
 - 적용한 토큰은 브라우저 localStorage에 저장하고 새로고침 시 자동 복원. 삭제 시 저장된 토큰과 화면의 이력을 함께 제거하며 저장소 접근 오류는 토큰 패널에 표시
 - 저장된 토큰 보호를 위해 CSP로 스크립트는 같은 출처에서만 실행하고 GitHub API 요청은 `api.github.com`으로 제한하고 PWA 정적 자산 요청은 같은 출처에서만 허용

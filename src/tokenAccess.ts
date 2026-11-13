@@ -3,21 +3,18 @@ import { github, GitHubError } from './api';
 export const tokenFeatures = [
   {
     key: 'contents',
-    name: 'Commit graph',
-    description: 'Branches, tags & releases',
+    description: 'Commits, branches, tags & releases',
     permission: 'Contents',
     path: '/branches?per_page=1',
   },
   {
     key: 'pulls',
-    name: 'Branch suggestions',
-    description: 'PR-based ranking',
+    description: 'PR-based branch suggestions',
     permission: 'Pull requests',
     path: '/pulls?state=closed&per_page=1',
   },
   {
     key: 'actions',
-    name: 'Actions',
     description: 'Workflow runs & jobs',
     permission: 'Actions',
     path: '/actions/runs?per_page=1',

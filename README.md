@@ -89,9 +89,9 @@ Public repositories work without a token. For private repositories or higher API
 
 | Permission    | Access    | Used for                             |
 | ------------- | --------- | ------------------------------------ |
+| Actions       | Read-only | Workflow runs and jobs               |
 | Contents      | Read-only | Commits, branches, tags and releases |
 | Pull requests | Read-only | PR-based branch suggestions          |
-| Actions       | Read-only | Workflow runs and jobs               |
 
 The token is saved in this browser's localStorage and sent only to `api.github.com`. **Remove token & clear history** removes the saved token and displayed history. See the [technical guide](docs/technical-guide.md#use) for access checks, rate limits and storage behavior.
 
