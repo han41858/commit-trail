@@ -147,6 +147,6 @@ export function parseRepo(input: string) {
     !/^[\w.-]+\/[\w.-]+$/.test(clean) ||
     clean.split('/').some((s) => s === '.' || s === '..')
   )
-    throw new Error('Enter a GitHub URL or owner/repository.');
+    throw new Error('Enter a GitHub URL or owner/repo.');
   return clean;
 }

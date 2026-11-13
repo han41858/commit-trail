@@ -771,28 +771,39 @@ function App() {
                   : 'No commits'}
             </div>
           ) : (
-            <div className="empty">
+            <div className="empty" data-loading={state.busy}>
               <BrandMark staticSrc={logo} animatedSrc={animatedLogo} />
-              <h1>
-                {state.busy ? 'Loading...' : 'Watch your Git history unfold.'}
-              </h1>
-              {!state.busy && (
-                <p>Choose a repository. Explore its branches as they evolve.</p>
-              )}
-              {!state.busy && (
-                <button
-                  type="button"
-                  className="demo-button"
-                  aria-label={`Explore ${DEMO_REPO}`}
-                  onClick={() => {
-                    setInput(DEMO_REPO);
-                    open(DEMO_REPO);
-                  }}
+              <h1 aria-live="polite" aria-atomic="true">
+                <span
+                  className="empty-tagline"
+                  aria-hidden={state.busy || undefined}
                 >
-                  <span>Explore</span>
-                  <span className="demo-repository">{DEMO_REPO}</span>
-                </button>
-              )}
+                  Follow your commit trail.
+                </span>
+                {state.busy && (
+                  <span className="empty-loading">Loading...</span>
+                )}
+              </h1>
+              <p
+                className="empty-description"
+                aria-hidden={state.busy || undefined}
+              >
+                Choose a repository. Explore its branches as they evolve.
+              </p>
+              <button
+                type="button"
+                className="demo-button"
+                aria-label={`Explore ${DEMO_REPO}`}
+                aria-hidden={state.busy || undefined}
+                disabled={state.busy}
+                onClick={() => {
+                  setInput(DEMO_REPO);
+                  open(DEMO_REPO);
+                }}
+              >
+                <span>Explore</span>
+                <span className="demo-repository">{DEMO_REPO}</span>
+              </button>
             </div>
           )}
           {details && primaryActive && (
