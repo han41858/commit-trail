@@ -249,6 +249,7 @@ export function visibleBranchLabels(
     candidates = nodes,
     blockers = barriers(),
     anchorX?: number,
+    allowPathOverlap = false,
   ) => {
     const nearby = blockers.filter(
       (other) =>
@@ -256,6 +257,9 @@ export function visibleBranchLabels(
     );
     const xs = [
       rect.x,
+      ...(anchorX === undefined
+        ? []
+        : [anchorX + 12, anchorX - rect.width - 12]),
       ...candidates
         .filter(
           (other) =>
@@ -268,15 +272,20 @@ export function visibleBranchLabels(
         Math.abs(a - rect.x) - Math.abs(b - rect.x) ||
         b - a,
     );
-    const x = xs.find(
-      (x) =>
+    const x = xs.find((x) => {
+      const distance =
+        anchorX === undefined
+          ? 0
+          : Math.max(x - anchorX, anchorX - (x + rect.width));
+      return (
         x >= left + 8 &&
         x + rect.width <= right - 8 &&
         (anchorX === undefined ||
-          Math.max(x - anchorX, anchorX - (x + rect.width)) <=
-            Math.max(12, height)) &&
-        !nearby.some((other) => intersects({ ...rect, x }, other)),
-    );
+          (distance <= Math.max(12, height) &&
+            (allowPathOverlap || distance >= 0))) &&
+        !nearby.some((other) => intersects({ ...rect, x }, other))
+      );
+    });
     return x === undefined ? undefined : { ...rect, x };
   };
   // Keep the caller's leading/base group first, then reserve scarce space for
@@ -334,6 +343,7 @@ export function visibleBranchLabels(
       const rect = box(head),
         position =
           beside({ ...rect, y }, nodes, barriers(), head.x) ||
+          beside({ ...rect, y }, nodes, barriers(), head.x, true) ||
           beside({ ...rect, y }) ||
           rect;
       place({
@@ -348,7 +358,9 @@ export function visibleBranchLabels(
       continue;
     }
     let placed = false;
-    for (const nearPath of [true, false]) {
+    // Search every nearby anchor beside the path before allowing it underneath a badge.
+    for (const placement of ['beside', 'overlap', 'distant'] as const) {
+      const nearPath = placement !== 'distant';
       let fallback: BranchLabel | undefined;
       for (
         let row = 0;
@@ -382,6 +394,7 @@ export function visibleBranchLabels(
             nodes,
             barriers(),
             nearPath ? point.x : undefined,
+            placement === 'overlap',
           );
         label.boxX = position?.x ?? rect.x;
         label.boxY = rect.y;
@@ -424,6 +437,7 @@ export function visibleBranchLabels(
               blockers || nodes,
               blockers || barriers(),
               nearPath ? fallback.x : undefined,
+              placement === 'overlap',
             );
             if (position) break;
           }

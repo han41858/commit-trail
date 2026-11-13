@@ -67,7 +67,7 @@ test('narrow badges stay beside their own path after small scrolls near another 
       const dev = labels.find((label) => label.names.includes('dev'))!;
       const distance = Math.max(dev.boxX! - dev.x, dev.x - (dev.boxX! + 29));
       assert.ok(
-        distance <= 18,
+        distance >= 0 && distance <= 18,
         `dev badge moved ${distance}px from its own path at top ${top}`,
       );
       clearOfLabels(labels, (label) => measure(label.names));
@@ -75,6 +75,89 @@ test('narrow badges stay beside their own path after small scrolls near another 
         clearOfNodes(label, measure(label.names), visibleNodes);
     }
   }
+});
+test('a nearby badge uses the opposite side instead of covering its own path', () => {
+  const nodes = [{ x: 108, y: 200, radius: 12 }];
+  const [label] = visibleBranchLabels(
+    [
+      {
+        name: 'dev',
+        lane: 1,
+        points: [
+          { x: 74.3, y: 180 },
+          { x: 74.3, y: 240 },
+        ],
+      },
+    ],
+    170,
+    300,
+    0,
+    200,
+    () => 38,
+    18,
+    2,
+    nodes,
+  );
+  assert.equal(label.x, 74.3);
+  assert.equal(label.y, 190);
+  assert.ok(label.boxX! + 38 <= label.x);
+  const distance = label.x - (label.boxX! + 38);
+  assert.ok(distance >= 0 && distance <= 18);
+  clearOfNodes(label, 38, nodes);
+});
+test('a later path anchor beside the line wins over an early overlapping candidate', () => {
+  const nodes = [{ x: 108, y: 200, radius: 12 }];
+  const [label] = visibleBranchLabels(
+    [
+      {
+        name: 'dev',
+        lane: 1,
+        points: [
+          { x: 74.3, y: 180 },
+          { x: 74.3, y: 240 },
+        ],
+      },
+    ],
+    170,
+    300,
+    40,
+    200,
+    () => 38,
+    18,
+    2,
+    nodes,
+  );
+  const distance = Math.max(
+    label.boxX! - label.x,
+    label.x - (label.boxX! + 38),
+  );
+  assert.ok(distance >= 0 && distance <= 18);
+  assert.ok(label.y > 190);
+  clearOfNodes(label, 38, nodes);
+});
+test('a badge may cover its path when the viewport cannot fit it on either side', () => {
+  const labels = visibleBranchLabels(
+    [
+      {
+        name: 'dev',
+        lane: 1,
+        points: [
+          { x: 74.3, y: 180 },
+          { x: 74.3, y: 240 },
+        ],
+      },
+    ],
+    170,
+    300,
+    0,
+    120,
+    () => 80,
+    18,
+  );
+  assert.equal(labels.length, 1);
+  const [label] = labels;
+  assert.ok(label.boxX! >= 8 && label.boxX! + 80 <= 112);
+  assert.ok(label.boxX! < label.x && label.boxX! + 80 > label.x);
 });
 test('a blocked short branch badge stays near its path instead of moving onto older commits', () => {
   for (const reverse of [false, true]) {
