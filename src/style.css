@@ -353,9 +353,21 @@ pre {
   object-fit: contain;
 }
 .empty h1 {
+  display: grid;
   font-size: clamp(25px, 4vw, 42px);
   font-weight: 450;
   letter-spacing: -1px;
+}
+.empty h1 > span {
+  grid-area: 1 / 1;
+}
+.empty-loading {
+  align-self: center;
+}
+.empty[data-loading='true'] .empty-tagline,
+.empty[data-loading='true'] .empty-description,
+.empty[data-loading='true'] .demo-button {
+  visibility: hidden;
 }
 .empty p {
   font-size: 14px;
@@ -782,11 +794,11 @@ pre {
   line-height: 1.5;
 }
 .token-permissions th:first-child {
-  width: 45%;
+  width: 39%;
   padding-left: 0;
 }
 .token-permissions th:nth-child(2) {
-  width: 39%;
+  width: 45%;
 }
 .token-permissions td:last-child,
 .token-permissions th:last-child {
@@ -798,7 +810,7 @@ pre {
   color: var(--muted);
 }
 .token-permissions tbody th {
-  font-weight: 500;
+  font-weight: 600;
 }
 .token-permissions small {
   display: block;

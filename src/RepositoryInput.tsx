@@ -161,7 +161,7 @@ export function RepositoryInput({
           autoCorrect="off"
           spellCheck={false}
           value={value}
-          placeholder="owner or owner/repository"
+          placeholder="owner or owner/repo"
           onFocus={() => {
             setOpen(true);
             setActive(null);

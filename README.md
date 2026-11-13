@@ -15,7 +15,7 @@
   <a href="https://github.com/han41858/commit-trail/releases"><img src="https://img.shields.io/github/v/release/han41858/commit-trail?sort=date&amp;display_name=tag&amp;label=Latest%20Release" alt="Latest Release" /></a>
 </p>
 
-<h3 align="center">Watch your Git history unfold.</h3>
+<h3 align="center">Follow your commit trail.</h3>
 <p align="center">Explore GitHub history directly in your browser.</p>
 <p align="center">Read-only · Web app · PWA</p>
 
@@ -89,9 +89,9 @@ Public repositories work without a token. For private repositories or higher API
 
 | Permission    | Access    | Used for                             |
 | ------------- | --------- | ------------------------------------ |
+| Actions       | Read-only | Workflow runs and jobs               |
 | Contents      | Read-only | Commits, branches, tags and releases |
 | Pull requests | Read-only | PR-based branch suggestions          |
-| Actions       | Read-only | Workflow runs and jobs               |
 
 The token is saved in this browser's localStorage and sent only to `api.github.com`. **Remove token & clear history** removes the saved token and displayed history. See the [technical guide](docs/technical-guide.md#use) for access checks, rate limits and storage behavior.
 
