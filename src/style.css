@@ -353,9 +353,21 @@ pre {
   object-fit: contain;
 }
 .empty h1 {
+  display: grid;
   font-size: clamp(25px, 4vw, 42px);
   font-weight: 450;
   letter-spacing: -1px;
+}
+.empty h1 > span {
+  grid-area: 1 / 1;
+}
+.empty-loading {
+  align-self: center;
+}
+.empty[data-loading='true'] .empty-tagline,
+.empty[data-loading='true'] .empty-description,
+.empty[data-loading='true'] .demo-button {
+  visibility: hidden;
 }
 .empty p {
   font-size: 14px;
