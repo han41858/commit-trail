@@ -69,6 +69,7 @@ input {
   --text: #eaf2fc;
   --muted: #9aa9bd;
   --border: #27354a;
+  --popup-backdrop: rgb(0 0 0 / 45%);
   --notice-surface: #1b2736;
   --notice-border: #60738b;
   --notice-shadow: 0 8px 28px #0008;
@@ -255,7 +256,7 @@ input {
   position: absolute;
   inset: 0;
   z-index: 10;
-  background: rgb(0 0 0 / 45%);
+  background: var(--popup-backdrop);
 }
 .auth {
   top: 100px;
