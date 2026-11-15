@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { useRef, type RefObject } from 'react';
 import { TokenPermissions } from './TokenPermissions';
 
 export function AccessTokenPanel({
@@ -26,11 +26,40 @@ export function AccessTokenPanel({
   onClose: () => void;
   onCreate: () => void;
 }) {
+  const backdropGesture = useRef<{
+    pointerId: number;
+    endedOnBackdrop: boolean;
+  } | null>(null);
   return (
     <div
       className="auth-backdrop"
+      onPointerDown={(event) => {
+        backdropGesture.current =
+          event.isPrimary &&
+          event.button === 0 &&
+          event.target === event.currentTarget
+            ? { pointerId: event.pointerId, endedOnBackdrop: false }
+            : null;
+      }}
+      onPointerUp={(event) => {
+        const gesture = backdropGesture.current;
+        if (!gesture || gesture.pointerId !== event.pointerId) return;
+        // Touch capture can retarget pointerup; check the actual release position.
+        gesture.endedOnBackdrop =
+          event.currentTarget.ownerDocument.elementFromPoint(
+            event.clientX,
+            event.clientY,
+          ) === event.currentTarget;
+      }}
+      onPointerCancel={() => {
+        backdropGesture.current = null;
+      }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        const dismiss =
+          backdropGesture.current?.endedOnBackdrop &&
+          event.target === event.currentTarget;
+        backdropGesture.current = null;
+        if (dismiss) onClose();
       }}
     >
       <section
