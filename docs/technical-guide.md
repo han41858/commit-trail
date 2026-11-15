@@ -86,6 +86,8 @@ The branch picker shows **Branch** before a branch is selected and only the curr
 
 For private repositories, supply a fine-grained PAT limited to selected repositories with **Contents: Read-only**. PR recommendations additionally require **Pull requests: Read-only**. Applying it saves it in this browser’s localStorage and restores it after refresh. It is sent only to `api.github.com`. Removing it deletes the saved token and clears displayed history. Storage failures are shown in the token panel; no analytics. Public repositories work without a token, normally at 60 REST requests per hour per IP. Authenticated requests normally allow 5,000 per hour. A rate-limit error displays its retry time and pauses retries until then; permission errors are reported separately. PR-ranking failures do not clear the graph. GitHub limits can vary by authentication and secondary limits.
 
+The access-token panel uses a 45% black backdrop in both themes to separate it from the graph and toolbar. Its surface stays opaque. Clicking or tapping the backdrop closes it without activating covered controls; the press must start and end on the backdrop. Dragging between the panel and backdrop or cancelling a gesture leaves it open. Escape also closes it.
+
 ## Owner repository selection
 
 Submitting a bare GitHub owner opens a repository picker below the existing field. Typing in the address or the picker's name filter makes no API requests. Direct repository paths and GitHub repository URLs keep the existing parsing, branch selection and loading path; they do not fetch owner lists. The current graph remains visible until a repository is selected. Recent suggestions stay local and owner lookup alone does not create a visit record.
