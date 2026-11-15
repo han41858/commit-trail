@@ -27,7 +27,12 @@ export function AccessTokenPanel({
   onCreate: () => void;
 }) {
   return (
-    <div className="auth-backdrop">
+    <div
+      className="auth-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <section
         className="auth floating-panel"
         ref={panelRef}
