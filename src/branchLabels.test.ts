@@ -209,6 +209,55 @@ function clearOfLabels(
     }
   }
 }
+test('short branch names stay separate in a message-bounded column when nearby rows are occupied', () => {
+  for (const [offset, top, right, height, widths] of [
+    [0, 161, 242, 20, [39, 162, 31, 117]],
+    [41, 178, 207, 18, [36, 104, 29, 102]],
+  ] as const) {
+    const point = (x: number, y: number) => ({ x, y: y + offset });
+    const tracks: BranchTrack[] = [
+      {
+        name: 'main',
+        lane: 0,
+        points: [point(48, 193), point(48, 500)],
+      },
+      {
+        name: 'chore/keep-latest-production-release',
+        lane: 1,
+        points: [point(82, 69), point(82, 131), point(116, 162)],
+      },
+      {
+        name: 'dev',
+        lane: 2,
+        points: [point(116, 162), point(116, 500)],
+        connections: [[point(48, 193), point(116, 224)]],
+      },
+      {
+        name: 'fix/stable-branch-labels',
+        lane: 2,
+        points: [point(116, 100), point(116, 162)],
+      },
+    ];
+    const measure = (names: string[]) =>
+      widths[tracks.findIndex((track) => track.name === names[0])];
+    const labels = visibleBranchLabels(
+      tracks,
+      top,
+      900,
+      0,
+      right,
+      measure,
+      height,
+    );
+    assert.equal(labels.length, 4);
+    assert.equal(labels[0].boxX, 60);
+    assert.equal(labels[0].boxY, 193 + offset - height / 2);
+    clearOfLabels(labels, (label) => measure(label.names));
+    assert(
+      labels.every((label) => label.boxX! + measure(label.names) <= right - 8),
+    );
+  }
+});
 test('a short merge connector and a long merge-head name both fit without overlapping branch names', () => {
   const tracks: BranchTrack[] = [
     {

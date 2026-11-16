@@ -401,7 +401,8 @@ export function visibleBranchLabels(
         placed = true;
         break;
       }
-      // Keep short-path fallbacks nearby so a badge cannot name an unrelated older row.
+      // Prefer one-row corrections. Only the final fallback may move farther
+      // when the available graph column cannot separate the branch names nearby.
       if (!placed && fallback) {
         const width = measure(names, fallback);
         const ys = [
@@ -415,7 +416,7 @@ export function visibleBranchLabels(
             (y) =>
               y >= top + 6 &&
               y + stackHeight <= bottom &&
-              Math.abs(y - fallback!.boxY!) <= ROW,
+              (Math.abs(y - fallback!.boxY!) <= ROW || !nearPath),
           )
           .sort(
             (a, b) =>

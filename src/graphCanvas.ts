@@ -45,6 +45,7 @@ type GraphCanvasFrame = {
   showMessages: boolean;
   messageX: number;
   messageWidth: number;
+  branchWidth: number;
   badgeHeight: number;
   badgeGap: number;
   displayNames: ReadonlyMap<string, string>;
@@ -77,6 +78,7 @@ export function drawGraphCanvas(
     showMessages,
     messageX,
     messageWidth,
+    branchWidth,
     badgeHeight,
     badgeGap,
     displayNames,
@@ -228,11 +230,14 @@ export function drawGraphCanvas(
   }
   ctx.globalAlpha = 1;
   ctx.font = `${narrow ? 10 : 11}px system-ui`;
-  const labelRight = left + view.width - 8,
+  const labelRight = Math.min(
+      left + view.width - 8,
+      showMessages ? messageX - 8 : Infinity,
+    ),
     maxTextWidth =
       Math.min(
         narrow ? Math.min(116, view.width * 0.36) : 190,
-        view.width - 16,
+        branchWidth - 16,
       ) - 12,
     cache = new Map<string, { text: string; width: number }>();
   const badge = (name: string) => {
@@ -253,7 +258,7 @@ export function drawGraphCanvas(
   ctx.rect(
     left,
     view.top + padding - 20,
-    view.width,
+    Math.max(0, labelRight - left),
     Math.max(0, view.height - padding - 28),
   );
   ctx.clip();
@@ -297,12 +302,14 @@ export function drawGraphCanvas(
       ctx.fillStyle = color;
       ctx.fillText(name, x + 6, rowY + (narrow ? 12 : 14));
       const hitTop = Math.max(rowY, view.top + padding - 20),
-        hitBottom = Math.min(rowY + badgeHeight, view.top + view.height - 48);
-      if (hitBottom > hitTop)
+        hitBottom = Math.min(rowY + badgeHeight, view.top + view.height - 48),
+        hitLeft = Math.max(x, left),
+        hitRight = Math.min(x + boxWidth, labelRight);
+      if (hitBottom > hitTop && hitRight > hitLeft)
         hits.push({
-          x,
+          x: hitLeft,
           y: hitTop,
-          width: boxWidth,
+          width: hitRight - hitLeft,
           height: hitBottom - hitTop,
           text: name,
           name: ref,
