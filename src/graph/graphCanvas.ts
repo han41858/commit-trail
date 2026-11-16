@@ -14,7 +14,7 @@ import {
   commitVersionIcons,
   type visibleGraphEdges,
 } from './graphView';
-import type { MonthMarker } from './monthMarkers';
+import type { DateMarker } from './dateMarkers';
 
 export type BranchBadge = Point & {
   width: number;
@@ -34,7 +34,7 @@ type GraphCanvasFrame = {
   padding: number;
   ordered: readonly Commit[];
   positions: ReadonlyMap<string, Point>;
-  months: readonly MonthMarker[];
+  dates: readonly DateMarker[];
   edges: readonly GraphCanvasEdge[];
   tones: GraphColors;
   tracks: BranchTrack[];
@@ -67,7 +67,7 @@ export function drawGraphCanvas(
     padding,
     ordered,
     positions,
-    months,
+    dates,
     edges,
     tones,
     tracks,
@@ -94,8 +94,7 @@ export function drawGraphCanvas(
   const colors = Array.from({ length: GRAPH_COLOR_COUNT }, (_, i) =>
     style.getPropertyValue(`--graph-${i}`).trim(),
   );
-  const left = container.scrollLeft,
-    right = left + view.width - 16;
+  const left = container.scrollLeft;
   const fitMessage = (value: string) => {
     if (ctx.measureText(value).width <= messageWidth) return value;
     const letters = Array.from(value);
@@ -113,26 +112,34 @@ export function drawGraphCanvas(
     return letters.slice(0, low).join('') + '…';
   };
   ctx.save();
-  ctx.font = '11px system-ui';
   ctx.textBaseline = 'bottom';
-  for (const marker of months) {
+  ctx.textAlign = 'right';
+  for (const marker of dates) {
     const p = positions.get(marker.sha);
     if (!p) continue;
     const y = p.y;
     if (y < view.top || y > view.top + view.height) continue;
-    ctx.globalAlpha = 1;
+    const major = marker.kind === 'month';
+    ctx.font = `${major ? 11 : 10}px system-ui`;
+    ctx.globalAlpha = major ? 1 : 0.45;
     ctx.strokeStyle = style.getPropertyValue('--month-line');
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(left, y + 0.5);
     ctx.lineTo(left + view.width, y + 0.5);
     ctx.stroke();
-    const labelWidth = ctx.measureText(marker.label).width;
+    const pad = Math.min(5, view.width / 8),
+      right = left + view.width - Math.min(16, view.width / 4),
+      available = Math.max(0, right - left - pad * 2),
+      labelWidth = Math.min(ctx.measureText(marker.label).width, available);
+    if (labelWidth <= 0) continue;
     ctx.globalAlpha = 1;
     ctx.fillStyle = style.getPropertyValue('--bg');
-    ctx.fillRect(right - labelWidth - 5, y - 18, labelWidth + 10, 15);
+    ctx.fillRect(right - labelWidth - pad, y - 18, labelWidth + pad * 2, 15);
     ctx.fillStyle = style.getPropertyValue('--muted');
-    ctx.fillText(marker.label, right - labelWidth, y - 4);
+    ctx.globalAlpha = major ? 1 : 0.65;
+    // Keep the complete Intl label inside even very narrow Split view columns.
+    ctx.fillText(marker.label, right, y - 4, labelWidth);
   }
   ctx.restore();
   for (const edge of edges) {

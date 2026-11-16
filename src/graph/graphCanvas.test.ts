@@ -34,7 +34,7 @@ function renderer(t: TestContext) {
           padding: 80,
           ordered: [],
           positions: new Map(),
-          months: [],
+          dates: [],
           edges: [],
           tones: graphColors([], [], 'main'),
           tracks: [
@@ -88,4 +88,133 @@ test('badges can use the full graph column when commit messages are hidden', (t)
   assert.equal(badges.length, 1);
   assert(badges[0].x + badges[0].width > 90);
   assert(badges[0].x + badges[0].width <= 180);
+});
+
+function dateDrawing(t: TestContext, width: number, left = 0) {
+  const original = globalThis.getComputedStyle;
+  globalThis.getComputedStyle = () =>
+    ({ getPropertyValue: () => '#9aa9bd' }) as unknown as CSSStyleDeclaration;
+  t.after(() => {
+    globalThis.getComputedStyle = original;
+  });
+  const texts: {
+    label: string;
+    x: number;
+    y: number;
+    maxWidth: number;
+    font: string;
+    alpha: number;
+    align: string;
+  }[] = [];
+  const boxes: { x: number; y: number; width: number; height: number }[] = [];
+  const lines: { alpha: number; from: number; to: number }[] = [];
+  const states: Record<string, unknown>[] = [];
+  let from = 0,
+    to = 0;
+  const context = new Proxy(
+    {
+      measureText: (text: string) => ({ width: [...text].length * 9.5 }),
+      fillText: (label: string, x: number, y: number, maxWidth: number) =>
+        texts.push({
+          label,
+          x,
+          y,
+          maxWidth,
+          font: context.font,
+          alpha: context.globalAlpha,
+          align: context.textAlign,
+        }),
+      fillRect: (x: number, y: number, width: number, height: number) =>
+        boxes.push({ x, y, width, height }),
+      moveTo: (x: number) => {
+        from = x;
+      },
+      lineTo: (x: number) => {
+        to = x;
+      },
+      stroke: () => lines.push({ alpha: context.globalAlpha, from, to }),
+      save: () =>
+        states.push({
+          font: context.font,
+          globalAlpha: context.globalAlpha,
+          textAlign: context.textAlign,
+          textBaseline: context.textBaseline,
+        }),
+      restore: () => Object.assign(context, states.pop()),
+    },
+    { get: (target, key) => Reflect.get(target, key) ?? (() => {}) },
+  ) as unknown as CanvasRenderingContext2D;
+  const dates = [
+    {
+      sha: 'month',
+      kind: 'month' as const,
+      label: new Intl.DateTimeFormat('en-GB', { dateStyle: 'short' }).format(
+        new Date(2026, 10, 3),
+      ),
+    },
+    { sha: 'fourth', kind: 'day' as const, label: '4' },
+    { sha: 'fifth', kind: 'day' as const, label: '5' },
+  ];
+  drawGraphCanvas(
+    context,
+    { scrollLeft: left } as HTMLElement,
+    {
+      ...graphFrame(width, 0, true),
+      dpr: 1,
+      view: { top: 100, width, height: 600 },
+      padding: 80,
+      ordered: [],
+      positions: new Map(
+        dates.map((date, index) => [date.sha, { x: 48, y: 200 + index * 31 }]),
+      ),
+      dates,
+      edges: [],
+      tones: graphColors([], [], 'main'),
+      tracks: [],
+      selected: '',
+      theme: 'dark',
+      narrow: true,
+      badgeHeight: 18,
+      badgeGap: 2,
+      displayNames: new Map(),
+    },
+    () => 1,
+    false,
+  );
+  return { dates, texts, boxes, lines };
+}
+
+test('date separators keep monthly emphasis and distinct labels on adjacent 31px rows', (t) => {
+  const { dates, texts, boxes, lines } = dateDrawing(t, 390);
+  assert.deepEqual(
+    texts.map((text) => text.label),
+    dates.map((date) => date.label),
+  );
+  assert.equal(texts[0].font, '11px system-ui');
+  assert.equal(texts[1].font, '10px system-ui');
+  assert(texts[0].alpha > texts[1].alpha);
+  assert(lines[0].alpha > lines[1].alpha);
+  assert(lines.every((line) => line.from === 0 && line.to === 390));
+  for (let index = 1; index < boxes.length; index++)
+    assert(boxes[index - 1].y + boxes[index - 1].height <= boxes[index].y);
+});
+
+test('full Locale labels and their backgrounds fit narrow and fractional Split view columns', (t) => {
+  for (const width of [390, 96, 24, 390 / 32]) {
+    for (const left of [0, 37.5]) {
+      const { dates, texts, boxes, lines } = dateDrawing(t, width, left);
+      assert.equal(texts.length, dates.length);
+      for (const [index, text] of texts.entries()) {
+        assert.equal(text.label, dates[index].label);
+        assert.equal(text.align, 'right');
+        assert(text.maxWidth > 0);
+        assert(text.x <= left + width && text.x - text.maxWidth >= left);
+        assert(boxes[index].x >= left);
+        assert(boxes[index].x + boxes[index].width <= left + width);
+      }
+      assert(
+        lines.every((line) => line.from === left && line.to === left + width),
+      );
+    }
+  }
 });
