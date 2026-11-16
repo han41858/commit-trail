@@ -187,8 +187,11 @@ export function Graph({
     (a, b) => Math.max(a, b),
     0,
   );
-  const { spacing, width, branchWidth, showMessages, messageX, messageWidth } =
-    graphFrame(view.width, maxLane, narrow);
+  const { spacing, width, showMessages, messageX, messageWidth } = graphFrame(
+    view.width,
+    maxLane,
+    narrow,
+  );
   // clientWidth rounds fractional columns; an origin on the edge can hit the next column.
   const origin =
     containerResponsive && view.width <= GRAPH_ORIGIN
@@ -636,7 +639,6 @@ export function Graph({
       showMessages,
       messageX,
       messageWidth,
-      branchWidth,
       badgeHeight,
       badgeGap,
       displayNames,
@@ -688,7 +690,6 @@ export function Graph({
     selected,
     narrow,
     badgeHeight,
-    branchWidth,
     showMessages,
     messageX,
     messageWidth,

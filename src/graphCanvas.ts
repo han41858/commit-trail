@@ -6,7 +6,6 @@ import { GRAPH_COLOR_COUNT } from './graphPalette';
 import { emojify } from './emoji';
 import {
   visibleBranchLabels,
-  type BranchLabelObstacle,
   type BranchTrack,
   type Point,
 } from './branchLabels';
@@ -46,7 +45,6 @@ type GraphCanvasFrame = {
   showMessages: boolean;
   messageX: number;
   messageWidth: number;
-  branchWidth: number;
   badgeHeight: number;
   badgeGap: number;
   displayNames: ReadonlyMap<string, string>;
@@ -79,7 +77,6 @@ export function drawGraphCanvas(
     showMessages,
     messageX,
     messageWidth,
-    branchWidth,
     badgeHeight,
     badgeGap,
     displayNames,
@@ -144,13 +141,10 @@ export function drawGraphCanvas(
     ctx.stroke(edge.path);
   }
   ctx.setLineDash([]);
-  const labelObstacles: BranchLabelObstacle[] = [],
-    messageWidths = new Map<string, number>();
+  const messageWidths = new Map<string, number>();
   for (const c of ordered) {
     const p = positions.get(c.sha)!;
     if (p.y < view.top - ROW || p.y > view.top + view.height + ROW) continue;
-    // Reserve the largest selected Actions ring, including its stroke, in advance.
-    labelObstacles.push({ ...p, radius: 12 });
     if (measure) {
       drawn++;
       if (
@@ -234,30 +228,23 @@ export function drawGraphCanvas(
   }
   ctx.globalAlpha = 1;
   ctx.font = `${narrow ? 10 : 11}px system-ui`;
-  const labelRight = left + (showMessages ? messageX : branchWidth),
-    nodeClearance = 15,
+  const labelRight = left + view.width - 8,
     maxTextWidth =
       Math.min(
         narrow ? Math.min(116, view.width * 0.36) : 190,
-        branchWidth - 16,
+        view.width - 16,
       ) - 12,
     cache = new Map<string, { text: string; width: number }>();
-  const badge = (name: string, x: number) => {
-    // Match the 12px selected-ring obstacle plus its 3px gap and 8px left inset.
-    const available =
-        Math.max(x - left - 8 - nodeClearance, labelRight - x - nodeClearance) -
-        12,
-      limitWidth = Math.min(maxTextWidth, available),
-      key = `${name}\0${limitWidth}`,
-      old = cache.get(key);
+  const badge = (name: string) => {
+    const old = cache.get(name);
     if (old) return old;
     let text = '…';
     for (let limit = narrow ? 18 : 28; limit >= 1; limit--) {
       text = branchLabelText(name, displayNames, limit);
-      if (ctx.measureText(text).width <= limitWidth) break;
+      if (ctx.measureText(text).width <= maxTextWidth) break;
     }
     const value = { text, width: ctx.measureText(text).width + 12 };
-    cache.set(key, value);
+    cache.set(name, value);
     return value;
   };
   const hits: BranchBadge[] = [];
@@ -276,11 +263,9 @@ export function drawGraphCanvas(
     view.top + view.height - 48,
     left,
     labelRight + 8,
-    (names, point) =>
-      Math.max(...names.map((name) => badge(name, point.x).width)),
+    (names) => Math.max(...names.map((name) => badge(name).width)),
     badgeHeight,
     badgeGap,
-    labelObstacles,
   )) {
     const x = label.boxX!,
       y = label.boxY!;
@@ -297,7 +282,7 @@ export function drawGraphCanvas(
       ctx.globalAlpha = 1;
     }
     label.names.forEach((ref, index) => {
-      const { text: name, width: boxWidth } = badge(ref, label.x),
+      const { text: name, width: boxWidth } = badge(ref),
         rowY = y + index * (badgeHeight + badgeGap),
         opacity = alpha('branches', ref);
       ctx.globalAlpha = 0.35 * opacity;

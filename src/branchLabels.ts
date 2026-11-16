@@ -17,7 +17,6 @@ export type BranchLabel = Point & {
   boxY?: number;
   boxHeight?: number;
 };
-export type BranchLabelObstacle = Point & { radius: number };
 
 export function branchTracks(
   commits: Commit[],
@@ -219,17 +218,10 @@ export function visibleBranchLabels(
     Math.min(34, Math.max(...names.map((name) => name.length))) * 6.5 + 16,
   height = 22,
   gap = 2,
-  obstacles: readonly BranchLabelObstacle[] = [],
 ): BranchLabel[] {
   if (top > bottom || left > right) return [];
   const labels: BranchLabel[] = [],
     rects: { x: number; y: number; width: number; height: number }[] = [];
-  const nodes = obstacles.map((point) => ({
-    x: point.x - point.radius - 3,
-    y: point.y - point.radius - 3,
-    width: (point.radius + 3) * 2,
-    height: (point.radius + 3) * 2,
-  }));
   const labelBarriers = () =>
     rects.map((rect) => ({
       x: rect.x - 4,
@@ -237,7 +229,6 @@ export function visibleBranchLabels(
       width: rect.width + 8,
       height: rect.height + gap * 2,
     }));
-  const barriers = () => [...nodes, ...labelBarriers()];
   const intersects = (a: (typeof rects)[number], b: (typeof rects)[number]) =>
     a.x < b.x + b.width &&
     a.x + a.width > b.x &&
@@ -246,8 +237,8 @@ export function visibleBranchLabels(
   // Try both sides near the path before accepting a distant horizontal fallback.
   const beside = (
     rect: (typeof rects)[number],
-    candidates = nodes,
-    blockers = barriers(),
+    candidates = labelBarriers(),
+    blockers = labelBarriers(),
     anchorX?: number,
     allowPathOverlap = false,
   ) => {
@@ -342,8 +333,14 @@ export function visibleBranchLabels(
         continue;
       const rect = box(head),
         position =
-          beside({ ...rect, y }, nodes, barriers(), head.x) ||
-          beside({ ...rect, y }, nodes, barriers(), head.x, true) ||
+          beside({ ...rect, y }, labelBarriers(), labelBarriers(), head.x) ||
+          beside(
+            { ...rect, y },
+            labelBarriers(),
+            labelBarriers(),
+            head.x,
+            true,
+          ) ||
           beside({ ...rect, y }) ||
           rect;
       place({
@@ -391,8 +388,8 @@ export function visibleBranchLabels(
           rect = box(point),
           position = beside(
             rect,
-            nodes,
-            barriers(),
+            labelBarriers(),
+            labelBarriers(),
             nearPath ? point.x : undefined,
             placement === 'overlap',
           );
@@ -409,7 +406,7 @@ export function visibleBranchLabels(
         const width = measure(names, fallback);
         const ys = [
           top + 6,
-          ...barriers().flatMap((rect) => [
+          ...labelBarriers().flatMap((rect) => [
             rect.y + rect.height,
             rect.y - stackHeight,
           ]),
@@ -425,22 +422,16 @@ export function visibleBranchLabels(
               Math.abs(a - fallback!.boxY!) - Math.abs(b - fallback!.boxY!),
           );
         let position: (typeof rects)[number] | undefined;
-        // Preserve existing node-clear placement first, then consider badge edges.
-        // If no nearby position clears nodes, still keep branch names separate.
-        for (const blockers of nearPath
-          ? [barriers()]
-          : [undefined, barriers(), labelBarriers()]) {
-          for (const y of ys) {
-            const rect = { x: fallback.boxX!, y, width, height: stackHeight };
-            position = beside(
-              rect,
-              blockers || nodes,
-              blockers || barriers(),
-              nearPath ? fallback.x : undefined,
-              placement === 'overlap',
-            );
-            if (position) break;
-          }
+        // Only other branch names can displace a badge; graph content may overlap.
+        for (const y of ys) {
+          const rect = { x: fallback.boxX!, y, width, height: stackHeight };
+          position = beside(
+            rect,
+            labelBarriers(),
+            labelBarriers(),
+            nearPath ? fallback.x : undefined,
+            placement === 'overlap',
+          );
           if (position) break;
         }
         if (position) {
