@@ -73,7 +73,11 @@ function dateFormatters(locale?: string) {
   let cached = formatters.get(key);
   if (!cached) {
     cached = {
-      month: new Intl.DateTimeFormat(locale, { dateStyle: 'short' }),
+      month: new Intl.DateTimeFormat(locale, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }),
       day: new Intl.DateTimeFormat(locale, { day: 'numeric' }),
     };
     formatters.set(key, cached);

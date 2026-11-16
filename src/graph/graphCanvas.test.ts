@@ -90,7 +90,7 @@ test('badges can use the full graph column when commit messages are hidden', (t)
   assert(badges[0].x + badges[0].width <= 180);
 });
 
-function dateDrawing(t: TestContext, width: number, left = 0) {
+function dateDrawing(t: TestContext, width: number, left = 0, maxLane = 0) {
   const original = globalThis.getComputedStyle;
   globalThis.getComputedStyle = () =>
     ({ getPropertyValue: () => '#9aa9bd' }) as unknown as CSSStyleDeclaration;
@@ -148,18 +148,21 @@ function dateDrawing(t: TestContext, width: number, left = 0) {
     {
       sha: 'month',
       kind: 'month' as const,
-      label: new Intl.DateTimeFormat('en-GB', { dateStyle: 'short' }).format(
-        new Date(2026, 10, 3),
-      ),
+      label: new Intl.DateTimeFormat('en-GB', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }).format(new Date(2026, 10, 3)),
     },
     { sha: 'fourth', kind: 'day' as const, label: '4' },
     { sha: 'fifth', kind: 'day' as const, label: '5' },
   ];
+  const frame = graphFrame(width, maxLane, width <= 800);
   drawGraphCanvas(
     context,
     { scrollLeft: left } as HTMLElement,
     {
-      ...graphFrame(width, 0, true),
+      ...frame,
       dpr: 1,
       view: { top: 100, width, height: 600 },
       padding: 80,
@@ -181,7 +184,7 @@ function dateDrawing(t: TestContext, width: number, left = 0) {
     () => 1,
     false,
   );
-  return { dates, texts, boxes, lines };
+  return { dates, texts, boxes, lines, frame };
 }
 
 test('date separators keep monthly emphasis and distinct labels on adjacent 31px rows', (t) => {
@@ -201,14 +204,14 @@ test('date separators keep monthly emphasis and distinct labels on adjacent 31px
 
 test('full Locale labels and their backgrounds fit narrow and fractional Split view columns', (t) => {
   for (const width of [390, 96, 24, 390 / 32]) {
-    for (const left of [0, 37.5]) {
+    for (const left of [0, width / 4]) {
       const { dates, texts, boxes, lines } = dateDrawing(t, width, left);
       assert.equal(texts.length, dates.length);
       for (const [index, text] of texts.entries()) {
         assert.equal(text.label, dates[index].label);
-        assert.equal(text.align, 'right');
+        assert.equal(text.align, 'left');
         assert(text.maxWidth > 0);
-        assert(text.x <= left + width && text.x - text.maxWidth >= left);
+        assert(text.x >= left && text.x + text.maxWidth <= left + width);
         assert(boxes[index].x >= left);
         assert(boxes[index].x + boxes[index].width <= left + width);
       }
@@ -217,4 +220,38 @@ test('full Locale labels and their backgrounds fit narrow and fractional Split v
       );
     }
   }
+});
+
+test('left date labels and backgrounds stay outside commit messages while lines span the viewport', (t) => {
+  for (const width of [96, 180, 390, 844, 1280]) {
+    for (const left of [0, 37.5]) {
+      for (const maxLane of [0, 20]) {
+        const { dates, texts, boxes, lines, frame } = dateDrawing(
+          t,
+          width,
+          left,
+          maxLane,
+        );
+        assert.equal(texts.length, dates.length);
+        for (const [index, text] of texts.entries()) {
+          assert.equal(text.align, 'left');
+          assert(text.x >= left && text.x - left <= 16);
+          const right = text.x + text.maxWidth,
+            backgroundRight = boxes[index].x + boxes[index].width;
+          assert(right <= left + width && backgroundRight <= left + width);
+          if (frame.showMessages) {
+            assert(right < frame.messageX);
+            assert(backgroundRight < frame.messageX);
+          }
+        }
+        assert(
+          lines.every((line) => line.from === left && line.to === left + width),
+        );
+      }
+    }
+  }
+  const scrolled = dateDrawing(t, 390, 170);
+  assert.equal(scrolled.texts.length, 0);
+  assert.equal(scrolled.boxes.length, 0);
+  assert.equal(scrolled.lines.length, scrolled.dates.length);
 });

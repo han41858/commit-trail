@@ -33,9 +33,13 @@ const simple = [
 ];
 
 for (const locale of ['ko-KR', 'en-US', 'en-GB', 'ja-JP', 'de-DE'])
-  test(`${locale} uses the actual short month-anchor date and numeric days`, () => {
+  test(`${locale} uses the actual localized month-anchor date and numeric days`, () => {
     const markers = dateMarkers(simple, spine(simple), locale);
-    const full = new Intl.DateTimeFormat(locale, { dateStyle: 'short' });
+    const full = new Intl.DateTimeFormat(locale, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
     const day = new Intl.DateTimeFormat(locale, { day: 'numeric' });
     assert.deepEqual(markers, [
       {
@@ -323,7 +327,9 @@ for (const zone of [
       ),
     );
     const full = new Intl.DateTimeFormat('en-GB', {
-      dateStyle: 'short',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
       timeZone: zone,
     });
     const day = new Intl.DateTimeFormat('en-GB', {
