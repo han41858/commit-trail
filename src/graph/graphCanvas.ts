@@ -119,7 +119,7 @@ export function drawGraphCanvas(
       Math.min(view.width, showMessages ? messageX - left - 8 : Infinity),
     ),
     datePad = Math.min(5, dateWidth / 8),
-    dateX = left + Math.min(16, dateWidth / 4),
+    dateX = left + Math.min(8, dateWidth / 4),
     dateAvailable = Math.max(0, dateWidth - (dateX - left) - datePad * 2);
   for (const marker of dates) {
     const p = positions.get(marker.sha);
@@ -142,11 +142,11 @@ export function drawGraphCanvas(
     if (labelWidth <= 0) continue;
     ctx.globalAlpha = 1;
     ctx.fillStyle = style.getPropertyValue('--bg');
-    ctx.fillRect(dateX - datePad, y - 18, labelWidth + datePad * 2, 15);
+    ctx.fillRect(dateX - datePad, y - 15, labelWidth + datePad * 2, 15);
     ctx.fillStyle = style.getPropertyValue('--muted');
     ctx.globalAlpha = major ? 1 : 0.65;
     // Keep complete Locale labels left of messages, including narrow columns.
-    ctx.fillText(marker.label, dateX, y - 4, labelWidth);
+    ctx.fillText(marker.label, dateX, y - 1, labelWidth);
   }
   ctx.restore();
   for (const edge of edges) {
