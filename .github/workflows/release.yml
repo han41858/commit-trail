@@ -66,6 +66,7 @@ jobs:
       statuses: read
     concurrency:
       group: production-release-${{ github.repository }}
+      queue: max
       cancel-in-progress: false
     steps:
       - name: Check out trusted automation

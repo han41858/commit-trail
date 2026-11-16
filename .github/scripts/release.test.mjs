@@ -503,7 +503,7 @@ function managedRelease(tag, id, marker = 'commit-trail') {
   };
 }
 
-test('production publication and cleanup share one repository concurrency group', () => {
+test('production publication and cleanup preserve waiting jobs in one repository queue', () => {
   const workflow = readFileSync(
     new URL('../workflows/release.yml', import.meta.url),
     'utf8',
@@ -513,6 +513,7 @@ test('production publication and cleanup share one repository concurrency group'
     /group: production-release-\$\{\{ github\.repository \}\}/,
   );
   assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /queue: max/);
 });
 
 test('a successful publication keeps one release while preserving all older Git tags', async () => {
