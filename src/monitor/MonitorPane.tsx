@@ -1,0 +1,177 @@
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
+import type { Commit } from '../shared/model';
+import type { HistorySnapshot } from '../repository/history';
+import type { InfoSnapshot } from '../repository/CommitInfoStore';
+import { Graph } from '../graph/Graph';
+import { CommitDetails } from '../graph/CommitDetails';
+import type { MonitorEntry, MonitorSession } from './MonitorSession';
+import { useMonitorDetailsPosition } from './useMonitorDetailsPosition';
+import { LoadingIndicator } from '../shared/ui/LoadingIndicator';
+
+export function MonitorStatus({
+  state,
+  extras,
+  refreshing,
+  limited,
+  anonymous,
+}: {
+  state: HistorySnapshot;
+  extras: InfoSnapshot;
+  refreshing: boolean;
+  limited: boolean;
+  anonymous: boolean;
+}) {
+  const error =
+    state.error ||
+    state.refreshError ||
+    state.discoveryError ||
+    Object.values(extras.errors).join(' · ');
+  return (
+    <div className="monitor-status">
+      <span>{state.commits.length.toLocaleString()} commits</span>
+      <LoadingIndicator
+        busy={state.busy || extras.busy || refreshing}
+        repository={state.repo}
+        label="Loading repository"
+      />
+      {limited ? (
+        <p role="status">
+          {anonymous
+            ? 'GitHub rate limit · token needed'
+            : 'GitHub rate limit · waiting to retry'}
+        </p>
+      ) : error ? (
+        <p role="alert">{error}</p>
+      ) : null}
+    </div>
+  );
+}
+export const MonitorPane = memo(function MonitorPane({
+  entry,
+  order,
+  theme,
+  session,
+  refreshing,
+  limited,
+  anonymous,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  entry: MonitorEntry;
+  order: number;
+  theme: string;
+  session: MonitorSession;
+  refreshing: boolean;
+  limited: boolean;
+  anonymous: boolean;
+  selected: Commit | null;
+  onSelect: (repository: string, commit: Commit) => void;
+  onClose: () => void;
+}) {
+  const state = useSyncExternalStore(
+      entry.history.subscribe,
+      entry.history.getSnapshot,
+    ),
+    extras = useSyncExternalStore(entry.info.subscribe, entry.info.getSnapshot);
+  const pane = useRef<HTMLElement>(null),
+    details = useRef<HTMLElement>(null);
+  const detailsPosition = useMonitorDetailsPosition(
+    pane,
+    details,
+    !!selected,
+    selected?.sha || '',
+    order,
+  );
+  const select = useCallback(
+    (commit: Commit) => {
+      onSelect(entry.repository, commit);
+      details.current?.focus({ preventScroll: true });
+    },
+    [entry.repository, onSelect],
+  );
+  const loadMore = useCallback(
+    (sources?: string[]) => {
+      if (session.canRequest()) void entry.history.loadMore(sources);
+    },
+    [entry, session],
+  );
+  const watch = useCallback(
+    (shas: string[]) => {
+      if (!limited && session.canRequest()) entry.info.watch(shas);
+    },
+    [entry, session, limited, extras.repo],
+  );
+  useEffect(() => {
+    if (extras.repo === entry.repository) {
+      if (selected && !limited) void entry.info.inspect(selected.sha);
+      else if (!selected) entry.info.clearSelection();
+    }
+  }, [entry, selected?.sha, extras.repo, limited]);
+  return (
+    <section
+      className="monitor-column"
+      ref={pane}
+      style={{ order }}
+      aria-label={`Repository ${entry.repository}`}
+    >
+      {state.commits.length > 0 ? (
+        <Graph
+          theme={theme}
+          containerResponsive
+          columnOrder={order}
+          commits={state.commits}
+          branches={state.branches}
+          branch={state.base}
+          reverse={state.reverse}
+          selected={selected?.sha || ''}
+          onSelect={select}
+          onClearSelection={onClose}
+          hasMore={state.more && !state.error && !limited}
+          onLoadMore={loadMore}
+          frontiers={state.frontiers}
+          pendingSources={state.pendingSources}
+          topInset={34}
+          refreshVersion={state.refreshVersion}
+          baseHead={state.baseHead}
+          defaultBranch={state.meta?.default_branch}
+          info={extras.bySha}
+          onVisible={watch}
+          label={`Commit graph for ${entry.repository}`}
+        />
+      ) : (
+        <div className="monitor-empty" role="status">
+          {state.busy
+            ? 'Loading…'
+            : state.error
+              ? 'Repository unavailable'
+              : 'No commits'}
+        </div>
+      )}
+      {selected && (
+        <CommitDetails
+          panelRef={details}
+          style={detailsPosition}
+          repository={entry.repository}
+          commit={selected}
+          onClose={onClose}
+          info={extras}
+          onMore={session.canRequest() ? entry.info.loadMore : undefined}
+        />
+      )}
+      <MonitorStatus
+        state={state}
+        extras={extras}
+        refreshing={refreshing}
+        limited={limited}
+        anonymous={anonymous}
+      />
+    </section>
+  );
+});
