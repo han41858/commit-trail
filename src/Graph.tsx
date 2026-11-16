@@ -142,6 +142,14 @@ export function Graph({
     document.addEventListener('visibilitychange', update);
     return () => document.removeEventListener('visibilitychange', update);
   }, []);
+  // A restored 2D context starts blank and nothing else would repaint it.
+  const [contextVersion, setContextVersion] = useState(0);
+  useEffect(() => {
+    const el = canvas.current!;
+    const restored = () => setContextVersion((version) => version + 1);
+    el.addEventListener('contextrestored', restored);
+    return () => el.removeEventListener('contextrestored', restored);
+  }, []);
   const [screenNarrow, setScreenNarrow] = useState(
     () => window.matchMedia('(max-width:800px)').matches,
   );
@@ -688,6 +696,7 @@ export function Graph({
     info,
     displayNames,
     pageVisible,
+    contextVersion,
     focus,
     opacity,
     opacityIndex,
