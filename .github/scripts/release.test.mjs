@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
-import { inspectDeployment, publishRelease, releaseTag } from './release.mjs';
+import { existsSync, readFileSync } from 'node:fs';
+import {
+  inspectDeployment,
+  publishRelease,
+  pruneProductionReleases,
+  releaseTag,
+} from './release.mjs';
 
 const targetBranch = process.env.GITHUB_BASE_REF || process.env.GITHUB_REF_NAME;
 
@@ -63,6 +68,8 @@ function fixture() {
     calls: [],
     failNotes: false,
     failRelease: false,
+    failDelete: false,
+    nextReleaseId: 1,
   };
   const context = {
     repo: { owner: 'han41858', repo: 'commit-trail' },
@@ -103,6 +110,7 @@ function fixture() {
       if (state.releaseRace) {
         state.releases.push({
           ...args,
+          id: state.nextReleaseId++,
           html_url:
             'https://github.com/han41858/commit-trail/releases/existing',
         });
@@ -111,6 +119,7 @@ function fixture() {
       }
       const release = {
         ...args,
+        id: state.nextReleaseId++,
         html_url: `https://github.com/han41858/commit-trail/releases/tag/${args.tag_name}`,
       };
       state.releases.push(release);
@@ -120,6 +129,16 @@ function fixture() {
       const release = state.releases.find((r) => r.tag_name === tag);
       if (!release) throw error(404);
       return release;
+    }),
+    deleteRelease: wrap('deleteRelease', ({ release_id }) => {
+      if (state.failDelete || state.failDeleteId === release_id)
+        throw error(503);
+      const index = state.releases.findIndex(
+        (release) => release.id === release_id,
+      );
+      if (index < 0) throw error(404);
+      state.releases.splice(index, 1);
+      return {};
     }),
   };
   const git = {
@@ -159,7 +178,7 @@ function fixture() {
     api,
     writes: () =>
       state.calls.filter((call) =>
-        ['createRef', 'createRelease'].includes(call.name),
+        ['createRef', 'createRelease', 'deleteRelease'].includes(call.name),
       ),
   };
 }
@@ -471,4 +490,220 @@ test('fork repositories and unrelated events cannot use release write permission
   const other = fixture();
   other.context.eventName = 'push';
   await assert.rejects(publishRelease(other.api), /Unexpected workflow event/);
+});
+
+function managedRelease(tag, id, marker = 'commit-trail') {
+  return {
+    id,
+    tag_name: tag,
+    body: `<!-- ${marker}-production-release:${OTHER} -->`,
+    draft: false,
+    prerelease: false,
+    html_url: `https://github.com/han41858/commit-trail/releases/tag/${tag}`,
+  };
+}
+
+test('production publication and cleanup share one repository concurrency group', () => {
+  const workflow = readFileSync(
+    new URL('../workflows/release.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    workflow,
+    /group: production-release-\$\{\{ github\.repository \}\}/,
+  );
+  assert.match(workflow, /cancel-in-progress: false/);
+});
+
+test('a successful publication keeps one release while preserving all older Git tags', async () => {
+  const f = fixture();
+  for (const [tag, id, marker] of [
+    ['rel-20261030234000', 100, 'gitstream'],
+    ['rel-20261030234100', 101, 'commit-trail'],
+  ]) {
+    f.state.releases.push(managedRelease(tag, id, marker));
+    f.state.refs.push({
+      ref: `refs/tags/${tag}`,
+      object: { type: 'commit', sha: OTHER },
+    });
+  }
+  const refs = structuredClone(f.state.refs);
+  const result = await publishRelease(f.api);
+  assert.equal(result.created, true);
+  assert.equal(result.pruned, 2);
+  assert.deepEqual(
+    f.state.releases.map((release) => release.tag_name),
+    [result.tag],
+  );
+  assert.deepEqual(f.state.refs.slice(0, refs.length), refs);
+  assert.equal(f.state.refs.length, refs.length + 1);
+  const writes = f.writes().map((call) => call.name);
+  assert(writes.indexOf('createRelease') < writes.indexOf('deleteRelease'));
+});
+
+test('cleanup preserves drafts, prereleases, manual releases and unrelated tag namespaces', async () => {
+  const f = fixture();
+  const newest = managedRelease('rel-20261031010000', 100);
+  const untouched = [
+    { ...managedRelease('rel-20261031020000', 101), draft: true },
+    { ...managedRelease('rel-20261031030000', 102), prerelease: true },
+    { ...managedRelease('rel-20261031040000', 103), body: 'Manual release' },
+    managedRelease('v1.0.0', 104),
+  ];
+  f.state.releases.push(
+    newest,
+    managedRelease('rel-20261030230000', 105, 'gitstream'),
+    ...untouched,
+  );
+  const result = await pruneProductionReleases(f.api);
+  assert.equal(result.kept.tag, newest.tag_name);
+  assert.deepEqual(result.deleted, [{ id: 105, tag: 'rel-20261030230000' }]);
+  assert.deepEqual(f.state.releases, [newest, ...untouched]);
+});
+
+test('cleanup dry run returns the exact release plan without writes', async () => {
+  const f = fixture();
+  f.state.releases.push(
+    managedRelease('rel-20261031010000', 100),
+    managedRelease('rel-20261030230000', 101),
+  );
+  const result = await pruneProductionReleases({ ...f.api, dryRun: true });
+  assert.equal(result.kept.id, 100);
+  assert.deepEqual(result.planned, [{ id: 101, tag: 'rel-20261030230000' }]);
+  assert.deepEqual(result.deleted, []);
+  assert.equal(f.state.releases.length, 2);
+  assert.equal(f.writes().length, 0);
+});
+
+test('manual dry run does not prune an already published matching release', async () => {
+  const f = fixture();
+  const tag = 'rel-20261030234512';
+  f.state.releases.push(
+    managedRelease(tag, 100),
+    managedRelease('rel-20261030230000', 101),
+  );
+  f.state.refs.push({
+    ref: `refs/tags/${tag}`,
+    object: { type: 'commit', sha: SHA },
+  });
+  f.context.eventName = 'workflow_dispatch';
+  f.context.ref = 'refs/heads/dev';
+  f.context.payload.inputs = { deployment_id: '42' };
+  const result = await publishRelease(f.api);
+  assert.equal(result.dryRun, true);
+  assert.equal(result.reused, true);
+  assert.equal(f.state.releases.length, 2);
+  assert.equal(f.writes().length, 0);
+});
+
+test('failed notes and publication requests never delete existing releases', async () => {
+  for (const failure of ['failNotes', 'failRelease']) {
+    const f = fixture();
+    f.state.releases.push(
+      managedRelease('rel-20261030230000', 100),
+      managedRelease('rel-20261030231000', 101),
+    );
+    f.state[failure] = true;
+    await assert.rejects(publishRelease(f.api), /503/);
+    assert.deepEqual(
+      f.state.releases.map((release) => release.id),
+      [100, 101],
+    );
+    assert.equal(
+      f.writes().filter((call) => call.name === 'deleteRelease').length,
+      0,
+    );
+  }
+});
+
+test('a retry completes partially failed cleanup without creating another tag or release', async () => {
+  const f = fixture();
+  f.state.releases.push(
+    managedRelease('rel-20261030230000', 100),
+    managedRelease('rel-20261030231000', 101),
+  );
+  f.state.failDeleteId = 100;
+  await assert.rejects(publishRelease(f.api), /503/);
+  assert.deepEqual(
+    f.state.releases.map((release) => release.id),
+    [100, 1],
+  );
+  f.state.failDeleteId = null;
+  f.state.calls = [];
+  const result = await publishRelease(f.api);
+  assert.equal(result.reused, true);
+  assert.equal(result.pruned, 1);
+  assert.deepEqual(
+    f.writes().map((call) => call.name),
+    ['deleteRelease'],
+  );
+  assert.deepEqual(
+    f.state.releases.map((release) => release.id),
+    [1],
+  );
+});
+
+test('delayed old production events preserve the newer release without recreating history', async () => {
+  const f = fixture();
+  const latest = managedRelease('rel-20261031010000', 100);
+  f.state.releases.push(latest);
+  const first = await publishRelease(f.api);
+  assert.equal(first.skipped, true);
+  assert.equal(first.latestTag, latest.tag_name);
+  assert.deepEqual(f.state.releases, [latest]);
+  assert.equal(f.state.refs.length, 1);
+  assert.equal(
+    f.state.calls.some((call) => call.name === 'createRelease'),
+    false,
+  );
+  f.state.calls = [];
+  assert.equal((await publishRelease(f.api)).skipped, true);
+  assert.equal(f.writes().length, 0);
+});
+
+test('cleanup re-lists releases and preserves a newer publication racing the first snapshot', async () => {
+  const f = fixture();
+  const list = f.api.github.rest.repos.listReleases;
+  const latest = managedRelease('rel-20261031010000', 100);
+  let reads = 0;
+  f.api.github.rest.repos.listReleases = async (args) => {
+    if (++reads === 2) f.state.releases.push(latest);
+    return list(args);
+  };
+  const result = await publishRelease(f.api);
+  assert.equal(result.skipped, true);
+  assert.equal(result.latestTag, latest.tag_name);
+  assert.equal(result.url, latest.html_url);
+  assert.deepEqual(f.state.releases, [latest]);
+  assert.equal(f.state.refs.length, 1);
+});
+
+test('cleanup tolerates a release already removed by another request', async () => {
+  const f = fixture();
+  f.state.releases.push(
+    managedRelease('rel-20261031010000', 100),
+    managedRelease('rel-20261030230000', 101),
+  );
+  const remove = f.api.github.rest.repos.deleteRelease;
+  f.api.github.rest.repos.deleteRelease = async (args) => {
+    await remove(args);
+    throw error(404);
+  };
+  assert.deepEqual((await pruneProductionReleases(f.api)).deleted, [
+    { id: 101, tag: 'rel-20261030230000' },
+  ]);
+  assert.equal(f.state.releases.length, 1);
+});
+
+test('cleanup validates all managed release IDs and repository before deleting anything', async () => {
+  const f = fixture();
+  f.state.releases.push(
+    managedRelease('rel-20261031010000', 100),
+    managedRelease('rel-20261030230000', 0),
+  );
+  await assert.rejects(pruneProductionReleases(f.api), /release ID/);
+  assert.equal(f.writes().length, 0);
+  f.context.repo.owner = 'other';
+  await assert.rejects(pruneProductionReleases(f.api), /Unexpected repository/);
+  assert.equal(f.writes().length, 0);
 });

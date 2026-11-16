@@ -5,6 +5,13 @@ const PROJECT = 'commit-trail';
 const PRODUCTION_URL = 'https://commit-trail-view.vercel.app/';
 const TAG = /^rel-\d{14}$/;
 const SHA = /^[a-f0-9]{40}$/;
+const productionRelease = (release) =>
+  !release.draft &&
+  !release.prerelease &&
+  TAG.test(release.tag_name) &&
+  /^<!-- (?:commit-trail|gitstream)-production-release:[a-f0-9]{40} -->/m.test(
+    release.body || '',
+  );
 const params = (context) => ({
   owner: context.repo.owner,
   repo: context.repo.repo,
@@ -210,6 +217,47 @@ async function commitForRef(github, scope, ref) {
   return object.type === 'commit' ? object.sha : null;
 }
 
+export async function pruneProductionReleases({
+  github,
+  context,
+  dryRun = false,
+}) {
+  if (`${context.repo.owner}/${context.repo.repo}` !== REPOSITORY)
+    throw new Error('Unexpected repository.');
+  const scope = params(context);
+  const releases = await github.paginate(github.rest.repos.listReleases, {
+    ...scope,
+    per_page: 100,
+  });
+  const managed = releases
+    .filter(productionRelease)
+    .sort((a, b) =>
+      a.tag_name < b.tag_name ? 1 : a.tag_name > b.tag_name ? -1 : 0,
+    );
+  for (const release of managed) {
+    if (!Number.isSafeInteger(release.id) || release.id < 1)
+      throw new Error('Invalid production release ID.');
+  }
+  const [latest, ...older] = managed;
+  const describe = (release) => ({ id: release.id, tag: release.tag_name });
+  const kept = latest ? { ...describe(latest), url: latest.html_url } : null;
+  if (dryRun)
+    return { dryRun: true, kept, planned: older.map(describe), deleted: [] };
+  const deleted = [];
+  for (const release of older) {
+    try {
+      await github.rest.repos.deleteRelease({
+        ...scope,
+        release_id: release.id,
+      });
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+    deleted.push(describe(release));
+  }
+  return { kept, deleted };
+}
+
 export async function publishRelease({ github, context, core }) {
   const deployment = await inspectDeployment({ github, context, core });
   if (!deployment.eligible) return deployment;
@@ -218,6 +266,22 @@ export async function publishRelease({ github, context, core }) {
   const dryRun =
     context.eventName === 'workflow_dispatch' &&
     String(context.payload.inputs?.dry_run ?? 'true') !== 'false';
+  const complete = async (result) => {
+    if (dryRun) return { ...result, dryRun: true };
+    // Re-list after publication so a retry also finishes interrupted cleanup.
+    const retention = await pruneProductionReleases({ github, context });
+    if (retention.kept && retention.kept.tag > result.tag)
+      return {
+        skipped: true,
+        reason: 'A newer production release is retained.',
+        tag: result.tag,
+        sha,
+        latestTag: retention.kept.tag,
+        url: retention.kept.url,
+        pruned: retention.deleted.length,
+      };
+    return { ...result, pruned: retention.deleted.length };
+  };
   const releases = await github.paginate(github.rest.repos.listReleases, {
     ...scope,
     per_page: 100,
@@ -239,7 +303,7 @@ export async function publishRelease({ github, context, core }) {
     if (existing) {
       if (existing.draft || existing.prerelease)
         throw new Error('Matching tag is reserved by a draft or prerelease.');
-      return { reused: true, tag, sha, url: existing.html_url };
+      return complete({ reused: true, tag, sha, url: existing.html_url });
     }
   }
   let tag = matching[0];
@@ -284,6 +348,18 @@ export async function publishRelease({ github, context, core }) {
     throw new Error('No free release timestamp; existing tags were preserved.');
   if (dryRun)
     return { dryRun: true, tag, sha, deploymentId: deployment.deploymentId };
+  const latestProductionTag = releases
+    .filter(productionRelease)
+    .map((release) => release.tag_name)
+    .sort()
+    .at(-1);
+  if (latestProductionTag && tag < latestProductionTag)
+    return complete({
+      skipped: true,
+      tag,
+      sha,
+      latestTag: latestProductionTag,
+    });
   const { data: notes } = await github.rest.repos.generateReleaseNotes({
     ...scope,
     tag_name: tag,
@@ -309,6 +385,7 @@ export async function publishRelease({ github, context, core }) {
     .map((release) => release.tag_name)
     .sort()
     .at(-1);
+  let result;
   try {
     const { data: release } = await github.rest.repos.createRelease({
       ...scope,
@@ -320,7 +397,7 @@ export async function publishRelease({ github, context, core }) {
       prerelease: false,
       make_latest: !latestTag || tag > latestTag ? 'true' : 'false',
     });
-    return { created: true, tag, sha, url: release.html_url };
+    result = { created: true, tag, sha, url: release.html_url };
   } catch (error) {
     if (error.status !== 422) throw error;
     const { data: existing } = await github.rest.repos.getReleaseByTag({
@@ -337,6 +414,7 @@ export async function publishRelease({ github, context, core }) {
       (await commitForRef(github, scope, ref)) !== sha
     )
       throw error;
-    return { reused: true, tag, sha, url: existing.html_url };
+    result = { reused: true, tag, sha, url: existing.html_url };
   }
+  return complete(result);
 }
