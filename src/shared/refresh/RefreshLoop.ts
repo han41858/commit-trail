@@ -38,6 +38,7 @@ export class RefreshLoop {
   private listeners = new Set<() => void>();
   private timer: unknown;
   private recheckTimer: unknown;
+  private recheckDue: number | undefined;
   private enabled = false;
   private interval = 300000;
   private scope = '';
@@ -50,7 +51,12 @@ export class RefreshLoop {
     ) => Promise<RefreshResult>,
     private readonly active = () => true,
     private readonly clock: RefreshClock = systemClock,
-    private readonly recheck: () => unknown = () => undefined,
+    // Runs the targets that are due at `now` and returns the next due time, if
+    // any. With `discard` it only forgets every target.
+    private readonly recheck: (
+      discard: boolean,
+      now: number,
+    ) => number | undefined = () => undefined,
   ) {}
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
@@ -136,27 +142,49 @@ export class RefreshLoop {
   };
   visibilityChanged = () => {
     this.schedule();
+    this.armRecheck();
   };
   private cancelRecheck() {
     this.clock.clear(this.recheckTimer);
     this.recheckTimer = undefined;
+    if (this.recheckDue !== undefined) {
+      this.recheckDue = undefined;
+      this.recheck(true, this.clock.now());
+    }
   }
-  // Ask once more shortly after a branch head moved. This is not a cycle of its
-  // own: it leaves the progress state, completion time and next deadline alone.
+  private armRecheck() {
+    this.clock.clear(this.recheckTimer);
+    this.recheckTimer = undefined;
+    // A hidden page keeps its targets and runs them when it is visible again.
+    if (this.recheckDue === undefined || !this.active()) return;
+    this.recheckTimer = this.clock.set(
+      this.runRecheck,
+      Math.max(0, this.recheckDue - this.clock.now()),
+    );
+  }
+  private runRecheck = () => {
+    this.recheckTimer = undefined;
+    if (this.recheckDue === undefined) return;
+    if (!this.active()) return;
+    const now = this.clock.now();
+    // The retry deadline starts a regular refresh, which reads everything.
+    if (this.state.retryAt > now) return this.cancelRecheck();
+    this.recheckDue = undefined;
+    // Not a cycle of its own: progress, completion time and deadline stay as
+    // they are, and a regular refresh still in flight does not hold this back.
+    const next = this.recheck(false, now);
+    if (next !== undefined) this.recheckAt(next);
+  };
+  private recheckAt(due: number) {
+    this.recheckDue =
+      this.recheckDue === undefined ? due : Math.min(this.recheckDue, due);
+    this.armRecheck();
+  }
+  // A branch head moved: returns when its repository should be read once more.
   recheckSoon = () => {
-    if (!this.scope || this.recheckTimer !== undefined) return;
-    const generation = this.generation;
-    this.recheckTimer = this.clock.set(() => {
-      this.recheckTimer = undefined;
-      if (
-        generation !== this.generation ||
-        !this.active() ||
-        this.pending ||
-        this.state.retryAt > this.clock.now()
-      )
-        return;
-      void this.recheck();
-    }, RECHECK_DELAY);
+    const due = this.clock.now() + RECHECK_DELAY;
+    if (this.scope) this.recheckAt(due);
+    return due;
   };
   stop = () => {
     this.cancelRecheck();
@@ -182,8 +210,6 @@ export class RefreshLoop {
       return Promise.resolve();
     const generation = this.generation;
     this.clock.clear(this.timer);
-    // This refresh reads everything the pending recheck would have read.
-    this.cancelRecheck();
     const task = Promise.resolve()
       .then(() =>
         generation === this.generation

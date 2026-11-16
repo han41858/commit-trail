@@ -23,7 +23,7 @@ import {
 } from './shared/refresh/useRetryCountdown';
 import { History } from './repository/history';
 import { CommitInfoStore } from './repository/CommitInfoStore';
-import { RefreshLoop } from './shared/refresh/RefreshLoop';
+import { RECHECK_DELAY, RefreshLoop } from './shared/refresh/RefreshLoop';
 import { RefreshButton } from './shared/refresh/RefreshButton';
 import { MonitorSession } from './monitor/MonitorSession';
 import {
@@ -202,19 +202,26 @@ function App() {
     });
     monitor.stop();
   }, [history, monitor, navigate]);
-  const [loop] = useState(() => {
-    const loop = new RefreshLoop(
-      (kind) =>
-        monitor.getSnapshot().active
-          ? monitor.refreshAll(kind)
-          : monitor.refreshPrimary(kind),
-      () => !document.hidden && navigator.onLine,
-      undefined,
-      () => monitor.recheck(),
-    );
+  const [loop] = useState(
+    () =>
+      new RefreshLoop(
+        (kind) =>
+          monitor.getSnapshot().active
+            ? monitor.refreshAll(kind)
+            : monitor.refreshPrimary(kind),
+        () => !document.hidden && navigator.onLine,
+        undefined,
+        (discard, now) => monitor.recheck(discard, now),
+      ),
+  );
+  // StrictMode runs state initializers twice and keeps the first result, so the
+  // session is connected to the retained loop here rather than in the initializer.
+  useEffect(() => {
     monitor.onHeadMoved = loop.recheckSoon;
-    return loop;
-  });
+    return () => {
+      monitor.onHeadMoved = () => Date.now() + RECHECK_DELAY;
+    };
+  }, [loop, monitor]);
   const measured = useMeasuredOpen(history, info);
   const refreshState = useSyncExternalStore(loop.subscribe, loop.getSnapshot);
   const state = useSyncExternalStore(history.subscribe, history.getSnapshot);

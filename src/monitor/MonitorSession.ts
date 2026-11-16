@@ -1,7 +1,10 @@
 import { History, type HistoryRefresh } from '../repository/history';
 import { CommitInfoStore } from '../repository/CommitInfoStore';
 import { measureRefresh } from '../shared/debug/measuredOperations';
-import type { RefreshResult } from '../shared/refresh/RefreshLoop';
+import {
+  RECHECK_DELAY,
+  type RefreshResult,
+} from '../shared/refresh/RefreshLoop';
 import { normalizeMonitorRepositories } from './MonitorRepositories';
 import type { BranchSelections } from '../repository/BranchSelections';
 
@@ -33,9 +36,10 @@ export class MonitorSession {
   private primaryPending: Promise<RefreshResult> | null = null;
   private authentication = 0;
   private token = '';
-  private moved = new Set<History>();
-  // Set by the owner of the refresh timer.
-  onHeadMoved: () => void = () => undefined;
+  // Histories whose head moved, with the time each may be read once more.
+  private moved = new Map<History, number>();
+  // Set by the owner of the refresh timer; returns that time.
+  onHeadMoved: () => number = () => Date.now() + RECHECK_DELAY;
   constructor(
     private readonly history: History,
     private readonly info: CommitInfoStore,
@@ -124,37 +128,45 @@ export class MonitorSession {
     );
   }
   private noteHeads = (history: History) => (result: HistoryRefresh) => {
-    if (result.headMoved) {
-      this.moved.add(history);
-      this.onHeadMoved();
-    }
+    if (result.headMoved) this.moved.set(history, this.onHeadMoved());
     return result;
   };
-  // Re-read the branches of the repositories whose heads moved in the last cycle,
-  // so a branch deleted right after its merge does not stay until the next cycle.
-  // The result never schedules another recheck, and metadata is not read again.
-  recheck = (): Promise<void> => {
-    const histories = [...this.moved].filter((history) =>
-      this.state.active
+  private rechecks: Promise<unknown> = Promise.resolve();
+  // Settles when the rechecks started so far have finished.
+  get rechecked() {
+    return this.rechecks;
+  }
+  // Re-read the branches of the repositories whose heads moved and whose wait is
+  // over, so a branch deleted right after its merge does not stay until the next
+  // cycle. Each repository waits from its own change. The result never schedules
+  // another recheck, and metadata is not read again. Returns the next due time.
+  recheck = (discard = false, now = Date.now()): number | undefined => {
+    if (discard || !this.canRequest()) {
+      this.moved.clear();
+      return undefined;
+    }
+    const ready: History[] = [];
+    for (const [history, due] of this.moved) {
+      const current = this.state.active
         ? this.state.entries.some((entry) => entry.history === history)
-        : history === this.history,
-    );
-    this.moved.clear();
-    if (!this.canRequest()) return Promise.resolve();
+        : history === this.history;
+      if (current && due > now) continue;
+      this.moved.delete(history);
+      const state = history.getSnapshot();
+      if (current && state.meta && !state.error && !history.loadingBase)
+        ready.push(history);
+    }
     const authentication = this.authentication;
-    return Promise.allSettled(
-      histories
-        .filter((history) => {
-          const state = history.getSnapshot();
-          return state.meta && !state.error && !history.loadingBase;
-        })
-        .map((history) =>
-          history.refresh(undefined, 'recheck').then((result) => {
-            if (authentication === this.authentication)
-              this.captureResult(result);
-          }),
-        ),
-    ).then(() => undefined);
+    this.rechecks = Promise.allSettled([
+      this.rechecks,
+      ...ready.map((history) =>
+        history.refresh(undefined, 'recheck').then((result) => {
+          if (authentication === this.authentication)
+            this.captureResult(result);
+        }),
+      ),
+    ]);
+    return this.moved.size ? Math.min(...this.moved.values()) : undefined;
   };
   private combined(entry: MonitorEntry): RefreshResult {
     const state = entry.history.getSnapshot(),
@@ -327,6 +339,8 @@ export class MonitorSession {
         retryAt: this.state.retryAt,
         completion: null,
       });
+    // This refresh reads everything a pending recheck would have read.
+    this.moved.delete(this.history);
     const authentication = this.authentication,
       observe = (result: RefreshResult) =>
         authentication === this.authentication
@@ -389,6 +403,7 @@ export class MonitorSession {
       // Boundary and metadata loads may stall; they do not hold back ref sync.
       // The stores share their own in-flight refreshes.
       if (this.tasks.has(entry) || entry.history.loadingBase) continue;
+      this.moved.delete(entry.history);
       const task = this.run(entry, () =>
         !state.meta
           ? entry.primary
