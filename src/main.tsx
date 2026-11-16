@@ -541,10 +541,12 @@ function App() {
       )
         return;
       if (options && !optionsRef.current?.contains(target)) setOptions(false);
+      // The backdrop closes on click so touch clicks cannot reach covered controls.
       if (
         auth &&
         !authRef.current?.contains(target) &&
-        !tokenButtonRef.current?.contains(target)
+        !tokenButtonRef.current?.contains(target) &&
+        !(target instanceof Element && target.closest('.auth-backdrop'))
       )
         setAuth(false);
       if (
