@@ -270,16 +270,6 @@
 .monitor-column .commit-authored {
   font-size: 9px;
 }
-.monitor-setup-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  background: var(--popup-backdrop);
-  display: grid;
-  place-items: center;
-  padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, var(--safe-right))
-    max(12px, var(--safe-bottom)) max(12px, var(--safe-left));
-}
 .monitor-setup {
   position: relative;
   inset: auto;

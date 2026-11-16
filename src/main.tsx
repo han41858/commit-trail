@@ -53,6 +53,7 @@ import {
   TOKEN_STORAGE_KEY,
 } from './tokenStorage';
 import { AccessTokenPanel } from './AccessTokenPanel';
+import { PopupBackdrop } from './PopupBackdrop';
 import { ViewOptions } from './ViewOptions';
 import { readViewOptions, saveViewOptions } from './viewOptions';
 import { AppStatus } from './AppStatus';
@@ -261,7 +262,8 @@ function App() {
       );
   }, [resolvedTheme]);
   const appRef = useRef<HTMLDivElement>(null);
-  const optionsRef = useRef<HTMLDivElement>(null),
+  const optionsRef = useRef<HTMLElement>(null),
+    optionsButtonRef = useRef<HTMLButtonElement>(null),
     toolbarRef = useRef<HTMLElement>(null),
     authRef = useRef<HTMLElement>(null),
     tokenButtonRef = useRef<HTMLButtonElement>(null),
@@ -540,13 +542,21 @@ function App() {
         target.closest('[data-debug-ui],[data-pwa-ui]')
       )
         return;
-      if (options && !optionsRef.current?.contains(target)) setOptions(false);
-      // The backdrop closes on click so touch clicks cannot reach covered controls.
+      // Backdrops close on click so touch clicks cannot reach covered controls.
+      const withinBackdrop =
+        target instanceof Element && !!target.closest('.popup-backdrop');
+      if (
+        options &&
+        !withinBackdrop &&
+        !optionsRef.current?.contains(target) &&
+        !optionsButtonRef.current?.contains(target)
+      )
+        setOptions(false);
       if (
         auth &&
         !authRef.current?.contains(target) &&
         !tokenButtonRef.current?.contains(target) &&
-        !(target instanceof Element && target.closest('.auth-backdrop'))
+        !withinBackdrop
       )
         setAuth(false);
       if (
@@ -964,20 +974,35 @@ function App() {
               <path d="M12 4v16" />
             </svg>
           </button>
+          <button
+            className="options-trigger"
+            ref={optionsButtonRef}
+            aria-label="Options"
+            aria-expanded={options}
+            aria-controls="options-menu"
+            onClick={() => setOptions(!options)}
+          >
+            •••
+          </button>
+        </div>
+      </header>
+      {options && !monitorState.active && (
+        <PopupBackdrop
+          className="options-backdrop"
+          onClose={() => setOptions(false)}
+        >
           <ViewOptions
             panelRef={optionsRef}
-            open={options}
             theme={theme}
             autoRefresh={autoRefresh}
             seconds={seconds}
             hasToken={!!appliedToken}
-            onOpenChange={setOptions}
             onThemeChange={setTheme}
             onAutoRefreshChange={setAutoRefresh}
             onIntervalChange={setIntervalChoice}
           />
-        </div>
-      </header>
+        </PopupBackdrop>
+      )}
       {auth && (
         <AccessTokenPanel
           panelRef={authRef}
