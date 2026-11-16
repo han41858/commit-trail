@@ -1,3 +1,4 @@
+import { PopupBackdrop } from './PopupBackdrop';
 import {
   useEffect,
   useRef,
@@ -152,11 +153,9 @@ export function MonitorSetup({
     );
   }
   return (
-    <div
-      className="monitor-setup-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+    <PopupBackdrop
+      className="monitor-setup-backdrop popup-backdrop-centered"
+      onClose={onClose}
     >
       <section
         className="monitor-setup floating-panel"
@@ -446,6 +445,6 @@ export function MonitorSetup({
           </button>
         </div>
       </section>
-    </div>
+    </PopupBackdrop>
   );
 }

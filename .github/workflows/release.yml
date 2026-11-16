@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       dry_run:
-        description: Verify without creating a tag or release
+        description: Verify without creating tags or changing releases
         default: true
         type: boolean
 
@@ -65,7 +65,8 @@ jobs:
       deployments: read
       statuses: read
     concurrency:
-      group: production-release-${{ needs.inspect.outputs.sha }}
+      group: production-release-${{ github.repository }}
+      queue: max
       cancel-in-progress: false
     steps:
       - name: Check out trusted automation
