@@ -252,18 +252,24 @@ input {
   line-height: 1;
   padding: 5px;
 }
-.auth-backdrop {
+.popup-backdrop {
   position: absolute;
   inset: 0;
   z-index: 10;
   background: var(--popup-backdrop);
 }
+.popup-backdrop-centered {
+  display: grid;
+  place-items: center;
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, var(--safe-right))
+    max(12px, var(--safe-bottom)) max(12px, var(--safe-left));
+}
 .auth {
-  top: 100px;
-  right: 16px;
-  width: min(430px, calc(100% - 32px));
+  position: relative;
+  inset: auto;
+  width: min(430px, 100%);
   font-size: 12px;
-  max-height: calc(100% - 180px);
+  max-height: 100%;
   overflow: auto;
 }
 .auth input {
@@ -530,12 +536,6 @@ pre {
   .tools select {
     max-width: none;
   }
-  .auth {
-    top: 170px;
-    right: 10px;
-    width: calc(100% - 20px);
-    max-height: calc(100% - 250px);
-  }
   .details {
     --details-bottom: 96px;
     left: 10px;
@@ -716,15 +716,16 @@ pre {
   width: 200px;
   min-width: 100px;
 }
-.options {
-  position: relative;
-}
 .options-trigger {
   letter-spacing: 2px;
 }
 .options-menu {
-  right: 0;
-  top: calc(100% + 16px);
+  right: max(16px, var(--safe-right));
+  top: calc(var(--toolbar-bottom, 80px) + 16px);
+  max-height: calc(
+    100% - var(--toolbar-bottom, 80px) - 32px - var(--safe-bottom)
+  );
+  overflow: auto;
   width: max-content;
   min-width: min(
     220px,
@@ -878,10 +879,6 @@ pre {
   .options-trigger {
     padding: 7px 10px;
     font-size: 11px;
-  }
-  .auth {
-    top: 124px;
-    max-height: calc(100% - 150px);
   }
   .branch-menu {
     max-height: calc(100dvh - 190px);
@@ -1474,11 +1471,6 @@ pre {
   left: max(16px, var(--safe-left));
   max-width: calc(100% - var(--safe-left) - var(--safe-right) - 32px);
 }
-.auth {
-  right: max(16px, var(--safe-right));
-  top: max(100px, calc(var(--toolbar-bottom, 80px) + 16px));
-  width: min(430px, calc(100% - var(--safe-left) - var(--safe-right) - 32px));
-}
 .app-notices {
   position: fixed;
   z-index: 45;
@@ -1532,11 +1524,13 @@ pre {
     left: max(10px, var(--safe-left));
     right: max(10px, var(--safe-right));
   }
+  .options-menu {
+    right: max(10px, var(--safe-right));
+  }
   .graph-status {
     left: max(10px, var(--safe-left));
     max-width: calc(100% - var(--safe-left) - var(--safe-right) - 20px);
   }
-  .auth,
   .branch-menu {
     top: max(124px, calc(var(--toolbar-bottom, 108px) + 16px));
     max-height: calc(
@@ -1544,7 +1538,6 @@ pre {
         var(--safe-bottom) - 16px
     );
   }
-  .auth,
   .details,
   .branch-menu {
     left: max(10px, var(--safe-left));
