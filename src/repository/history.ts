@@ -41,6 +41,9 @@ export type HistoryRefresh = {
   retryAt?: number;
   // Set only when this refresh compared the repository with GitHub.
   repository?: 'changed' | 'unchanged';
+  // A known branch points at another commit. A merge of any kind looks like this,
+  // and GitHub removes the merged branch a few seconds afterwards.
+  headMoved?: true;
 };
 export type HistorySnapshot = {
   repo: string;
@@ -566,7 +569,7 @@ export class History {
   }
   refresh = (
     cycle?: DebugCycle,
-    kind: 'manual' | 'auto' = 'manual',
+    kind: 'manual' | 'auto' | 'recheck' = 'manual',
   ): Promise<HistoryRefresh> => {
     if (this.refreshing) {
       debug.cache('other', cycle, 'shared');
@@ -628,7 +631,7 @@ export class History {
   };
   private async refreshCurrent(
     cycle: DebugCycle | undefined,
-    kind: 'manual' | 'auto',
+    kind: 'manual' | 'auto' | 'recheck',
   ): Promise<HistoryRefresh> {
     const reader =
       this.refreshReader ?? (this.refreshReader = new GitHubReader(this.token));
@@ -740,6 +743,10 @@ export class History {
         refs.some(
           (ref) => previous.get(ref.name)?.commit.sha !== ref.commit.sha,
         );
+      const headMoved = refs.some((ref) => {
+        const known = previous.get(ref.name);
+        return !!known && known.commit.sha !== ref.commit.sha;
+      });
       const patch: Partial<HistorySnapshot> = {
         refreshVersion: this.snapshot.refreshVersion + 1,
         meta:
@@ -804,10 +811,13 @@ export class History {
       this.integrate([], patch, cycle);
       // Branch and Actions responses can lag behind a push. Trust a push time only
       // after a second full refresh has seen the same value.
-      this.syncedPush =
-        pushed !== undefined && pushed === this.seenPush ? pushed : undefined;
-      this.seenPush = pushed;
-      return { repository: 'changed' };
+      // A recheck reads branches only, so it does not count as that second read.
+      if (kind !== 'recheck') {
+        this.syncedPush =
+          pushed !== undefined && pushed === this.seenPush ? pushed : undefined;
+        this.seenPush = pushed;
+      }
+      return { repository: 'changed', ...(headMoved ? { headMoved } : {}) };
     } catch (error) {
       if (signal.aborted) {
         if (cycle) cycle.cancelled = true;

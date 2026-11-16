@@ -202,16 +202,19 @@ function App() {
     });
     monitor.stop();
   }, [history, monitor, navigate]);
-  const [loop] = useState(
-    () =>
-      new RefreshLoop(
-        (kind) =>
-          monitor.getSnapshot().active
-            ? monitor.refreshAll(kind)
-            : monitor.refreshPrimary(kind),
-        () => !document.hidden && navigator.onLine,
-      ),
-  );
+  const [loop] = useState(() => {
+    const loop = new RefreshLoop(
+      (kind) =>
+        monitor.getSnapshot().active
+          ? monitor.refreshAll(kind)
+          : monitor.refreshPrimary(kind),
+      () => !document.hidden && navigator.onLine,
+      undefined,
+      () => monitor.recheck(),
+    );
+    monitor.onHeadMoved = loop.recheckSoon;
+    return loop;
+  });
   const measured = useMeasuredOpen(history, info);
   const refreshState = useSyncExternalStore(loop.subscribe, loop.getSnapshot);
   const state = useSyncExternalStore(history.subscribe, history.getSnapshot);

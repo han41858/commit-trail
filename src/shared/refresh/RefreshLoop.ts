@@ -18,6 +18,8 @@ export type RefreshClock = {
   set: (fn: () => void, ms: number) => unknown;
   clear: (id: unknown) => void;
 };
+// GitHub deletes a merged branch 2-4 seconds after the merge push.
+export const RECHECK_DELAY = 5000;
 const systemClock: RefreshClock = {
   now: () => Date.now(),
   set: (fn, ms) => setTimeout(fn, ms),
@@ -34,6 +36,7 @@ export class RefreshLoop {
   };
   private listeners = new Set<() => void>();
   private timer: unknown;
+  private recheckTimer: unknown;
   private enabled = false;
   private interval = 300000;
   private scope = '';
@@ -46,6 +49,7 @@ export class RefreshLoop {
     ) => Promise<RefreshResult>,
     private readonly active = () => true,
     private readonly clock: RefreshClock = systemClock,
+    private readonly recheck: () => unknown = () => undefined,
   ) {}
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
@@ -65,6 +69,7 @@ export class RefreshLoop {
     waitForInitialLoad = false,
   ) {
     if (scope !== this.scope) {
+      this.cancelRecheck();
       this.generation++;
       this.pending = null;
       this.completions.clear();
@@ -131,7 +136,29 @@ export class RefreshLoop {
   visibilityChanged = () => {
     this.schedule();
   };
+  private cancelRecheck() {
+    this.clock.clear(this.recheckTimer);
+    this.recheckTimer = undefined;
+  }
+  // Ask once more shortly after a branch head moved. This is not a cycle of its
+  // own: it leaves the progress state, completion time and next deadline alone.
+  recheckSoon = () => {
+    if (!this.scope || this.recheckTimer !== undefined) return;
+    const generation = this.generation;
+    this.recheckTimer = this.clock.set(() => {
+      this.recheckTimer = undefined;
+      if (
+        generation !== this.generation ||
+        !this.active() ||
+        this.pending ||
+        this.state.retryAt > this.clock.now()
+      )
+        return;
+      void this.recheck();
+    }, RECHECK_DELAY);
+  };
   stop = () => {
+    this.cancelRecheck();
     this.enabled = false;
     this.generation++;
     this.pending = null;
@@ -154,6 +181,8 @@ export class RefreshLoop {
       return Promise.resolve();
     const generation = this.generation;
     this.clock.clear(this.timer);
+    // This refresh reads everything the pending recheck would have read.
+    this.cancelRecheck();
     const task = Promise.resolve()
       .then(() =>
         generation === this.generation
