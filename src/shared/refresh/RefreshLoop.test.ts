@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  RECHECK_DELAY,
   RefreshLoop,
   type RefreshClock,
   type RefreshResult,
@@ -413,4 +414,149 @@ test('a new monitor scope waits again and initial errors do not shorten its next
   loop.loaded();
   assert.equal(loop.getSnapshot().nextAt, 65000);
   loop.stop();
+});
+test('a recheck runs once after its delay without changing the refresh state', async () => {
+  const time = timer();
+  let updates = 0;
+  const runs: number[] = [];
+  const loop = new RefreshLoop(
+    async () => {
+      updates++;
+      return {};
+    },
+    () => true,
+    time.clock,
+    (discard, now) => {
+      if (!discard) runs.push(now);
+      return undefined;
+    },
+  );
+  loop.configure('repo', true, 60000);
+  loop.loaded();
+  await time.advance(60000);
+  assert.equal(updates, 1);
+  const before = loop.getSnapshot(),
+    start = time.clock.now();
+  assert.equal(loop.recheckSoon(), start + RECHECK_DELAY);
+  await time.advance(1000);
+  // A later request does not postpone the earlier one.
+  loop.recheckSoon();
+  await time.advance(RECHECK_DELAY - 1001);
+  assert.deepEqual(runs, []);
+  await time.advance(1);
+  assert.deepEqual(runs, [start + RECHECK_DELAY]);
+  assert.equal(updates, 1);
+  assert.equal(loop.getSnapshot(), before);
+  await time.advance(RECHECK_DELAY * 3);
+  assert.equal(runs.length, 1);
+  // The regular deadline is where it was.
+  await time.advance(60000 - RECHECK_DELAY * 4);
+  assert.equal(updates, 2);
+});
+test('a recheck that reports a later target runs again at that time', async () => {
+  const time = timer(),
+    runs: number[] = [];
+  const loop = new RefreshLoop(
+    async () => ({}),
+    () => true,
+    time.clock,
+    (discard, now) => {
+      if (discard) return undefined;
+      runs.push(now);
+      return runs.length === 1 ? now + 6000 : undefined;
+    },
+  );
+  loop.configure('repo', true, 60000);
+  loop.loaded();
+  const start = time.clock.now();
+  loop.recheckSoon();
+  await time.advance(RECHECK_DELAY + 5999);
+  assert.deepEqual(runs, [start + RECHECK_DELAY]);
+  await time.advance(1);
+  assert.deepEqual(runs, [start + RECHECK_DELAY, start + RECHECK_DELAY + 6000]);
+});
+test('a recheck is not held back or lost by a regular refresh that is still running', async () => {
+  const time = timer();
+  let finish = () => {},
+    rechecks = 0;
+  const loop = new RefreshLoop(
+    () => new Promise<RefreshResult>((resolve) => (finish = () => resolve({}))),
+    () => true,
+    time.clock,
+    (discard) => {
+      if (!discard) rechecks++;
+      return undefined;
+    },
+  );
+  loop.configure('repo', false, 60000);
+  loop.loaded();
+  const refresh = loop.refresh();
+  await flush();
+  loop.recheckSoon();
+  await time.advance(RECHECK_DELAY);
+  assert.equal(loop.getSnapshot().running, true);
+  assert.equal(rechecks, 1);
+  finish();
+  await refresh;
+  await time.advance(RECHECK_DELAY * 2);
+  assert.equal(rechecks, 1);
+});
+test('a hidden page runs its recheck when it is visible again', async () => {
+  const time = timer();
+  let visible = true,
+    rechecks = 0,
+    discards = 0;
+  const loop = new RefreshLoop(
+    async () => ({}),
+    () => visible,
+    time.clock,
+    (discard) => {
+      if (discard) discards++;
+      else rechecks++;
+      return undefined;
+    },
+  );
+  loop.configure('repo', false, 60000);
+  loop.loaded();
+  loop.recheckSoon();
+  visible = false;
+  loop.visibilityChanged();
+  await time.advance(RECHECK_DELAY * 2);
+  assert.equal(rechecks, 0);
+  visible = true;
+  loop.visibilityChanged();
+  await time.advance(0);
+  assert.equal(rechecks, 1);
+  assert.equal(discards, 0);
+});
+test('another scope, stop or a rate limit discards the pending recheck targets', async () => {
+  for (const cancel of ['scope', 'stop', 'limit'] as const) {
+    const time = timer();
+    let rechecks = 0,
+      discards = 0,
+      retryAt = 0;
+    const loop = new RefreshLoop(
+      async () => ({ retryAt }),
+      () => true,
+      time.clock,
+      (discard) => {
+        if (discard) discards++;
+        else rechecks++;
+        return undefined;
+      },
+    );
+    loop.configure('repo', true, 60000);
+    loop.loaded();
+    loop.recheckSoon();
+    await time.advance(1000);
+    if (cancel === 'scope') loop.configure('other', true, 60000);
+    if (cancel === 'stop') loop.stop();
+    if (cancel === 'limit') {
+      retryAt = time.clock.now() + 30000;
+      await loop.refresh();
+    }
+    await time.advance(RECHECK_DELAY * 2);
+    assert.equal(rechecks, 0, cancel);
+    assert.equal(discards, 1, cancel);
+  }
 });
