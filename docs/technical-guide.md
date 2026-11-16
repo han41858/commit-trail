@@ -148,6 +148,19 @@ All widths and Split view columns support the same path selection: clicking/tapp
 
 ## Architecture and limits
 
+`src/main.tsx` is the application entry and composes the feature modules. Source files, their styles and their `*.test.ts` files are grouped by responsibility:
+
+| Directory         | Responsibility                                                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/`        | App notices, status, view settings, analytics and global styles; `pwa/` owns app updates                                            |
+| `src/graph/`      | Graph rendering, layout presentation, path highlighting, input and commit details                                                   |
+| `src/repository/` | Repository/branch selection, owner lookup, navigation, history loading and metadata stores                                          |
+| `src/monitor/`    | Split view selection, ordering, sessions, panes and detail positioning                                                              |
+| `src/token/`      | Token storage, permission checks and token controls                                                                                 |
+| `src/shared/`     | Common Git data/model operations and emoji conversion; `github/`, `refresh/`, `debug/` and `ui/` group shared services and controls |
+
+Keep tests beside the implementation they exercise. `npm test` discovers `src/**/*.test.ts` recursively, including nested shared modules. Modules use explicit relative imports, and the existing feature/session lifetimes are preserved across single and Split view.
+
 `main.tsx` owns app state, authentication, navigation and refresh lifetimes. `ViewOptions.tsx`, `AccessTokenPanel.tsx`, `AppStatus.tsx` and `MonitorControls.tsx` render their controls from explicit props. `PopupBackdrop.tsx` shares the background and pointer-gesture handling for token, settings and Split view popups. The settings button stays in the header while its panel renders beside the header so the backdrop covers the whole app. These controls do not create separate sessions or subscriptions.
 
 `model.ts` owns data and topological lane layout; `api.ts` owns paginated REST requests. `history.ts` coordinates cancellation, encountered-parent traversal, directional pagination and bounded loading batches. `HistoryCommitPages.ts` owns that traversal’s request pool, in-flight deduplication, immutable page cache and head validation; History still supplies the cancellation signals and resets the reader at the same traversal boundaries. `historyTraversal.ts` contains pure frontier, loaded-history range and ancestry calculations.
