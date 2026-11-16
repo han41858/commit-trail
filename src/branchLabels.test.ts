@@ -82,6 +82,46 @@ test('branch names remain separate when narrow space requires covering their pat
     ),
   );
 });
+test('a visible HEAD keeps its badge on its own row before a later path segment with more side space', () => {
+  const widths = new Map([
+    ['main', 36],
+    ['dev', 29],
+    ['fix/stable-branch-labels', 102],
+  ]);
+  for (const reverse of [false, true]) {
+    const point = (x: number, y: number) => ({
+      x,
+      y: reverse ? 900 - y : y,
+    });
+    const head = point(116, 141);
+    const tracks: BranchTrack[] = [
+      {
+        name: 'main',
+        lane: 0,
+        points: [point(48, 234), point(48, 900)],
+      },
+      {
+        name: 'dev',
+        lane: 1,
+        points: [point(82, 110), point(82, 203), point(82, 900)],
+      },
+      {
+        name: 'fix/stable-branch-labels',
+        lane: 2,
+        points: [head, point(116, 172), point(82, 203)],
+      },
+    ];
+    const measure = (names: string[]) => widths.get(names[0])!;
+    const labels = visibleBranchLabels(tracks, 90, 810, 0, 207, measure, 18);
+    assert.equal(labels.length, 3);
+    const badge = labels.find((label) => label.names[0] === tracks[2].name)!;
+    assert.equal(badge.y, head.y);
+    assert.equal(badge.boxY, head.y - 9);
+    assert(badge.boxX! <= head.x && badge.boxX! + 102 >= head.x);
+    assert(badge.boxX! >= 8 && badge.boxX! + 102 <= 199);
+    clearOfLabels(labels, (label) => measure(label.names));
+  }
+});
 test('narrow badges stay beside their own path after small scrolls near another branch', () => {
   const point = (x: number, y: number) => ({ x, y });
   const tracks: BranchTrack[] = [

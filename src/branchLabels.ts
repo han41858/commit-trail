@@ -354,6 +354,32 @@ export function visibleBranchLabels(
       });
       continue;
     }
+    // A visible ref belongs on its HEAD row. Cover its node/path before moving
+    // the name to another commit merely to find more space beside the line.
+    const head = track.points[0];
+    if (
+      head.x >= left &&
+      head.x <= right &&
+      head.y >= top &&
+      head.y <= bottom
+    ) {
+      const rect = box(head),
+        position =
+          beside(rect, labelBarriers(), labelBarriers(), head.x) ||
+          beside(rect, labelBarriers(), labelBarriers(), head.x, true);
+      if (position) {
+        place({
+          ...head,
+          names,
+          lane: track.lane,
+          color: track.color,
+          boxX: position.x,
+          boxY: position.y,
+          boxHeight: stackHeight,
+        });
+        continue;
+      }
+    }
     let placed = false;
     // Search every nearby anchor beside the path before allowing it underneath a badge.
     for (const placement of ['beside', 'overlap', 'distant'] as const) {
