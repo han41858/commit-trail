@@ -18,8 +18,9 @@ export type RefreshClock = {
   set: (fn: () => void, ms: number) => unknown;
   clear: (id: unknown) => void;
 };
-// GitHub deletes a merged branch 2-4 seconds after the merge push.
-export const RECHECK_DELAY = 5000;
+// GitHub deletes a merged branch 1-4 seconds after the merge push; the extra
+// time covers second-resolution timestamps and a late branch listing.
+export const RECHECK_DELAY = 7000;
 const systemClock: RefreshClock = {
   now: () => Date.now(),
   set: (fn, ms) => setTimeout(fn, ms),
