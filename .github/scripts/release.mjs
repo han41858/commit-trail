@@ -221,6 +221,7 @@ export async function pruneProductionReleases({
   github,
   context,
   dryRun = false,
+  knownReleases = [],
 }) {
   if (`${context.repo.owner}/${context.repo.repo}` !== REPOSITORY)
     throw new Error('Unexpected repository.');
@@ -229,7 +230,12 @@ export async function pruneProductionReleases({
     ...scope,
     per_page: 100,
   });
-  const managed = releases
+  // GitHub's list can lag behind publication. Preserve both the earlier
+  // catalog and the release returned by the write; fresh metadata wins by ID.
+  const catalog = new Map(
+    [...knownReleases, ...releases].map((release) => [release.id, release]),
+  );
+  const managed = [...catalog.values()]
     .filter(productionRelease)
     .sort((a, b) =>
       a.tag_name < b.tag_name ? 1 : a.tag_name > b.tag_name ? -1 : 0,
@@ -266,10 +272,20 @@ export async function publishRelease({ github, context, core }) {
   const dryRun =
     context.eventName === 'workflow_dispatch' &&
     String(context.payload.inputs?.dry_run ?? 'true') !== 'false';
-  const complete = async (result) => {
+  const releases = await github.paginate(github.rest.repos.listReleases, {
+    ...scope,
+    per_page: 100,
+  });
+  const complete = async (result, publishedRelease) => {
     if (dryRun) return { ...result, dryRun: true };
     // Re-list after publication so a retry also finishes interrupted cleanup.
-    const retention = await pruneProductionReleases({ github, context });
+    const retention = await pruneProductionReleases({
+      github,
+      context,
+      knownReleases: publishedRelease
+        ? [...releases, publishedRelease]
+        : releases,
+    });
     if (retention.kept && retention.kept.tag > result.tag)
       return {
         skipped: true,
@@ -282,10 +298,6 @@ export async function publishRelease({ github, context, core }) {
       };
     return { ...result, pruned: retention.deleted.length };
   };
-  const releases = await github.paginate(github.rest.repos.listReleases, {
-    ...scope,
-    per_page: 100,
-  });
   const refs = await github.paginate(github.rest.git.listMatchingRefs, {
     ...scope,
     ref: 'tags/rel-',
@@ -303,7 +315,10 @@ export async function publishRelease({ github, context, core }) {
     if (existing) {
       if (existing.draft || existing.prerelease)
         throw new Error('Matching tag is reserved by a draft or prerelease.');
-      return complete({ reused: true, tag, sha, url: existing.html_url });
+      return complete(
+        { reused: true, tag, sha, url: existing.html_url },
+        existing,
+      );
     }
   }
   let tag = matching[0];
@@ -385,7 +400,7 @@ export async function publishRelease({ github, context, core }) {
     .map((release) => release.tag_name)
     .sort()
     .at(-1);
-  let result;
+  let result, publishedRelease;
   try {
     const { data: release } = await github.rest.repos.createRelease({
       ...scope,
@@ -398,6 +413,7 @@ export async function publishRelease({ github, context, core }) {
       make_latest: !latestTag || tag > latestTag ? 'true' : 'false',
     });
     result = { created: true, tag, sha, url: release.html_url };
+    publishedRelease = release;
   } catch (error) {
     if (error.status !== 422) throw error;
     const { data: existing } = await github.rest.repos.getReleaseByTag({
@@ -415,6 +431,7 @@ export async function publishRelease({ github, context, core }) {
     )
       throw error;
     result = { reused: true, tag, sha, url: existing.html_url };
+    publishedRelease = existing;
   }
-  return complete(result);
+  return complete(result, publishedRelease);
 }

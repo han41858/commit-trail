@@ -100,7 +100,7 @@ function fixture() {
       'listCommitStatusesForRef',
       () => state.commitStatuses,
     ),
-    listReleases: wrap('listReleases', () => state.releases),
+    listReleases: wrap('listReleases', () => structuredClone(state.releases)),
     generateReleaseNotes: wrap('generateReleaseNotes', () => {
       if (state.failNotes) throw error(503);
       return { body: '## Changes\n- Verified application changes' };
@@ -540,6 +540,133 @@ test('a successful publication keeps one release while preserving all older Git 
   assert.equal(f.state.refs.length, refs.length + 1);
   const writes = f.writes().map((call) => call.name);
   assert(writes.indexOf('createRelease') < writes.indexOf('deleteRelease'));
+});
+
+for (const staleList of ['previous snapshot', 'empty snapshot'])
+  test(`publication prunes older releases when the follow-up list is a ${staleList}`, async () => {
+    const f = fixture();
+    f.state.releases.push(managedRelease('rel-20261030230000', 100));
+    const previous = structuredClone(f.state.releases);
+    const list = f.api.github.rest.repos.listReleases;
+    let reads = 0;
+    f.api.github.rest.repos.listReleases = async (args) => {
+      const result = await list(args);
+      return ++reads === 2
+        ? { data: staleList === 'previous snapshot' ? previous : [] }
+        : result;
+    };
+    const result = await publishRelease(f.api);
+    assert.equal(result.created, true);
+    assert.equal(result.skipped, undefined);
+    assert.equal(result.pruned, 1);
+    assert.deepEqual(
+      f.state.releases.map((release) => release.tag_name),
+      [result.tag],
+    );
+    assert.deepEqual(
+      f
+        .writes()
+        .filter((call) => call.name === 'deleteRelease')
+        .map((call) => call.args.release_id),
+      [100],
+    );
+  });
+
+test('release reuse still prunes known older releases when the follow-up list is empty', async () => {
+  const f = fixture();
+  const tag = 'rel-20261030234512';
+  f.state.releases.push(
+    managedRelease(tag, 200),
+    managedRelease('rel-20261030230000', 100),
+  );
+  f.state.refs.push({
+    ref: `refs/tags/${tag}`,
+    object: { type: 'commit', sha: SHA },
+  });
+  const list = f.api.github.rest.repos.listReleases;
+  let reads = 0;
+  f.api.github.rest.repos.listReleases = async (args) => {
+    const result = await list(args);
+    return ++reads === 2 ? { data: [] } : result;
+  };
+  const result = await publishRelease(f.api);
+  assert.equal(result.reused, true);
+  assert.equal(result.pruned, 1);
+  assert.deepEqual(
+    f.state.releases.map((release) => release.id),
+    [200],
+  );
+  assert.deepEqual(
+    f.writes().map((call) => call.name),
+    ['deleteRelease'],
+  );
+});
+
+test('a release creation race retains its returned release despite a stale cleanup list', async () => {
+  const f = fixture();
+  f.state.releaseRace = true;
+  f.state.releases.push(managedRelease('rel-20261030230000', 100));
+  const previous = structuredClone(f.state.releases);
+  const list = f.api.github.rest.repos.listReleases;
+  let reads = 0;
+  f.api.github.rest.repos.listReleases = async (args) => {
+    const result = await list(args);
+    return ++reads === 2 ? { data: previous } : result;
+  };
+  const result = await publishRelease(f.api);
+  assert.equal(result.reused, true);
+  assert.equal(result.pruned, 1);
+  assert.deepEqual(
+    f.state.releases.map((release) => release.tag_name),
+    [result.tag],
+  );
+});
+
+test('fresh release metadata overrides known snapshots and preserves releases changed to manual, draft or prerelease', async () => {
+  for (const change of [
+    { body: 'Manual release' },
+    { draft: true },
+    { prerelease: true },
+  ]) {
+    const f = fixture();
+    f.state.releases.push(managedRelease('rel-20261030230000', 100));
+    const list = f.api.github.rest.repos.listReleases;
+    let reads = 0;
+    f.api.github.rest.repos.listReleases = async (args) => {
+      if (++reads === 2) Object.assign(f.state.releases[0], change);
+      return list(args);
+    };
+    const result = await publishRelease(f.api);
+    assert.equal(result.created, true);
+    assert.equal(result.pruned, 0);
+    assert.equal(f.state.releases.length, 2);
+    assert.equal(
+      f.writes().filter((call) => call.name === 'deleteRelease').length,
+      0,
+    );
+  }
+});
+
+test('a delayed event retains the known newer release when cleanup cannot see it yet', async () => {
+  const f = fixture();
+  f.state.releases.push(managedRelease('rel-20261031010000', 100));
+  const list = f.api.github.rest.repos.listReleases;
+  let reads = 0;
+  f.api.github.rest.repos.listReleases = async (args) => {
+    const result = await list(args);
+    return ++reads === 2 ? { data: [] } : result;
+  };
+  const result = await publishRelease(f.api);
+  assert.equal(result.skipped, true);
+  assert.equal(result.latestTag, 'rel-20261031010000');
+  assert.deepEqual(
+    f.state.releases.map((release) => release.id),
+    [100],
+  );
+  assert.equal(
+    f.writes().filter((call) => call.name === 'deleteRelease').length,
+    0,
+  );
 });
 
 test('cleanup preserves drafts, prereleases, manual releases and unrelated tag namespaces', async () => {
