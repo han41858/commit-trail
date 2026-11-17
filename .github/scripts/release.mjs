@@ -222,6 +222,7 @@ export async function pruneProductionReleases({
   context,
   dryRun = false,
   knownReleases = [],
+  publishedRelease,
 }) {
   if (`${context.repo.owner}/${context.repo.repo}` !== REPOSITORY)
     throw new Error('Unexpected repository.');
@@ -233,7 +234,11 @@ export async function pruneProductionReleases({
   // GitHub's list can lag behind publication. Preserve both the earlier
   // catalog and the release returned by the write; fresh metadata wins by ID.
   const catalog = new Map(
-    [...knownReleases, ...releases].map((release) => [release.id, release]),
+    [
+      ...knownReleases,
+      ...(publishedRelease ? [publishedRelease] : []),
+      ...releases,
+    ].map((release) => [release.id, release]),
   );
   const managed = [...catalog.values()]
     .filter(productionRelease)
@@ -244,7 +249,31 @@ export async function pruneProductionReleases({
     if (!Number.isSafeInteger(release.id) || release.id < 1)
       throw new Error('Invalid production release ID.');
   }
-  const [latest, ...older] = managed;
+  const listed = new Set(releases.map((release) => release.id));
+  const verified = [];
+  for (const candidate of managed) {
+    if (listed.has(candidate.id) || candidate.id === publishedRelease?.id) {
+      verified.push(candidate);
+      continue;
+    }
+    // An older snapshot alone cannot prove a release still exists. Do not
+    // probe a just-published release: that read can lag behind the write too.
+    try {
+      const { data: current } = await github.rest.repos.getRelease({
+        ...scope,
+        release_id: candidate.id,
+      });
+      if (
+        current.id !== candidate.id ||
+        current.tag_name !== candidate.tag_name
+      )
+        throw new Error('Production release identity changed during cleanup.');
+      if (productionRelease(current)) verified.push(current);
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+  }
+  const [latest, ...older] = verified;
   const describe = (release) => ({ id: release.id, tag: release.tag_name });
   const kept = latest ? { ...describe(latest), url: latest.html_url } : null;
   if (dryRun)
@@ -282,9 +311,8 @@ export async function publishRelease({ github, context, core }) {
     const retention = await pruneProductionReleases({
       github,
       context,
-      knownReleases: publishedRelease
-        ? [...releases, publishedRelease]
-        : releases,
+      knownReleases: releases,
+      publishedRelease,
     });
     if (retention.kept && retention.kept.tag > result.tag)
       return {
