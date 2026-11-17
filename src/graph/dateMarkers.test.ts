@@ -242,7 +242,7 @@ test('older base context reveals side-only dates without letting unrelated histo
   }
 });
 
-test('side-only dates in a newer month do not change the existing monthly confirmation policy', () => {
+test('a side-only newer month gets a month marker while the oldest partial base month waits', () => {
   const commits = [
     c('dev-nov-2', '2026-11-02', 'dev-nov-1'),
     c('dev-nov-1', '2026-11-01', 'main-oct-31'),
@@ -251,7 +251,7 @@ test('side-only dates in a newer month do not change the existing monthly confir
   const base = new Set(['main-oct-31']);
   const expected = [
     { sha: 'dev-nov-2', kind: 'day' },
-    { sha: 'dev-nov-1', kind: 'day' },
+    { sha: 'dev-nov-1', kind: 'month' },
   ];
   for (const reverse of [false, true]) {
     const ordered = reverse ? [...commits].reverse() : commits;
@@ -259,7 +259,79 @@ test('side-only dates in a newer month do not change the existing monthly confir
       identity(dateMarkers(ordered, base)),
       reverse ? [...expected].reverse() : expected,
     );
-    assert.deepEqual(monthMarkers(ordered, base), []);
+    assert.deepEqual(monthMarkers(ordered, base), [
+      { sha: 'dev-nov-1', label: '2026.11' },
+    ]);
+  }
+});
+
+test('a branch ahead of a known November root gets its December month label before base promotion', () => {
+  const commits = [
+    c('dev-dec-2', '2026-12-02', 'dev-dec-1'),
+    c('dev-dec-1', '2026-12-01', 'main-nov-30'),
+    c('main-nov-30', '2026-11-30', 'root-nov-28'),
+    c('root-nov-28', '2026-11-28'),
+  ];
+  const graph = layout(commits, new Map(), 'main-nov-30');
+  const expected = [
+    { sha: 'dev-dec-2', kind: 'day' },
+    { sha: 'dev-dec-1', kind: 'month' },
+    { sha: 'main-nov-30', kind: 'day' },
+    { sha: 'root-nov-28', kind: 'month' },
+  ];
+  const months = [
+    { sha: 'dev-dec-1', label: '2026.12' },
+    { sha: 'root-nov-28', label: '2026.11' },
+  ];
+  for (const reverse of [false, true]) {
+    const ordered = reverse ? [...graph.ordered].reverse() : graph.ordered;
+    assert.deepEqual(
+      identity(dateMarkers(ordered, graph.spine)),
+      reverse ? [...expected].reverse() : expected,
+    );
+    assert.deepEqual(
+      monthMarkers(ordered, graph.spine),
+      reverse ? [...months].reverse() : months,
+    );
+    assert.equal(
+      dateMarkers(ordered, graph.spine, 'ko-KR').find(
+        (marker) => marker.sha === 'dev-dec-1',
+      )?.label,
+      new Intl.DateTimeFormat('ko-KR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }).format(new Date(localTime('2026-12-01'))),
+    );
+  }
+});
+
+test('new-year side-only month anchors move on pagination, break ties by SHA and omit empty months', () => {
+  const first = [
+    c('feb-2', '2027-02-02', 'side-z'),
+    c('side-z', '2027-02-01T06:00:00', 'main-dec-30'),
+    c('main-dec-30', '2026-12-30', 'missing'),
+    c('unrelated-root', '2020-01-01'),
+  ];
+  const all = [...first, c('side-a', '2027-02-01T06:00:00', 'main-dec-30')];
+  const base = new Set(['main-dec-30']);
+  for (const reverse of [false, true]) {
+    const order = (commits: Commit[]) =>
+      reverse ? [...commits].reverse() : commits;
+    assert.deepEqual(monthMarkers(order(first), base), [
+      { sha: 'side-z', label: '2027.02' },
+    ]);
+    assert.deepEqual(monthMarkers(order(all), base), [
+      { sha: 'side-a', label: '2027.02' },
+    ]);
+    const expected = [
+      { sha: 'feb-2', kind: 'day' },
+      { sha: 'side-a', kind: 'month' },
+    ];
+    assert.deepEqual(
+      identity(dateMarkers(order(all), base)),
+      reverse ? [...expected].reverse() : expected,
+    );
   }
 });
 
