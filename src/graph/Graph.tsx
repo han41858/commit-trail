@@ -27,7 +27,7 @@ import {
 import { measuredLayout } from '../shared/debug/measuredLayout';
 import { branchTracks, branchLabelContentBottom } from './branchLabels';
 import { graphColors } from './graphColors';
-import { monthMarkers } from './monthMarkers';
+import { dateMarkers } from './dateMarkers';
 import { emojify } from '../shared/emoji';
 import { scrollPosition, scrollAnchor } from './scrollPosition';
 import {
@@ -183,9 +183,9 @@ export function Graph({
     () => (reverse ? [...data.ordered].reverse() : data.ordered),
     [data, reverse],
   );
-  const months = useMemo(
-    () => monthMarkers(ordered, data.spine),
-    [ordered, data, reverse],
+  const dates = useMemo(
+    () => dateMarkers(ordered, data.spine),
+    [ordered, data.spine],
   );
   const padding = topInset;
   const maxLane = Array.from(data.lanes.values()).reduce(
@@ -630,7 +630,7 @@ export function Graph({
       padding,
       ordered,
       positions,
-      months,
+      dates,
       edges,
       tones,
       tracks,
@@ -679,7 +679,7 @@ export function Graph({
     };
   }, [
     theme,
-    months,
+    dates,
     tones,
     tracks,
     padding,

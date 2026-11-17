@@ -13,6 +13,7 @@ PR 제목·본문 또는 대상 브랜치 변경에도 고정 이름의 필수 `
 | [제품 명세](specification.md)                        | 현재 기능·공통 제약·검증 기준의 요약                     |
 | [경로 색상과 하이라이트](dag-hover-highlight.md)     | 경로 소유권·색상·강조 범위·입력·불투명도와 그 한계       |
 | [자동 갱신·메타데이터](auto-refresh-and-metadata.md) | 갱신 주기·완료·오류·캐시·태그/릴리즈·Actions 집계        |
+| [날짜 구분선](date-separators.md)                    | 월·일 경계 확인·대표 앵커·Locale 표기와 Canvas 위계      |
 | [Split view](monitor-mode.md)                        | 선택·정렬·URL·독립 열·공통 갱신·상세 팝업                |
 | [Owner 저장소 선택](owner-repositories.md)           | 명시적 Owner 조회·공개/인증 목록 통합·페이지·메모리 캐시 |
 | [최근 저장소](recent-repositories.md)                | 방문 기록·직접 선택 브랜치 저장·PAT 생명주기             |

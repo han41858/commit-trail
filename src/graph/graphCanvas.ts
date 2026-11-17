@@ -14,7 +14,7 @@ import {
   commitVersionIcons,
   type visibleGraphEdges,
 } from './graphView';
-import type { MonthMarker } from './monthMarkers';
+import type { DateMarker } from './dateMarkers';
 
 export type BranchBadge = Point & {
   width: number;
@@ -34,7 +34,7 @@ type GraphCanvasFrame = {
   padding: number;
   ordered: readonly Commit[];
   positions: ReadonlyMap<string, Point>;
-  months: readonly MonthMarker[];
+  dates: readonly DateMarker[];
   edges: readonly GraphCanvasEdge[];
   tones: GraphColors;
   tracks: BranchTrack[];
@@ -67,7 +67,7 @@ export function drawGraphCanvas(
     padding,
     ordered,
     positions,
-    months,
+    dates,
     edges,
     tones,
     tracks,
@@ -94,8 +94,7 @@ export function drawGraphCanvas(
   const colors = Array.from({ length: GRAPH_COLOR_COUNT }, (_, i) =>
     style.getPropertyValue(`--graph-${i}`).trim(),
   );
-  const left = container.scrollLeft,
-    right = left + view.width - 16;
+  const left = container.scrollLeft;
   const fitMessage = (value: string) => {
     if (ctx.measureText(value).width <= messageWidth) return value;
     const letters = Array.from(value);
@@ -113,26 +112,41 @@ export function drawGraphCanvas(
     return letters.slice(0, low).join('') + '…';
   };
   ctx.save();
-  ctx.font = '11px system-ui';
   ctx.textBaseline = 'bottom';
-  for (const marker of months) {
+  ctx.textAlign = 'left';
+  const dateWidth = Math.max(
+      0,
+      Math.min(view.width, showMessages ? messageX - left - 8 : Infinity),
+    ),
+    datePad = Math.min(3, dateWidth / 8),
+    dateX = left + Math.min(4, dateWidth / 4),
+    dateAvailable = Math.max(0, dateWidth - (dateX - left) - datePad * 2);
+  for (const marker of dates) {
     const p = positions.get(marker.sha);
     if (!p) continue;
     const y = p.y;
     if (y < view.top || y > view.top + view.height) continue;
-    ctx.globalAlpha = 1;
+    const major = marker.kind === 'month';
+    ctx.font = `${major ? 11 : 10}px system-ui`;
+    ctx.globalAlpha = major ? 1 : 0.45;
     ctx.strokeStyle = style.getPropertyValue('--month-line');
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(left, y + 0.5);
     ctx.lineTo(left + view.width, y + 0.5);
     ctx.stroke();
-    const labelWidth = ctx.measureText(marker.label).width;
+    const labelWidth = Math.min(
+      ctx.measureText(marker.label).width,
+      dateAvailable,
+    );
+    if (labelWidth <= 0) continue;
     ctx.globalAlpha = 1;
     ctx.fillStyle = style.getPropertyValue('--bg');
-    ctx.fillRect(right - labelWidth - 5, y - 18, labelWidth + 10, 15);
+    ctx.fillRect(dateX - datePad, y - 13, labelWidth + datePad * 2, 15);
     ctx.fillStyle = style.getPropertyValue('--muted');
-    ctx.fillText(marker.label, right - labelWidth, y - 4);
+    ctx.globalAlpha = major ? 1 : 0.65;
+    // Keep complete Locale labels left of messages, including narrow columns.
+    ctx.fillText(marker.label, dateX, y + 1, labelWidth);
   }
   ctx.restore();
   for (const edge of edges) {
