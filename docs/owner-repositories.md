@@ -85,11 +85,11 @@ Load more 버튼의 접근성 이름은 **Load more repositories**이며 Tab 순
 
 ## 구현과 검증 기준
 
-- `src/repoInput.ts`: Owner 입력 판별과 기존 입력 정규화.
-- `src/OwnerRepositories.ts`: 공개·인증 조회, 페이지·오류·메모리 캐시와 인증 수명.
-- `src/OwnerRepositoryPicker.tsx`: 공통 필터·목록·선택·로딩·오류·추가 페이지 UI.
-- `src/useOwnerRepositoryPicker.ts`: 두 입력의 명시적 제출·닫기·입력 컨텍스트 연결.
-- `src/RepositoryInput.tsx`, `src/MonitorSetup.tsx`: 기존 직접 입력·최근 추천·저장소 진입 또는 추가 연결.
+- `src/repository/repoInput.ts`: Owner 입력 판별과 기존 입력 정규화.
+- `src/repository/OwnerRepositories.ts`: 공개·인증 조회, 페이지·오류·메모리 캐시와 인증 수명.
+- `src/repository/OwnerRepositoryPicker.tsx`: 공통 필터·목록·선택·로딩·오류·추가 페이지 UI.
+- `src/repository/useOwnerRepositoryPicker.ts`: 두 입력의 명시적 제출·닫기·입력 컨텍스트 연결.
+- `src/repository/RepositoryInput.tsx`, `src/monitor/MonitorSetup.tsx`: 기존 직접 입력·최근 추천·저장소 진입 또는 추가 연결.
 - `src/main.tsx`: 앱 수명의 조회 모델과 기존 PAT 변경 경로 연결.
 
 회귀 검증은 Owner/직접 주소/URL/잘못된 입력의 분기, 익명·제한 PAT·잘못된 PAT, 중복 제거·정렬·Owner 필터·독립 페이지·오류 보존·재시도, 취소·늦은 응답·캐시 재사용·PAT 변경 시 Private 제거를 포함한다. 최초 조회·추가 페이지·재시도마다 시작한 요청이 모두 종료되기 전에는 부분 목록을 반영하지 않는지도 확인한다. UI는 일반 화면의 즉시 단일 선택과 Split view의 체크·명시적 일괄 추가, 체크 순서·필터/페이지 간 유지·닫기/Owner/PAT 변경 시 초기화를 확인한다. 키보드·터치·외부 닫기·필터의 로컬 검색·자동 조회 중지·하단 사용자 스크롤 로딩·체크 무요청·중복·기존 항목과 추가 예정 항목을 합친 32개 제한 및 기존 요청 집계도 검증한다. 브라우저 fixture·실제 GitHub·실기기 검증 범위는 구분해 보고한다.

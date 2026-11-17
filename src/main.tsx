@@ -1,4 +1,4 @@
-import { BrandMark } from './BrandMark';
+import { BrandMark } from './shared/ui/BrandMark';
 import React, {
   useCallback,
   useEffect,
@@ -8,41 +8,47 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import { createRoot } from 'react-dom/client';
-import { debug } from './debug';
-import { DebugRoot } from './DebugRoot';
-import { PwaUpdatePrompt } from './PwaUpdatePrompt';
-import { AppNotices } from './AppNotices';
-import { registerPwa } from './pwa';
-import { useMeasuredOpen } from './measuredOperations';
-import { Graph } from './Graph';
-import { CommitDetails } from './CommitDetails';
-import { BranchPicker } from './BranchPicker';
-import { useRetryCountdown, retryLabel } from './useRetryCountdown';
-import { History } from './history';
-import { CommitInfoStore } from './CommitInfoStore';
-import { RefreshLoop } from './RefreshLoop';
-import { RefreshButton } from './RefreshButton';
-import { MonitorSession } from './MonitorSession';
+import { debug } from './shared/debug/debug';
+import { DebugRoot } from './shared/debug/DebugRoot';
+import { PwaUpdatePrompt } from './app/pwa/PwaUpdatePrompt';
+import { AppNotices } from './app/AppNotices';
+import { registerPwa } from './app/pwa/pwa';
+import { useMeasuredOpen } from './shared/debug/measuredOperations';
+import { Graph } from './graph/Graph';
+import { CommitDetails } from './graph/CommitDetails';
+import { BranchPicker } from './repository/BranchPicker';
+import {
+  useRetryCountdown,
+  retryLabel,
+} from './shared/refresh/useRetryCountdown';
+import { History } from './repository/history';
+import { CommitInfoStore } from './repository/CommitInfoStore';
+import { RECHECK_DELAY, RefreshLoop } from './shared/refresh/RefreshLoop';
+import { RefreshButton } from './shared/refresh/RefreshButton';
+import { MonitorSession } from './monitor/MonitorSession';
 import {
   MonitorRepositories,
   MONITOR_REPOSITORIES_KEY,
   MONITOR_PUBLIC_REPOSITORIES_KEY,
   moveMonitorRepository,
-} from './MonitorRepositories';
-import { MonitorSetup } from './MonitorSetup';
-import { MonitorControls } from './MonitorControls';
-import { MonitorPane, MonitorStatus } from './MonitorPane';
-import { useMonitorDetailsPosition } from './useMonitorDetailsPosition';
-import { useRepositoryLocation } from './useRepositoryLocation';
-import { repositoryLocationKey } from './repositoryLocation';
-import { lowercaseRepoInput, parseRepo, type Commit } from './model';
-import { RepositoryInput } from './RepositoryInput';
+} from './monitor/MonitorRepositories';
+import { MonitorSetup } from './monitor/MonitorSetup';
+import { MonitorControls } from './monitor/MonitorControls';
+import { MonitorPane, MonitorStatus } from './monitor/MonitorPane';
+import { useMonitorDetailsPosition } from './monitor/useMonitorDetailsPosition';
+import { useRepositoryLocation } from './repository/useRepositoryLocation';
+import { repositoryLocationKey } from './repository/repositoryLocation';
+import { lowercaseRepoInput, parseRepo, type Commit } from './shared/model';
+import { RepositoryInput } from './repository/RepositoryInput';
 import {
   RecentRepositories,
   RECENT_REPOSITORIES_KEY,
-} from './RecentRepositories';
-import { BranchSelections, BRANCH_SELECTIONS_KEY } from './BranchSelections';
-import type { RepositoryLocation } from './repositoryLocation';
+} from './repository/RecentRepositories';
+import {
+  BranchSelections,
+  BRANCH_SELECTIONS_KEY,
+} from './repository/BranchSelections';
+import type { RepositoryLocation } from './repository/repositoryLocation';
 import darkLogo from '../assets/logo.svg';
 import lightLogo from '../assets/logo-light.svg';
 import darkAnimatedLogo from '../assets/logo-animated.svg';
@@ -51,17 +57,17 @@ import {
   readStoredToken,
   saveStoredToken,
   TOKEN_STORAGE_KEY,
-} from './tokenStorage';
-import { AccessTokenPanel } from './AccessTokenPanel';
-import { PopupBackdrop } from './PopupBackdrop';
-import { ViewOptions } from './ViewOptions';
-import { readViewOptions, saveViewOptions } from './viewOptions';
-import { AppStatus } from './AppStatus';
-import { OwnerRepositories } from './OwnerRepositories';
+} from './token/tokenStorage';
+import { AccessTokenPanel } from './token/AccessTokenPanel';
+import { PopupBackdrop } from './shared/ui/PopupBackdrop';
+import { ViewOptions } from './app/ViewOptions';
+import { readViewOptions, saveViewOptions } from './app/viewOptions';
+import { AppStatus } from './app/AppStatus';
+import { OwnerRepositories } from './repository/OwnerRepositories';
 import { Analytics } from '@vercel/analytics/react';
-import { analyticsBeforeSend } from './analytics';
-import './style.css';
-import './monitor.css';
+import { analyticsBeforeSend } from './app/analytics';
+import './app/style.css';
+import './monitor/monitor.css';
 
 const DEMO_REPO = 'han41858/commit-trail';
 
@@ -204,8 +210,18 @@ function App() {
             ? monitor.refreshAll(kind)
             : monitor.refreshPrimary(kind),
         () => !document.hidden && navigator.onLine,
+        undefined,
+        (discard, now) => monitor.recheck(discard, now),
       ),
   );
+  // StrictMode runs state initializers twice and keeps the first result, so the
+  // session is connected to the retained loop here rather than in the initializer.
+  useEffect(() => {
+    monitor.onHeadMoved = loop.recheckSoon;
+    return () => {
+      monitor.onHeadMoved = () => Date.now() + RECHECK_DELAY;
+    };
+  }, [loop, monitor]);
   const measured = useMeasuredOpen(history, info);
   const refreshState = useSyncExternalStore(loop.subscribe, loop.getSnapshot);
   const state = useSyncExternalStore(history.subscribe, history.getSnapshot);
