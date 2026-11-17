@@ -26,8 +26,9 @@ function earlierContext(entry: CalendarCommit, previous: CalendarCommit) {
   return root !== previousRoot ? root : entry.commit.sha < previous.commit.sha;
 }
 
-// The base path confirms boundaries; all loaded lanes can supply their anchors.
-// Keep this shared with monthMarkers so daily boundaries do not redefine months.
+// The base path bounds partial periods; all loaded lanes can supply anchors.
+// Keep monthly confirmation shared with monthMarkers; newer days may exist
+// only on side branches, including branches ahead of the selected base tip.
 export function calendarAnchors(ordered: Commit[], spine: Set<string>) {
   const hasSpine = ordered.some((commit) => spine.has(commit.sha));
   const periods = { month: period(), day: period() };
@@ -51,17 +52,25 @@ export function calendarAnchors(ordered: Commit[], spine: Set<string>) {
       if (!base || earlierContext(entry, base)) group.context.set(key, entry);
     }
   }
-  const confirmed = (group: Period) => {
+  const confirmed = (group: Period, candidates = group.context) => {
     const anchors = new Map<string, CalendarCommit>();
-    for (const [key, base] of group.context) {
+    for (const key of candidates.keys()) {
+      if (key < group.earliest) continue;
       // An oldest partial period needs older context, unless its root is known.
-      if (key === group.earliest && base.commit.parents.length > 0) continue;
+      if (
+        key === group.earliest &&
+        group.context.get(key)!.commit.parents.length > 0
+      )
+        continue;
       const entry = group.calendar.get(key)!;
       anchors.set(entry.commit.sha, entry);
     }
     return anchors;
   };
-  return { month: confirmed(periods.month), day: confirmed(periods.day) };
+  return {
+    month: confirmed(periods.month),
+    day: confirmed(periods.day, periods.day.calendar),
+  };
 }
 
 const formatters = new Map<

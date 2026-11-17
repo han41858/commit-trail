@@ -155,6 +155,114 @@ test('unrelated old lanes cannot confirm a partial base day or month', () => {
     assert.deepEqual(dateMarkers(ordered, new Set(['base'])), []);
 });
 
+test('days between release merges include dates with only side-branch commits', () => {
+  const head = c('release-16', '2026-11-16', 'release-13');
+  head.parents.push({ sha: 'work-15' });
+  const commits = [
+    head,
+    c('work-15', '2026-11-15', 'work-14'),
+    c('work-14', '2026-11-14', 'work-11'),
+    c('release-13', '2026-11-13', 'root-9'),
+    c('work-11', '2026-11-11', 'work-10'),
+    c('work-10', '2026-11-10', 'root-9'),
+    c('root-9', '2026-11-09'),
+  ];
+  const graph = layout(commits, new Map(), head.sha);
+  const expected = graph.ordered.map((commit) => ({
+    sha: commit.sha,
+    kind: commit.sha === 'root-9' ? 'month' : 'day',
+  }));
+  for (const reverse of [false, true]) {
+    const ordered = reverse ? [...graph.ordered].reverse() : graph.ordered;
+    assert.deepEqual(
+      identity(dateMarkers(ordered, graph.spine)),
+      reverse ? [...expected].reverse() : expected,
+    );
+    assert.deepEqual(monthMarkers(ordered, graph.spine), [
+      { sha: 'root-9', label: '2026.11' },
+    ]);
+  }
+});
+
+test('a branch ahead of the selected base gets a day marker at its earliest daily commit', () => {
+  const commits = [
+    c('dev-17-late', '2026-11-17T18:00:00', 'dev-17-early'),
+    c('dev-17-early', '2026-11-17T06:00:00', 'main-16'),
+    c('main-16', '2026-11-16', 'main-13'),
+    c('main-13', '2026-11-13', 'missing'),
+  ];
+  const graph = layout(commits, new Map(), 'main-16');
+  assert.equal(graph.spine.has('dev-17-early'), false);
+  const expected = [
+    { sha: 'dev-17-early', kind: 'day' },
+    { sha: 'main-16', kind: 'day' },
+  ];
+  for (const reverse of [false, true]) {
+    const ordered = reverse ? [...graph.ordered].reverse() : graph.ordered;
+    assert.deepEqual(
+      identity(dateMarkers(ordered, graph.spine)),
+      reverse ? [...expected].reverse() : expected,
+    );
+  }
+});
+
+test('older base context reveals side-only dates without letting unrelated history confirm partial periods', () => {
+  const head = c('head-16', '2026-11-16', 'base-13');
+  head.parents.push({ sha: 'side-15' });
+  const first = [
+    head,
+    c('side-15', '2026-11-15', 'side-12'),
+    c('base-13', '2026-11-13', 'base-9'),
+    c('side-12', '2026-11-12', 'base-9'),
+    c('unrelated-1', '2026-11-01'),
+  ];
+  const all = [...first, c('base-9', '2026-11-09', 'missing')];
+  const base = new Set(['head-16', 'base-13', 'base-9']);
+  for (const reverse of [false, true]) {
+    const order = (commits: Commit[]) =>
+      reverse ? [...commits].reverse() : commits;
+    const before = [
+      { sha: 'head-16', kind: 'day' },
+      { sha: 'side-15', kind: 'day' },
+    ];
+    const after = [
+      ...before,
+      { sha: 'base-13', kind: 'day' },
+      { sha: 'side-12', kind: 'day' },
+    ];
+    assert.deepEqual(
+      identity(dateMarkers(order(first), base)),
+      reverse ? [...before].reverse() : before,
+    );
+    assert.deepEqual(
+      identity(dateMarkers(order(all), base)),
+      reverse ? [...after].reverse() : after,
+    );
+    assert.deepEqual(monthMarkers(order(all), base), []);
+  }
+});
+
+test('side-only dates in a newer month do not change the existing monthly confirmation policy', () => {
+  const commits = [
+    c('dev-nov-2', '2026-11-02', 'dev-nov-1'),
+    c('dev-nov-1', '2026-11-01', 'main-oct-31'),
+    c('main-oct-31', '2026-10-31', 'missing'),
+  ];
+  const base = new Set(['main-oct-31']);
+  const expected = [
+    { sha: 'dev-nov-2', kind: 'day' },
+    { sha: 'dev-nov-1', kind: 'day' },
+  ];
+  for (const reverse of [false, true]) {
+    const ordered = reverse ? [...commits].reverse() : commits;
+    assert.deepEqual(
+      identity(dateMarkers(ordered, base)),
+      reverse ? [...expected].reverse() : expected,
+    );
+    assert.deepEqual(monthMarkers(ordered, base), []);
+  }
+});
+
 test('pagination moves a daily side anchor without moving an already confirmed month', () => {
   const first = [
     c('head', '2026-11-06', 'base'),
