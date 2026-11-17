@@ -221,6 +221,8 @@ export async function pruneProductionReleases({
   github,
   context,
   dryRun = false,
+  knownReleases = [],
+  publishedRelease,
 }) {
   if (`${context.repo.owner}/${context.repo.repo}` !== REPOSITORY)
     throw new Error('Unexpected repository.');
@@ -229,7 +231,16 @@ export async function pruneProductionReleases({
     ...scope,
     per_page: 100,
   });
-  const managed = releases
+  // GitHub's list can lag behind publication. Preserve both the earlier
+  // catalog and the release returned by the write; fresh metadata wins by ID.
+  const catalog = new Map(
+    [
+      ...knownReleases,
+      ...(publishedRelease ? [publishedRelease] : []),
+      ...releases,
+    ].map((release) => [release.id, release]),
+  );
+  const managed = [...catalog.values()]
     .filter(productionRelease)
     .sort((a, b) =>
       a.tag_name < b.tag_name ? 1 : a.tag_name > b.tag_name ? -1 : 0,
@@ -238,7 +249,31 @@ export async function pruneProductionReleases({
     if (!Number.isSafeInteger(release.id) || release.id < 1)
       throw new Error('Invalid production release ID.');
   }
-  const [latest, ...older] = managed;
+  const listed = new Set(releases.map((release) => release.id));
+  const verified = [];
+  for (const candidate of managed) {
+    if (listed.has(candidate.id) || candidate.id === publishedRelease?.id) {
+      verified.push(candidate);
+      continue;
+    }
+    // An older snapshot alone cannot prove a release still exists. Do not
+    // probe a just-published release: that read can lag behind the write too.
+    try {
+      const { data: current } = await github.rest.repos.getRelease({
+        ...scope,
+        release_id: candidate.id,
+      });
+      if (
+        current.id !== candidate.id ||
+        current.tag_name !== candidate.tag_name
+      )
+        throw new Error('Production release identity changed during cleanup.');
+      if (productionRelease(current)) verified.push(current);
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+  }
+  const [latest, ...older] = verified;
   const describe = (release) => ({ id: release.id, tag: release.tag_name });
   const kept = latest ? { ...describe(latest), url: latest.html_url } : null;
   if (dryRun)
@@ -266,10 +301,19 @@ export async function publishRelease({ github, context, core }) {
   const dryRun =
     context.eventName === 'workflow_dispatch' &&
     String(context.payload.inputs?.dry_run ?? 'true') !== 'false';
-  const complete = async (result) => {
+  const releases = await github.paginate(github.rest.repos.listReleases, {
+    ...scope,
+    per_page: 100,
+  });
+  const complete = async (result, publishedRelease) => {
     if (dryRun) return { ...result, dryRun: true };
     // Re-list after publication so a retry also finishes interrupted cleanup.
-    const retention = await pruneProductionReleases({ github, context });
+    const retention = await pruneProductionReleases({
+      github,
+      context,
+      knownReleases: releases,
+      publishedRelease,
+    });
     if (retention.kept && retention.kept.tag > result.tag)
       return {
         skipped: true,
@@ -282,10 +326,6 @@ export async function publishRelease({ github, context, core }) {
       };
     return { ...result, pruned: retention.deleted.length };
   };
-  const releases = await github.paginate(github.rest.repos.listReleases, {
-    ...scope,
-    per_page: 100,
-  });
   const refs = await github.paginate(github.rest.git.listMatchingRefs, {
     ...scope,
     ref: 'tags/rel-',
@@ -303,7 +343,10 @@ export async function publishRelease({ github, context, core }) {
     if (existing) {
       if (existing.draft || existing.prerelease)
         throw new Error('Matching tag is reserved by a draft or prerelease.');
-      return complete({ reused: true, tag, sha, url: existing.html_url });
+      return complete(
+        { reused: true, tag, sha, url: existing.html_url },
+        existing,
+      );
     }
   }
   let tag = matching[0];
@@ -385,7 +428,7 @@ export async function publishRelease({ github, context, core }) {
     .map((release) => release.tag_name)
     .sort()
     .at(-1);
-  let result;
+  let result, publishedRelease;
   try {
     const { data: release } = await github.rest.repos.createRelease({
       ...scope,
@@ -398,6 +441,7 @@ export async function publishRelease({ github, context, core }) {
       make_latest: !latestTag || tag > latestTag ? 'true' : 'false',
     });
     result = { created: true, tag, sha, url: release.html_url };
+    publishedRelease = release;
   } catch (error) {
     if (error.status !== 422) throw error;
     const { data: existing } = await github.rest.repos.getReleaseByTag({
@@ -415,6 +459,7 @@ export async function publishRelease({ github, context, core }) {
     )
       throw error;
     result = { reused: true, tag, sha, url: existing.html_url };
+    publishedRelease = existing;
   }
-  return complete(result);
+  return complete(result, publishedRelease);
 }
