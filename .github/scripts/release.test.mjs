@@ -32,7 +32,7 @@ const bot = { id: 35613825, login: 'vercel[bot]', type: 'Bot' };
 const error = (status) =>
   Object.assign(new Error(`HTTP ${status}`), { status });
 
-function fixture() {
+function fixture(scope = 'han41858') {
   const state = {
     deployment: {
       id: 42,
@@ -48,18 +48,16 @@ function fixture() {
       state: 'success',
       creator: bot,
       created_at: '2026-10-30T14:45:12Z',
-      environment_url:
-        'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
-      log_url: 'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
-      target_url: 'https://commit-trail-abc-han-janghyuns-projects.vercel.app',
+      environment_url: `https://commit-trail-abc-${scope}.vercel.app`,
+      log_url: `https://commit-trail-abc-${scope}.vercel.app`,
+      target_url: `https://commit-trail-abc-${scope}.vercel.app`,
     },
     commitStatuses: [
       {
         state: 'success',
         context: 'Vercel',
         creator: bot,
-        target_url:
-          'https://vercel.com/han-janghyuns-projects/commit-trail/Abc123',
+        target_url: `https://vercel.com/${scope}/commit-trail/Abc123`,
       },
     ],
     comparison: 'ahead',
@@ -208,6 +206,53 @@ test('a verified Vercel Production success creates a tag on the deployed SHA and
   assert.match(release.body, /commit-trail-view\.vercel\.app/);
   assert.match(release.body, /Verified application changes/);
   assert.match(release.body, /commit-trail-deployment:42/);
+  assert.match(release.body, /commit-trail-abc-han41858\.vercel\.app/);
+  assert.match(release.body, /vercel\.com\/han41858\/commit-trail\/Abc123/);
+});
+
+test('historical team URLs remain valid for delayed events and manual recovery', async () => {
+  const f = fixture('han-janghyuns-projects');
+  const first = await publishRelease(f.api);
+  assert.equal(first.created, true);
+  assert.match(
+    f.state.releases[0].body,
+    /commit-trail-abc-han-janghyuns-projects\.vercel\.app/,
+  );
+  f.context.eventName = 'workflow_dispatch';
+  f.context.ref = 'refs/heads/dev';
+  f.context.payload.inputs = { deployment_id: '42' };
+  f.state.calls = [];
+  const recovery = await publishRelease(f.api);
+  assert.equal(recovery.dryRun, true);
+  assert.equal(recovery.reused, true);
+  assert.equal(recovery.tag, first.tag);
+  assert.equal(f.writes().length, 0);
+});
+
+test('a team rename on the same deployed commit reuses its original release and tag', async () => {
+  const f = fixture('han-janghyuns-projects');
+  const first = await publishRelease(f.api),
+    originalRef = structuredClone(f.state.refs),
+    originalRelease = structuredClone(f.state.releases);
+  Object.assign(f.state.status, {
+    id: 100,
+    created_at: '2026-10-30T15:45:12Z',
+    environment_url: 'https://commit-trail-def-han41858.vercel.app',
+    log_url: 'https://commit-trail-def-han41858.vercel.app',
+    target_url: 'https://commit-trail-def-han41858.vercel.app',
+  });
+  f.context.payload.deployment_status.id = 100;
+  f.state.commitStatuses.unshift({
+    ...f.state.commitStatuses[0],
+    target_url: 'https://vercel.com/han41858/commit-trail/Def456',
+  });
+  f.state.calls = [];
+  const renamed = await publishRelease(f.api);
+  assert.equal(renamed.reused, true);
+  assert.equal(renamed.tag, first.tag);
+  assert.equal(f.writes().length, 0);
+  assert.deepEqual(f.state.refs, originalRef);
+  assert.deepEqual(f.state.releases, originalRelease);
 });
 
 test('Preview success never creates tags or releases', async () => {
@@ -270,8 +315,11 @@ test('persisted deployment and success status must both belong to the Vercel bot
 test('another project or team cannot publish this repository release', async () => {
   for (const url of [
     'https://vercel.com/other/commit-trail/Abc123',
-    'https://vercel.com/han-janghyuns-projects/other/Abc123',
-    'https://vercel.com.attacker.example/han-janghyuns-projects/commit-trail/Abc123',
+    'https://vercel.com/han41858/other/Abc123',
+    'https://vercel.com.attacker.example/han41858/commit-trail/Abc123',
+    'https://vercel.com/han41858-extra/commit-trail/Abc123',
+    'https://vercel.com/not-han41858/commit-trail/Abc123',
+    'https://vercel.com/han-janghyuns-projects-extra/commit-trail/Abc123',
   ]) {
     const f = fixture();
     f.state.commitStatuses[0].target_url = url;
@@ -303,8 +351,13 @@ test('the real Vercel deployment-status URL shape is cross-checked against its a
 
 test('lookalike project and team deployment hosts are rejected even with a valid project commit status', async () => {
   for (const url of [
+    'https://commit-trail-other-abc-han41858.vercel.app',
     'https://commit-trail-other-abc-han-janghyuns-projects.vercel.app',
     'https://commit-trail-abc-other-team.vercel.app',
+    'https://commit-trail-abc-han418580.vercel.app',
+    'https://commit-trail-abc-han41858-extra.vercel.app',
+    'https://commit-trail-abc-han41858.vercel.app.attacker.example',
+    'https://commit-trail-abc-han-janghyuns-projects-extra.vercel.app',
   ]) {
     const f = fixture();
     f.state.status.environment_url = url;

@@ -1,7 +1,11 @@
 const REPOSITORY = 'han41858/commit-trail';
 const VERCEL_BOT_ID = 35613825;
-const TEAM = 'han-janghyuns-projects';
+// Keep the former name for delayed events and recovery of historical deployments.
+const VERCEL_SCOPES = ['han41858', 'han-janghyuns-projects'];
 const PROJECT = 'commit-trail';
+const DEPLOYMENT_HOST = new RegExp(
+  `^${PROJECT}-[a-z0-9]+-(?:${VERCEL_SCOPES.join('|')})\\.vercel\\.app$`,
+);
 const PRODUCTION_URL = 'https://commit-trail-view.vercel.app/';
 const TAG = /^rel-\d{14}$/;
 const SHA = /^[a-f0-9]{40}$/;
@@ -55,7 +59,7 @@ function dashboardUrl(status) {
         !url.username &&
         !url.password &&
         path.length === 3 &&
-        path[0] === TEAM &&
+        VERCEL_SCOPES.includes(path[0]) &&
         path[1] === PROJECT &&
         /^(?:dpl_)?[A-Za-z0-9]+$/.test(path[2])
       )
@@ -76,9 +80,7 @@ function deploymentUrl(value) {
     url.password ||
     !(
       url.hostname === new URL(PRODUCTION_URL).hostname ||
-      /^commit-trail-[a-z0-9]+-han-janghyuns-projects\.vercel\.app$/.test(
-        url.hostname,
-      )
+      DEPLOYMENT_HOST.test(url.hostname)
     )
   ) {
     throw new Error('Unexpected deployment URL.');
