@@ -2,7 +2,7 @@ import type { MonitorSession } from './MonitorSession';
 import type { RefreshState } from '../shared/refresh/RefreshLoop';
 import { RefreshFill, RefreshTimer } from '../shared/refresh/RefreshButton';
 import { MonitorReorder } from './MonitorReorder';
-import { useId, useRef, useState, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 
 export function MonitorControls({
   monitorState,
@@ -13,7 +13,7 @@ export function MonitorControls({
   onRefresh,
   onReorder,
   onManage,
-  manageRef,
+  toggleRef,
   onExit,
 }: {
   monitorState: ReturnType<MonitorSession['getSnapshot']>;
@@ -24,12 +24,29 @@ export function MonitorControls({
   onRefresh: () => void;
   onReorder: (repository: string, to: number) => void;
   onManage: () => void;
-  manageRef: RefObject<HTMLButtonElement | null>;
+  toggleRef: RefObject<HTMLButtonElement | null>;
   onExit: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const toggle = useRef<HTMLButtonElement>(null);
+  const actions = useRef<HTMLDivElement>(null);
   const drawerId = useId();
+  useEffect(() => {
+    if (!expanded) return;
+    const outside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !actions.current?.contains(event.target)
+      )
+        setExpanded(false);
+    };
+    document.addEventListener('pointerdown', outside, true);
+    return () => document.removeEventListener('pointerdown', outside, true);
+  }, [expanded]);
+  const activate = (action: () => void) => {
+    setExpanded(false);
+    toggleRef.current?.focus({ preventScroll: true });
+    action();
+  };
   const nextAt = Math.max(refreshState.nextAt, monitorState.retryAt),
     sweeping = autoRefresh && !refreshState.waitingForInitialLoad && !limited;
   return (
@@ -39,13 +56,14 @@ export function MonitorControls({
     >
       <div
         className="monitor-actions"
+        ref={actions}
         data-expanded={expanded}
         onKeyDown={(event) => {
           if (event.key === 'Escape' && expanded) {
             event.preventDefault();
             event.stopPropagation();
             setExpanded(false);
-            toggle.current?.focus();
+            toggleRef.current?.focus({ preventScroll: true });
           }
         }}
       >
@@ -60,7 +78,7 @@ export function MonitorControls({
             className="monitor-exit"
             aria-label="Return to single view"
             title="Return to single view"
-            onClick={onExit}
+            onClick={() => activate(onExit)}
           >
             <svg
               width="16"
@@ -85,15 +103,14 @@ export function MonitorControls({
               limited ||
               refreshState.running
             }
-            onRefresh={onRefresh}
+            onRefresh={() => activate(onRefresh)}
           />
           <button
             type="button"
             className="monitor-manage"
-            ref={manageRef}
             aria-label="Manage repositories"
             title="Manage repositories"
-            onClick={onManage}
+            onClick={() => activate(onManage)}
           >
             <svg
               width="16"
@@ -113,7 +130,7 @@ export function MonitorControls({
         <button
           type="button"
           className="monitor-toggle"
-          ref={toggle}
+          ref={toggleRef}
           aria-label={
             expanded ? 'Hide monitor controls' : 'Show monitor controls'
           }
