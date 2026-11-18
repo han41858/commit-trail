@@ -311,11 +311,11 @@ function App() {
     detailsRef = useRef<HTMLElement>(null),
     primaryPaneRef = useRef<HTMLElement>(null),
     monitorButtonRef = useRef<HTMLButtonElement>(null),
-    manageButtonRef = useRef<HTMLButtonElement>(null);
+    monitorControlsButtonRef = useRef<HTMLButtonElement>(null);
   const closeMonitorSetup = () => {
     setMonitorSetup(false);
     (monitor.getSnapshot().active
-      ? manageButtonRef
+      ? monitorControlsButtonRef
       : monitorButtonRef
     ).current?.focus({ preventScroll: true });
   };
@@ -323,7 +323,7 @@ function App() {
   useLayoutEffect(() => {
     if (setupWasOpen.current && !monitorSetup)
       (monitor.getSnapshot().active
-        ? manageButtonRef
+        ? monitorControlsButtonRef
         : monitorButtonRef
       ).current?.focus({ preventScroll: true });
     setupWasOpen.current = monitorSetup;
@@ -799,7 +799,7 @@ function App() {
           limited={monitorLimited}
           onRefresh={() => void loop.refresh()}
           onReorder={reorderMonitor}
-          manageRef={manageButtonRef}
+          toggleRef={monitorControlsButtonRef}
           onManage={() => {
             setOptions(false);
             setAuth(false);
