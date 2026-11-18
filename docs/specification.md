@@ -18,6 +18,8 @@ Commit Trail은 GitHub 저장소의 커밋과 브랜치 관계를 **세로형 �
 
 Split view는 최대 32개 저장소를 가로 한 줄로 표시하며, 열별 그래프·스크롤과 공통 갱신을 제공한다. 선택 창에서 최근 이력·직접 주소·Owner 조회로 대상을 추가하고 순서를 정한다. 반복 `repo`·`branch` URL과 **Copy link**로 구성을 공유·복원한다. 비공개 저장소·브랜치 이름도 URL에 노출되며 인증은 수신자의 PAT를 사용한다. 상세 팝업은 하나, 배지·선 고정 강조는 열별로 유지한다. 선택·저장·드래그·복귀와 Escape 우선순위는 [Split view 명세](monitor-mode.md)를 따른다.
 
+활성 Split view의 왼쪽 책갈피 `>` 탭을 누르면 복귀·새로고침·**Manage repositories** 버튼이 옆으로 펼쳐진다. 기본은 접힌 상태이며 `<` 탭이나 컨트롤의 Escape로 접는다. 관리 버튼은 기존 저장소 선택 창을 현재 구성으로 열며 **Apply changes**로 추가·제거·정렬을 확정한다. 취소·동일 구성 확정은 상태·URL을 바꾸지 않고, 공통 저장소의 모델·그래프·스크롤·선택·진행 중 조회와 공통 갱신 기한을 유지한다. 1열도 Split view를 유지하며 0개는 적용할 수 없다. 저장소 집합 변경은 history에 추가하고 순서 변경은 교체한다. 상세 정책은 [Split view 구성 변경](monitor-mode.md#활성-split-view-구성-변경)을 따른다.
+
 ### 2.1 저장소 입력
 
 - `https://github.com/owner/repo`, `owner/repo` 직접 입력을 유지하고 `owner` 단독 입력 후 Enter·실행 시 저장소 선택 목록 제공

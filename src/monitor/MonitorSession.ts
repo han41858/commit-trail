@@ -31,11 +31,13 @@ export class MonitorSession {
     retryAt: 0,
   };
   private listeners = new Set<() => void>();
-  private subscriptions: (() => void)[] = [];
+  private subscriptions = new Map<MonitorEntry, (() => void)[]>();
   private tasks = new Map<MonitorEntry, Promise<RefreshResult>>();
   private primaryPending: Promise<RefreshResult> | null = null;
   private authentication = 0;
   private token = '';
+  private primaryRemoved = false;
+  private primaryRevision = 0;
   // Histories whose head moved, with the time each may be read once more.
   private moved = new Map<History, number>();
   // Set by the owner of the refresh timer; returns that time.
@@ -105,6 +107,16 @@ export class MonitorSession {
     )
       this.publish({ retryAt });
   };
+  private currentWork(history: History) {
+    const authentication = this.authentication,
+      primaryRevision = this.primaryRevision,
+      entry = this.state.entries.find((entry) => entry.history === history);
+    return () =>
+      authentication === this.authentication &&
+      (history === this.history
+        ? primaryRevision === this.primaryRevision
+        : !!entry && this.state.active && this.state.entries.includes(entry));
+  }
   // Anonymous automatic cycles read tags, releases and Actions only after the
   // repository reports a push. The policy is the same for single and split views.
   private metadataAfter(
@@ -114,9 +126,11 @@ export class MonitorSession {
     refresh: (idle: boolean) => Promise<RefreshResult>,
   ) {
     if (kind !== 'auto' || !history.anonymous) return refresh(false);
+    const current = this.currentWork(history);
     // The two stores use separate readers. A limit reported by the repository
     // read must stop this follow-up before it sends anything.
     const follow = (idle: boolean, retryAt = 0): Promise<RefreshResult> => {
+      if (!current()) return Promise.resolve({});
       const limit = Math.max(retryAt, this.state.retryAt);
       return limit > Date.now()
         ? Promise.resolve({ retryAt: limit })
@@ -127,9 +141,59 @@ export class MonitorSession {
       () => follow(true),
     );
   }
-  private noteHeads = (history: History) => (result: HistoryRefresh) => {
-    if (result.headMoved) this.moved.set(history, this.onHeadMoved());
-    return result;
+  private entry(repository: string, branch?: string): MonitorEntry {
+    const current = this.history.getSnapshot(),
+      primary =
+        !this.primaryRemoved &&
+        current.repo === repository &&
+        (!!current.meta || current.busy);
+    return {
+      repository,
+      primary,
+      branch,
+      history: primary
+        ? this.history
+        : new History(this.metadata, this.branchSelections),
+      info: primary ? this.info : new CommitInfoStore(),
+    };
+  }
+  private attach(entry: MonitorEntry, restorePrimary = false) {
+    this.subscriptions.set(entry, [
+      entry.history.subscribe(this.observe),
+      entry.info.subscribe(this.observe),
+    ]);
+    if (!entry.primary) this.run(entry, () => this.openEntry(entry));
+    else if (restorePrimary) this.restore(entry, entry.branch);
+    else if (this.primaryPending) {
+      const pending = this.primaryPending;
+      this.run(entry, () => pending);
+    }
+  }
+  private restore(entry: MonitorEntry, branch?: string) {
+    entry.branch = branch;
+    const restore = () => {
+      if (
+        !this.state.active ||
+        !this.state.entries.includes(entry) ||
+        entry.branch !== branch
+      )
+        return;
+      this.run(entry, async () => {
+        await entry.history.restoreBase(branch);
+        return this.combined(entry);
+      });
+    };
+    const pending = this.tasks.get(entry);
+    if (pending) void pending.then(restore);
+    else restore();
+  }
+  private noteHeads = (history: History) => {
+    const current = this.currentWork(history);
+    return (result: HistoryRefresh) => {
+      if (current() && result.headMoved)
+        this.moved.set(history, this.onHeadMoved());
+      return result;
+    };
   };
   private rechecks: Promise<unknown> = Promise.resolve();
   // Settles when the rechecks started so far have finished.
@@ -156,15 +220,14 @@ export class MonitorSession {
       if (current && state.meta && !state.error && !history.loadingBase)
         ready.push(history);
     }
-    const authentication = this.authentication;
     this.rechecks = Promise.allSettled([
       this.rechecks,
-      ...ready.map((history) =>
-        history.refresh(undefined, 'recheck').then((result) => {
-          if (authentication === this.authentication)
-            this.captureResult(result);
-        }),
-      ),
+      ...ready.map((history) => {
+        const current = this.currentWork(history);
+        return history.refresh(undefined, 'recheck').then((result) => {
+          if (current()) this.captureResult(result);
+        });
+      }),
     ]);
     return this.moved.size ? Math.min(...this.moved.values()) : undefined;
   };
@@ -265,46 +328,23 @@ export class MonitorSession {
     this.token = token;
     const entries = normalizeMonitorRepositories(repositories).map(
       (repository) => {
-        const current = this.history.getSnapshot(),
-          primary =
-            current.repo === repository && (!!current.meta || current.busy);
         const index = repositories.findIndex(
           (value) => normalizeMonitorRepositories([value])[0] === repository,
         );
-        return {
-          repository,
-          primary,
-          branch: branches[index],
-          history: primary
-            ? this.history
-            : new History(this.metadata, this.branchSelections),
-          info: primary ? this.info : new CommitInfoStore(),
-        };
+        return this.entry(repository, branches[index]);
       },
     );
     if (!entries.length) return;
     this.publish({ active: true, entries, running: new Set() });
     for (const entry of entries) {
-      this.subscriptions.push(
-        entry.history.subscribe(this.observe),
-        entry.info.subscribe(this.observe),
-      );
-      if (!entry.primary) this.run(entry, () => this.openEntry(entry));
-      else if (restorePrimary)
-        this.run(entry, async () => {
-          await entry.history.restoreBase(entry.branch);
-          return this.combined(entry);
-        });
-      else if (this.primaryPending) {
-        const pending = this.primaryPending;
-        this.run(entry, () => pending);
-      }
+      this.attach(entry, restorePrimary);
     }
     this.observe();
   };
   stop = () => {
-    for (const unsubscribe of this.subscriptions) unsubscribe();
-    this.subscriptions = [];
+    for (const subscriptions of this.subscriptions.values())
+      for (const unsubscribe of subscriptions) unsubscribe();
+    this.subscriptions.clear();
     for (const entry of this.state.entries)
       if (!entry.primary) {
         entry.history.cancel();
@@ -314,6 +354,85 @@ export class MonitorSession {
     this.moved.clear();
     if (this.state.active)
       this.publish({ active: false, entries: [], running: new Set() });
+  };
+  // Reconcile active configuration by identity. Kept entries and their running
+  // work remain untouched; only removed stores are cancelled and new ones open.
+  reconcile = (
+    repositories: readonly string[],
+    branches: readonly (string | undefined)[] = [],
+    restore: ReadonlySet<string> = new Set(),
+  ) => {
+    if (!this.state.active) return false;
+    const names = normalizeMonitorRepositories(repositories);
+    if (!names.length) return false;
+    if (
+      !restore.size &&
+      names.length === this.state.entries.length &&
+      names.every((name) =>
+        this.state.entries.some((entry) => entry.repository === name),
+      )
+    )
+      return this.reorder(names);
+    const previous = this.state.entries,
+      byRepository = new Map(
+        previous.map((entry) => [entry.repository, entry]),
+      ),
+      entries = names.map(
+        (name) =>
+          byRepository.get(name) ??
+          this.entry(
+            name,
+            branches[
+              repositories.findIndex(
+                (value) => normalizeMonitorRepositories([value])[0] === name,
+              )
+            ],
+          ),
+      );
+    if (
+      !restore.size &&
+      entries.length === previous.length &&
+      entries.every((entry, i) => entry === previous[i])
+    )
+      return true;
+    for (const entry of previous) {
+      if (entries.includes(entry)) continue;
+      for (const unsubscribe of this.subscriptions.get(entry) || [])
+        unsubscribe();
+      this.subscriptions.delete(entry);
+      this.tasks.delete(entry);
+      this.moved.delete(entry.history);
+      if (entry.primary) {
+        this.primaryRemoved = true;
+        this.primaryRevision++;
+        this.primaryPending = null;
+      }
+      entry.history.cancel();
+      entry.info.cancel();
+    }
+    this.publish({ entries, running: new Set(this.tasks.keys()) });
+    for (const entry of entries) {
+      if (!byRepository.has(entry.repository)) this.attach(entry);
+      else if (restore.has(entry.repository))
+        this.restore(
+          entry,
+          branches[
+            repositories.findIndex(
+              (name) =>
+                normalizeMonitorRepositories([name])[0] === entry.repository,
+            )
+          ],
+        );
+    }
+    this.observe();
+    return true;
+  };
+  // The single-view stores outlive Split view, but a removed primary was
+  // cancelled. Its normal open path must run when single view is restored.
+  consumePrimaryRemoval = () => {
+    const removed = this.primaryRemoved;
+    this.primaryRemoved = false;
+    return removed;
   };
   reorder = (repositories: readonly string[]) => {
     if (!this.state.active) return false;
@@ -342,8 +461,10 @@ export class MonitorSession {
     // This refresh reads everything a pending recheck would have read.
     this.moved.delete(this.history);
     const authentication = this.authentication,
+      primaryRevision = this.primaryRevision,
       observe = (result: RefreshResult) =>
-        authentication === this.authentication
+        authentication === this.authentication &&
+        primaryRevision === this.primaryRevision
           ? this.captureResult(result)
           : result;
     const task = measureRefresh(
@@ -397,7 +518,8 @@ export class MonitorSession {
       });
     if (this.state.retryAt) this.publish({ retryAt: 0 });
     const entries = this.state.entries,
-      started: Promise<RefreshResult>[] = [];
+      started: Promise<RefreshResult>[] = [],
+      startedEntries: MonitorEntry[] = [];
     for (const entry of entries) {
       const state = entry.history.getSnapshot();
       // Boundary and metadata loads may stall; they do not hold back ref sync.
@@ -446,12 +568,19 @@ export class MonitorSession {
                 };
               }),
       );
-      if (task) started.push(task);
+      if (task) {
+        started.push(task);
+        startedEntries.push(entry);
+      }
     }
     return Promise.resolve({
       completion: started.length
         ? Promise.allSettled(started).then(
-            () => this.state.active && this.state.entries === entries,
+            () =>
+              this.state.active &&
+              startedEntries.some((entry) =>
+                this.state.entries.includes(entry),
+              ),
           )
         : null,
     });
