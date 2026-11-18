@@ -199,6 +199,8 @@
   background: var(--surface);
 }
 .monitor-toggle {
+  position: relative;
+  overflow: hidden;
   display: grid;
   place-items: center;
   flex: none;

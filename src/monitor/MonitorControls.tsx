@@ -1,6 +1,6 @@
 import type { MonitorSession } from './MonitorSession';
 import type { RefreshState } from '../shared/refresh/RefreshLoop';
-import { RefreshTimer } from '../shared/refresh/RefreshButton';
+import { RefreshFill, RefreshTimer } from '../shared/refresh/RefreshButton';
 import { MonitorReorder } from './MonitorReorder';
 import { useId, useRef, useState, type RefObject } from 'react';
 
@@ -30,6 +30,8 @@ export function MonitorControls({
   const [expanded, setExpanded] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
   const drawerId = useId();
+  const nextAt = Math.max(refreshState.nextAt, monitorState.retryAt),
+    sweeping = autoRefresh && !refreshState.waitingForInitialLoad && !limited;
   return (
     <header
       className="monitor-controls"
@@ -73,11 +75,9 @@ export function MonitorControls({
             </svg>
           </button>
           <RefreshTimer
-            nextAt={Math.max(refreshState.nextAt, monitorState.retryAt)}
+            nextAt={nextAt}
             interval={seconds * 1000}
-            sweeping={
-              autoRefresh && !refreshState.waitingForInitialLoad && !limited
-            }
+            sweeping={sweeping}
             running={monitorState.running.size > 0}
             paused={!autoRefresh || limited}
             disabled={
@@ -122,7 +122,14 @@ export function MonitorControls({
           aria-controls={drawerId}
           onClick={() => setExpanded((value) => !value)}
         >
+          <RefreshFill
+            nextAt={nextAt}
+            interval={seconds * 1000}
+            sweeping={!expanded && sweeping}
+            variant="rise"
+          />
           <svg
+            className="refresh-symbol"
             width="14"
             height="14"
             viewBox="0 0 24 24"
