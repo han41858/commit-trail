@@ -36,6 +36,22 @@ export function moveMonitorRepository(
   next.splice(target, 0, repository);
   return next;
 }
+export function monitorRepositoryChange(
+  previous: readonly string[],
+  next: readonly string[],
+): 'none' | 'order' | 'members' {
+  const before = normalizeMonitorRepositories(previous),
+    after = normalizeMonitorRepositories(next);
+  if (
+    before.length === after.length &&
+    before.every((name, i) => name === after[i])
+  )
+    return 'none';
+  return before.length === after.length &&
+    after.every((name) => before.includes(name))
+    ? 'order'
+    : 'members';
+}
 type Options = {
   storage?: () => StorageAccess;
   publicRepositories: () => readonly string[];

@@ -261,6 +261,24 @@ test('a repository removed from split view before the recheck is skipped', async
   });
 });
 
+test('active membership changes discard removed rechecks and retain the other repository deadline', async () => {
+  await using(['a/one', 'b/two'], async ({ group, remotes, moved, cycle }) => {
+    await cycle(async () => group.start(['a/one', 'b/two'], 'token'));
+    await cycle(() => group.refreshAll('auto'));
+    for (const remote of Object.values(remotes)) {
+      remote.parents.merged = ['base'];
+      remote.branches.main = 'merged';
+    }
+    await cycle(() => group.refreshAll('auto'));
+    assert.equal(moved.count, 2);
+    const retained = group.getSnapshot().entries[0];
+    assert.equal(group.reconcile(['a/one']), true);
+    assert.equal(group.getSnapshot().entries[0], retained);
+    const paths = await cycle(() => recheck(group));
+    assert.deepEqual(paths, ['/repos/a/one', '/repos/a/one/branches']);
+  });
+});
+
 test('an anonymous recheck does not replace the second full read after a push', async () => {
   await using(['a/one'], async ({ group, history, info, remotes, cycle }) => {
     const remote = remotes['a/one'],

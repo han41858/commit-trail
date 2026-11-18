@@ -27,6 +27,7 @@ export function MonitorSetup({
   owners,
   initial,
   branches,
+  editing = false,
   onStart,
   onClose,
 }: {
@@ -36,6 +37,7 @@ export function MonitorSetup({
   owners: OwnerRepositories;
   initial?: readonly string[];
   branches?: ReadonlyMap<string, string>;
+  editing?: boolean;
   onStart: (repositories: string[]) => void;
   onClose: () => void;
 }) {
@@ -198,7 +200,9 @@ export function MonitorSetup({
         >
           ×
         </button>
-        <h2 id="monitor-setup-title">Split view</h2>
+        <h2 id="monitor-setup-title">
+          {editing ? 'Manage repositories' : 'Split view'}
+        </h2>
         <div className="monitor-setup-body" ref={scrollArea}>
           <p>
             Watch up to {MONITOR_LIMIT} repositories side by side. Landscape
@@ -441,7 +445,7 @@ export function MonitorSetup({
             disabled={!selected.length}
             onClick={() => onStart(selected)}
           >
-            Start split view
+            {editing ? 'Apply changes' : 'Start split view'}
           </button>
         </div>
       </section>

@@ -16,6 +16,12 @@
   stroke-dashoffset: 100;
   animation: refresh-sweep linear forwards;
 }
+.refresh-fill rect {
+  fill: var(--muted);
+  transform-origin: center bottom;
+  transform: scaleY(0);
+  animation: refresh-rise linear forwards;
+}
 .refresh-symbol {
   position: relative;
 }
@@ -27,11 +33,20 @@
     stroke-dashoffset: 0;
   }
 }
+@keyframes refresh-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .refresh-fill {
     display: none;
   }
-  .refresh-fill circle {
+  .refresh-fill circle,
+  .refresh-fill rect {
     animation: none;
   }
 }
