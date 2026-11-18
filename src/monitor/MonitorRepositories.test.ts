@@ -6,7 +6,24 @@ import {
   MONITOR_PUBLIC_REPOSITORIES_KEY,
   normalizeMonitorRepositories,
   moveMonitorRepository,
+  monitorRepositoryChange,
 } from './MonitorRepositories';
+
+test('configuration changes distinguish unchanged names, ordering and membership', () => {
+  const names = ['owner/one', 'owner/two'];
+  assert.equal(
+    monitorRepositoryChange(names, ['OWNER/one', 'owner/two', 'owner/one']),
+    'none',
+  );
+  assert.equal(monitorRepositoryChange(names, [...names].reverse()), 'order');
+  assert.equal(monitorRepositoryChange(names, ['owner/one']), 'members');
+  assert.equal(
+    monitorRepositoryChange(names, ['owner/one', 'other/three']),
+    'members',
+  );
+  assert.equal(monitorRepositoryChange([], []), 'none');
+  assert.equal(monitorRepositoryChange([], names), 'members');
+});
 
 function setup(raw: unknown = ['public/one', 'private/one', 'unknown/one']) {
   const data = new Map([

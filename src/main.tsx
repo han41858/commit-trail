@@ -31,6 +31,8 @@ import {
   MONITOR_REPOSITORIES_KEY,
   MONITOR_PUBLIC_REPOSITORIES_KEY,
   moveMonitorRepository,
+  monitorRepositoryChange,
+  normalizeMonitorRepositories,
 } from './monitor/MonitorRepositories';
 import { MonitorSetup } from './monitor/MonitorSetup';
 import { MonitorControls } from './monitor/MonitorControls';
@@ -159,33 +161,55 @@ function App() {
     monitor.subscribe,
     monitor.getSnapshot,
   );
+  const configureMonitor = useCallback(
+    (repositories: readonly string[]) => {
+      const current = monitor.getSnapshot();
+      const names = normalizeMonitorRepositories(repositories);
+      if (!names.length) return;
+      const change = monitorRepositoryChange(
+        current.entries.map((entry) => entry.repository),
+        names,
+      );
+      if (current.active && change === 'none') return;
+      const entries = new Map(
+        current.entries.map((entry) => [entry.repository, entry]),
+      );
+      const branches = names.map((name) => {
+        const entry = entries.get(name),
+          value =
+            entry?.history.getSnapshot() ??
+            (history.getSnapshot().repo === name
+              ? history.getSnapshot()
+              : undefined);
+        if (value?.meta && value.baseHead && !value.busy) {
+          lastMonitorBranches.current.set(name, value.base);
+          return value.base;
+        }
+        return entry?.branch ?? lastMonitorBranches.current.get(name);
+      });
+      lastMonitorSelection.current = names;
+      monitorRepositories.set(names);
+      if (current.active) monitor.reconcile(names, branches);
+      navigate(
+        { mode: 'monitor', repositories: names, branches },
+        { replace: current.active && change === 'order' },
+      );
+    },
+    [history, monitor, monitorRepositories, navigate],
+  );
   const reorderMonitor = useCallback(
     (repository: string, to: number) => {
       const current = monitor.getSnapshot();
       if (!current.active) return;
-      const names = current.entries.map((entry) => entry.repository);
-      const reordered = moveMonitorRepository(names, repository, to);
-      if (reordered === names || !monitor.reorder(reordered)) return;
-      const entries = new Map(
-        current.entries.map((entry) => [entry.repository, entry]),
-      );
-      const branches = reordered.map((name) => {
-        const entry = entries.get(name)!,
-          state = entry.history.getSnapshot();
-        if (state.meta && state.baseHead && !state.busy) {
-          lastMonitorBranches.current.set(name, state.base);
-          return state.base;
-        }
-        return entry.branch;
-      });
-      lastMonitorSelection.current = reordered;
-      monitorRepositories.set(reordered);
-      navigate(
-        { mode: 'monitor', repositories: reordered, branches },
-        { replace: true },
+      configureMonitor(
+        moveMonitorRepository(
+          current.entries.map((entry) => entry.repository),
+          repository,
+          to,
+        ),
       );
     },
-    [monitor, monitorRepositories, navigate],
+    [configureMonitor, monitor],
   );
   const leaveMonitor = useCallback(() => {
     for (const entry of monitor.getSnapshot().entries) {
@@ -250,6 +274,7 @@ function App() {
     saveViewOptions({ theme, autoRefresh, interval: intervalChoice });
   }, [theme, autoRefresh, intervalChoice]);
   const [monitorSetup, setMonitorSetup] = useState(false);
+  const [primaryOpenRevision, setPrimaryOpenRevision] = useState(0);
   const [errorDismissed, setErrorDismissed] = useState(false);
   useEffect(() => {
     setErrorDismissed(false);
@@ -285,19 +310,36 @@ function App() {
     tokenButtonRef = useRef<HTMLButtonElement>(null),
     detailsRef = useRef<HTMLElement>(null),
     primaryPaneRef = useRef<HTMLElement>(null),
-    monitorButtonRef = useRef<HTMLButtonElement>(null);
+    monitorButtonRef = useRef<HTMLButtonElement>(null),
+    manageButtonRef = useRef<HTMLButtonElement>(null);
+  const closeMonitorSetup = () => {
+    setMonitorSetup(false);
+    (monitor.getSnapshot().active
+      ? manageButtonRef
+      : monitorButtonRef
+    ).current?.focus({ preventScroll: true });
+  };
+  const setupWasOpen = useRef(false);
+  useLayoutEffect(() => {
+    if (setupWasOpen.current && !monitorSetup)
+      (monitor.getSnapshot().active
+        ? manageButtonRef
+        : monitorButtonRef
+      ).current?.focus({ preventScroll: true });
+    setupWasOpen.current = monitorSetup;
+  }, [monitorSetup, monitor]);
   useEffect(() => {
     if (!monitorState.active) return;
     const key = (event: KeyboardEvent) => {
       // A popup that this Escape just closed has already claimed the key.
-      if (event.key === 'Escape' && !event.defaultPrevented) {
+      if (event.key === 'Escape' && !event.defaultPrevented && !monitorSetup) {
         event.preventDefault();
         leaveMonitor();
       }
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [leaveMonitor, monitorState.active]);
+  }, [leaveMonitor, monitorState.active, monitorSetup]);
   const wasMonitoring = useRef(false);
   useEffect(() => {
     if (wasMonitoring.current && !monitorState.active)
@@ -309,10 +351,6 @@ function App() {
     ? monitorState.entries.indexOf(primaryEntry)
     : 0;
   const primaryActive = !monitorState.active || !!primaryEntry;
-  const monitorScope = monitorState.entries
-    .map((entry) => entry.repository)
-    .sort()
-    .join('|');
   const monitorLimited = monitorState.retryAt > Date.now();
   const [topInset, setTopInset] = useState(
     window.innerWidth <= 800 ? 136 : 108,
@@ -356,11 +394,18 @@ function App() {
   useEffect(() => {
     void measured.openInfo(state.meta ? state.repo : '', appliedToken);
     return () => info.cancel();
-  }, [info, state.repo, !!state.meta, appliedToken, authRevision]);
+  }, [
+    info,
+    state.repo,
+    !!state.meta,
+    appliedToken,
+    authRevision,
+    primaryOpenRevision,
+  ]);
   useLayoutEffect(() => {
     loop.configure(
       monitorState.active
-        ? `monitor:${monitorScope}:${authRevision}`
+        ? `monitor:${authRevision}`
         : state.meta
           ? `${state.repo}:${authRevision}`
           : '',
@@ -376,7 +421,6 @@ function App() {
     autoRefresh,
     seconds,
     monitorState.active,
-    monitorScope,
   ]);
   useEffect(() => {
     const changed = () => loop.visibilityChanged();
@@ -489,23 +533,36 @@ function App() {
       );
       lastMonitorSelection.current = [...configuration.repositories];
       const session = monitor.getSnapshot();
-      const sameBranches = configuration.repositories.every((name, index) => {
+      const restore = new Set<string>();
+      configuration.repositories.forEach((name, index) => {
         const entry = session.entries.find(
           (entry) => entry.repository === name,
         );
-        if (!entry) return false;
+        if (!entry) return;
         const requested = configuration.branches?.[index];
         const priorIndex = previous?.repositories.indexOf(name) ?? -1;
-        if (requested === previous?.branches?.[priorIndex]) return true;
+        if (
+          requested === previous?.branches?.[priorIndex] ||
+          requested === entry.branch
+        )
+          return;
         const state = entry.history.getSnapshot();
-        return !!state.meta && !!state.baseHead && requested === state.base;
+        if (!(state.meta && state.baseHead && requested === state.base))
+          restore.add(name);
       });
       if (
         session.active &&
-        sameBranches &&
-        monitor.reorder(configuration.repositories)
-      )
+        monitor.reconcile(
+          configuration.repositories,
+          configuration.branches,
+          restore,
+        )
+      ) {
+        setSelection((chosen) =>
+          chosen && restore.has(chosen.repository) ? null : chosen,
+        );
         return;
+      }
       if (!current.repo) {
         setInput(repository);
         setSelection(null);
@@ -523,6 +580,8 @@ function App() {
         changedBranch,
       );
     } else {
+      const reopenPrimary = monitor.consumePrimaryRemoval();
+      if (reopenPrimary) setPrimaryOpenRevision((revision) => revision + 1);
       setSelection((chosen) =>
         chosen?.repository === repository ? chosen : null,
       );
@@ -535,6 +594,7 @@ function App() {
         setSelection(null);
       } else if (
         current.repo !== repository ||
+        reopenPrimary ||
         (!current.meta && !current.busy && !current.error)
       ) {
         setSelection(null);
@@ -577,17 +637,18 @@ function App() {
         setAuth(false);
       if (
         selection &&
+        (!monitorState.active || !withinBackdrop) &&
         !(
           target instanceof Element &&
           target.closest(
-            '.details,.graph-scroll,.monitor-exit,.monitor-reorder-handle',
+            '.details,.graph-scroll,.monitor-actions,.monitor-reorder-handle',
           )
         )
       )
         setSelection(null);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !monitorSetup) {
         // Close the open popup first; Split view handles the next Escape.
         event.preventDefault();
         setOptions(false);
@@ -601,7 +662,7 @@ function App() {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('keydown', escape);
     };
-  }, [options, auth, selection]);
+  }, [options, auth, selection, monitorSetup, monitorState.active]);
   function applyToken() {
     const value = token.trim();
     if (value !== appliedToken) lastMonitorSelection.current = undefined;
@@ -738,6 +799,12 @@ function App() {
           limited={monitorLimited}
           onRefresh={() => void loop.refresh()}
           onReorder={reorderMonitor}
+          manageRef={manageButtonRef}
+          onManage={() => {
+            setOptions(false);
+            setAuth(false);
+            setMonitorSetup(true);
+          }}
           onExit={leaveMonitor}
         />
       )}
@@ -1053,28 +1120,23 @@ function App() {
           </div>
         </div>
       )}
-      {monitorSetup && !monitorState.active && (
+      {monitorSetup && (
         <MonitorSetup
           current={state.meta ? state.repo : ''}
           recent={recent}
           saved={monitorRepositories}
           owners={ownerRepositories}
-          initial={lastMonitorSelection.current}
+          initial={
+            monitorState.active
+              ? monitorState.entries.map((entry) => entry.repository)
+              : lastMonitorSelection.current
+          }
+          editing={monitorState.active}
           branches={shareBranches}
-          onClose={() => {
-            setMonitorSetup(false);
-            monitorButtonRef.current?.focus();
-          }}
+          onClose={closeMonitorSetup}
           onStart={(repositories) => {
-            monitorRepositories.set(repositories);
-            setMonitorSetup(false);
-            navigate({
-              mode: 'monitor',
-              repositories,
-              branches: repositories.map((repository) =>
-                shareBranches.get(repository),
-              ),
-            });
+            closeMonitorSetup();
+            configureMonitor(repositories);
           }}
         />
       )}

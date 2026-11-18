@@ -9,12 +9,15 @@ type Props = {
   disabled: boolean;
   onRefresh: () => void;
 };
-function RefreshFill({
+export function RefreshFill({
   nextAt,
   interval,
   sweeping,
-}: Pick<Props, 'nextAt' | 'interval' | 'sweeping'>) {
-  const circle = useRef<SVGCircleElement>(null);
+  variant = 'sweep',
+}: Pick<Props, 'nextAt' | 'interval' | 'sweeping'> & {
+  variant?: 'sweep' | 'rise';
+}) {
+  const fill = useRef<SVGSVGElement>(null);
   const active =
     sweeping &&
     Number.isFinite(nextAt) &&
@@ -27,12 +30,12 @@ function RefreshFill({
     // render. DocumentTimeline and performance.now() share the same time origin.
     const align = () => {
       if (document.hidden) return;
-      const animation = circle.current
-        ?.getAnimations()
+      const animation = fill.current
+        ?.getAnimations({ subtree: true })
         .find(
           (animation) =>
             animation instanceof CSSAnimation &&
-            animation.animationName === 'refresh-sweep',
+            animation.animationName === `refresh-${variant}`,
         );
       if (!animation) return;
       const timelineNow = performance.now(),
@@ -51,30 +54,38 @@ function RefreshFill({
       document.removeEventListener('visibilitychange', align);
       window.removeEventListener('online', align);
     };
-  }, [nextAt, interval, active]);
+  }, [nextAt, interval, active, variant]);
   return (
     <svg
       className="refresh-fill"
+      ref={fill}
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
       aria-hidden="true"
       focusable="false"
     >
-      {active && (
-        <circle
-          ref={circle}
-          key={`${nextAt}:${interval}`}
-          cx="50"
-          cy="50"
-          r="50"
-          pathLength="100"
-          transform="rotate(-90 50 50)"
-          fill="none"
-          strokeWidth="100"
-          strokeDasharray="100"
-          style={{ animationDuration: `${interval}ms` }}
-        />
-      )}
+      {active &&
+        (variant === 'rise' ? (
+          <rect
+            key={`${nextAt}:${interval}`}
+            width="100"
+            height="100"
+            style={{ animationDuration: `${interval}ms` }}
+          />
+        ) : (
+          <circle
+            key={`${nextAt}:${interval}`}
+            cx="50"
+            cy="50"
+            r="50"
+            pathLength="100"
+            transform="rotate(-90 50 50)"
+            fill="none"
+            strokeWidth="100"
+            strokeDasharray="100"
+            style={{ animationDuration: `${interval}ms` }}
+          />
+        ))}
     </svg>
   );
 }

@@ -686,6 +686,216 @@ test('a pending refresh survives reordering and is still skipped on the next dis
     );
   });
 });
+test('active configuration reuses kept stores, opens only additions and supports a single remaining column', async () => {
+  await using(async ({ group, history, info, paths }) => {
+    await history.open('a/one');
+    await info.open('a/one', '');
+    group.start(['a/one', 'b/two'], '');
+    await until(() => group.getSnapshot().settled);
+    const original = new Map(
+      group.getSnapshot().entries.map((entry) => [
+        entry.repository,
+        {
+          entry,
+          history: entry.history.getSnapshot(),
+          info: entry.info.getSnapshot(),
+        },
+      ]),
+    );
+    const start = paths.length;
+    assert.equal(
+      group.reconcile(['b/two', 'c/three', 'a/one', 'd/four']),
+      true,
+    );
+    await until(() => group.getSnapshot().settled);
+    assert(
+      paths
+        .slice(start)
+        .every((path) => /^\/repos\/(c\/three|d\/four)(\/|$)/.test(path)),
+    );
+    for (const name of ['a/one', 'b/two']) {
+      const kept = group
+        .getSnapshot()
+        .entries.find((entry) => entry.repository === name)!;
+      assert.equal(kept, original.get(name)!.entry);
+      assert.equal(kept.history.getSnapshot(), original.get(name)!.history);
+      assert.equal(kept.info.getSnapshot(), original.get(name)!.info);
+    }
+    assert.equal(group.reconcile(['b/two']), true);
+    assert.equal(group.getSnapshot().active, true);
+    assert.equal(group.getSnapshot().entries[0], original.get('b/two')!.entry);
+    const single = group.getSnapshot();
+    assert.equal(group.reconcile([]), false);
+    assert.equal(group.getSnapshot(), single);
+    assert.equal(group.consumePrimaryRemoval(), true);
+    assert.equal(group.consumePrimaryRemoval(), false);
+  });
+});
+
+test('active configuration no-op and ordering preserve snapshots and running work', async () => {
+  await using(async ({ group, holds, paths, aborted }) => {
+    group.start(['a/one', 'b/two'], '');
+    await until(() => group.getSnapshot().settled);
+    const slow = deferred<Response>();
+    holds.set('/repos/b/two', slow);
+    const refresh = await group.refreshAll('auto');
+    await until(() => group.getSnapshot().running.size === 1);
+    const state = group.getSnapshot(),
+      count = paths.length,
+      aborts = aborted.length;
+    assert.equal(group.reconcile(['a/one', 'b/two']), true);
+    assert.equal(group.getSnapshot(), state);
+    assert.equal(group.reconcile(['b/two', 'a/one']), true);
+    assert.equal(group.getSnapshot().running, state.running);
+    assert.equal(paths.length, count);
+    assert.equal(aborted.length, aborts);
+    holds.delete('/repos/b/two');
+    slow.resolve(response({ default_branch: 'main', private: false }));
+    assert.equal(await refresh.completion, true);
+    await until(() => group.getSnapshot().settled);
+  });
+});
+
+test('a kept in-flight refresh survives membership changes and still records completion', async () => {
+  await using(async ({ group, holds, paths, aborted }) => {
+    group.start(['a/one', 'b/two'], '');
+    await until(() => group.getSnapshot().settled);
+    const slow = deferred<Response>();
+    holds.set('/repos/b/two', slow);
+    const refresh = await group.refreshAll('auto');
+    await until(() => group.getSnapshot().running.size === 1);
+    const kept = group.getSnapshot().entries[1];
+    const aborts = aborted.filter((path) =>
+      path.startsWith('/repos/b/two'),
+    ).length;
+    group.reconcile(['b/two', 'c/three']);
+    assert.equal(group.getSnapshot().entries[0], kept);
+    assert(group.getSnapshot().running.has(kept));
+    await tick();
+    assert.equal(
+      aborted.filter((path) => path.startsWith('/repos/b/two')).length,
+      aborts,
+    );
+    assert.equal(paths.filter((path) => path === '/repos/b/two').length, 2);
+    holds.delete('/repos/b/two');
+    slow.resolve(response({ default_branch: 'main', private: false }));
+    assert.equal(await refresh.completion, true);
+    await until(() => group.getSnapshot().settled);
+  });
+});
+
+test('removed pending stores are cancelled and their late result cannot throttle a re-added repository', async () => {
+  await using(async ({ group, holds, aborted, visits }) => {
+    const slow = deferred<Response>();
+    holds.set('/repos/b/two', slow);
+    group.start(['a/one', 'b/two'], '');
+    await until(
+      () => group.getSnapshot().entries[1].history.getSnapshot().busy,
+    );
+    const removed = group.getSnapshot().entries[1];
+    group.reconcile(['a/one']);
+    assert(aborted.includes('/repos/b/two'));
+    holds.delete('/repos/b/two');
+    group.reconcile(['a/one', 'b/two']);
+    await until(() => group.getSnapshot().settled);
+    const readded = group.getSnapshot().entries[1],
+      snapshot = readded.history.getSnapshot();
+    assert.notEqual(readded, removed);
+    slow.resolve(response({}, 429, { 'Retry-After': '60' }));
+    await tick();
+    await tick();
+    assert.equal(readded.history.getSnapshot(), snapshot);
+    assert.equal(group.canRequest(), true);
+    assert.equal(visits.filter((name) => name === 'b/two').length, 1);
+  });
+});
+
+test('removing the shared primary cancels it, isolates re-addition and ignores its late refresh', async () => {
+  await using(async ({ group, history, info, holds, aborted }) => {
+    await history.open('a/one');
+    await info.open('a/one', '');
+    group.start(['a/one', 'b/two'], '');
+    await until(() => group.getSnapshot().settled);
+    const slow = deferred<Response>();
+    holds.set('/repos/a/one', slow);
+    await group.refreshAll('auto');
+    await until(() => group.getSnapshot().running.size === 1);
+    const kept = group.getSnapshot().entries[1];
+    group.reconcile(['b/two']);
+    assert(aborted.includes('/repos/a/one'));
+    holds.delete('/repos/a/one');
+    group.reconcile(['b/two', 'a/one']);
+    await until(() => group.getSnapshot().settled);
+    assert.equal(group.getSnapshot().entries[0], kept);
+    assert.notEqual(group.getSnapshot().entries[1].history, history);
+    slow.resolve(response({}, 429, { 'Retry-After': '60' }));
+    await tick();
+    await tick();
+    assert.equal(group.canRequest(), true);
+    assert.equal(group.consumePrimaryRemoval(), true);
+  });
+});
+
+test('a removed in-flight recheck cannot apply its late backoff', async () => {
+  await using(async ({ group }) => {
+    group.start(['a/one', 'b/two'], 'token');
+    await until(() => group.getSnapshot().settled);
+    const removed = group.getSnapshot().entries[1],
+      slow = deferred<{ retryAt: number }>();
+    removed.history.refresh = async (_cycle, kind) =>
+      kind === 'recheck' ? slow.promise : { headMoved: true };
+    await (
+      await group.refreshAll('auto')
+    ).completion;
+    group.recheck(false, Number.MAX_SAFE_INTEGER);
+    group.reconcile(['a/one']);
+    slow.resolve({ retryAt: Date.now() + 60_000 });
+    await group.rechecked;
+    assert.equal(group.canRequest(), true);
+  });
+});
+
+test('leaving split view keeps the shared primary metadata follow-up alive', async () => {
+  await using(async ({ group, history, info, holds, paths }) => {
+    await history.open('a/one');
+    await info.open('a/one', '');
+    group.start(['a/one', 'b/two'], '');
+    await until(() => group.getSnapshot().settled);
+    const slow = deferred<Response>();
+    holds.set('/repos/a/one', slow);
+    await group.refreshAll('auto');
+    await until(() => group.getSnapshot().running.size === 1);
+    const reads = paths.filter((path) => path === '/repos/a/one/tags').length;
+    group.stop();
+    slow.resolve(
+      response({
+        default_branch: 'main',
+        private: false,
+        pushed_at: '2026-11-18T00:00:00Z',
+      }),
+    );
+    await until(
+      () => paths.filter((path) => path === '/repos/a/one/tags').length > reads,
+    );
+    await until(() => !info.getSnapshot().busy);
+    assert.equal(history.getSnapshot().repo, 'a/one');
+  });
+});
+
+test('configuration normalization and bounds remain enforced without an active session', async () => {
+  await using(async ({ group, paths }) => {
+    assert.equal(group.reconcile(['a/one']), false);
+    assert.equal(paths.length, 0);
+    group.start(['a/one'], '');
+    await until(() => group.getSnapshot().settled);
+    const names = Array.from({ length: 35 }, (_, i) => `org/repo-${i}`);
+    assert.equal(group.reconcile(['a/one', 'A/ONE', ...names]), true);
+    assert.equal(group.getSnapshot().entries.length, 32);
+    assert.equal(group.getSnapshot().entries[0].repository, 'a/one');
+    await until(() => group.getSnapshot().settled);
+  });
+});
+
 test('exiting preserves the primary model and changing PAT releases the old shared backoff', async () => {
   await using(async ({ group, history, info, failures }) => {
     await history.open('a/one');
