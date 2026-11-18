@@ -235,7 +235,7 @@ Vercel's GitHub deployment records must be enabled (`gitProviderOptions.createDe
 
 The workflow verifies the persisted GitHub deployment and status from the Vercel bot, the team/project dashboard URL, and that the deployed SHA belongs to `main`.
 
-Dashboard paths and generated deployment hosts share the explicit `VERCEL_SCOPES` list: the current team URL is `han41858`, and the former `han-janghyuns-projects` name remains accepted for delayed events and historical recovery. Both require the exact `commit-trail` project; the public Production domain is also accepted. A team URL rename must update this shared list.
+Dashboard paths and generated deployment hosts share the `TEAM` setting, currently `han41858`, and require the exact `commit-trail` project. Only the current team URL is accepted; the public Production domain is also accepted. A team URL rename must update this shared setting.
 
 Automation code is checked out from the protected default branch, not from the event's deployed commit. Publication and cleanup runs are serialized across the repository with `queue: max` (up to 100 pending jobs) and `cancel-in-progress: false`, so delayed events and manual dry runs do not replace an already waiting publication. Queue order follows when jobs start waiting, so the tag-time guard still prevents older deployments from replacing the newer release. Repeated events and redeployments reuse the retained commit's release; failed publication reuses its tag on retry. Existing tags are never moved. A timestamp collision with another commit uses the next free second, and older deployment events keep their Git tags without recreating pruned releases or replacing the newer release.
 

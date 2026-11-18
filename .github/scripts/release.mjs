@@ -1,10 +1,9 @@
 const REPOSITORY = 'han41858/commit-trail';
 const VERCEL_BOT_ID = 35613825;
-// Keep the former name for delayed events and recovery of historical deployments.
-const VERCEL_SCOPES = ['han41858', 'han-janghyuns-projects'];
+const TEAM = 'han41858';
 const PROJECT = 'commit-trail';
 const DEPLOYMENT_HOST = new RegExp(
-  `^${PROJECT}-[a-z0-9]+-(?:${VERCEL_SCOPES.join('|')})\\.vercel\\.app$`,
+  `^${PROJECT}-[a-z0-9]+-${TEAM}\\.vercel\\.app$`,
 );
 const PRODUCTION_URL = 'https://commit-trail-view.vercel.app/';
 const TAG = /^rel-\d{14}$/;
@@ -59,7 +58,7 @@ function dashboardUrl(status) {
         !url.username &&
         !url.password &&
         path.length === 3 &&
-        VERCEL_SCOPES.includes(path[0]) &&
+        path[0] === TEAM &&
         path[1] === PROJECT &&
         /^(?:dpl_)?[A-Za-z0-9]+$/.test(path[2])
       )
