@@ -1,7 +1,10 @@
 const REPOSITORY = 'han41858/commit-trail';
 const VERCEL_BOT_ID = 35613825;
-const TEAM = 'han-janghyuns-projects';
+const TEAM = 'han41858';
 const PROJECT = 'commit-trail';
+const DEPLOYMENT_HOST = new RegExp(
+  `^${PROJECT}-[a-z0-9]+-${TEAM}\\.vercel\\.app$`,
+);
 const PRODUCTION_URL = 'https://commit-trail-view.vercel.app/';
 const TAG = /^rel-\d{14}$/;
 const SHA = /^[a-f0-9]{40}$/;
@@ -76,9 +79,7 @@ function deploymentUrl(value) {
     url.password ||
     !(
       url.hostname === new URL(PRODUCTION_URL).hostname ||
-      /^commit-trail-[a-z0-9]+-han-janghyuns-projects\.vercel\.app$/.test(
-        url.hostname,
-      )
+      DEPLOYMENT_HOST.test(url.hostname)
     )
   ) {
     throw new Error('Unexpected deployment URL.');
