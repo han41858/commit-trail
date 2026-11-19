@@ -18,6 +18,8 @@ Claude에 Opus를 사용하려면 **Settings → Secrets and variables → Actio
 
 자동 편집은 저장소 전체의 일반 텍스트 파일을 대상으로 하며, 워크플로·자동화 스크립트·설정·`AGENTS.md`도 Issue 범위 안에서 수정할 수 있다. Git 내부 데이터, `node_modules`, 저장소 밖 경로와 `.env` 비밀 파일은 제외하고 `.env.example`은 허용한다. `needs_human`이면 중단 댓글과 상태 댓글의 상세 사유를 해결한 뒤 **Actions → AI development → Run workflow**에서 **dev**와 기존 Issue 번호로 재실행한다. 실행 라벨을 다시 붙이는 것만으로는 재개되지 않는다. 자동화 구현 변경이 필요한 경우 먼저 `dev`에 반영한다.
 
+교차 리뷰가 탐색 한도에 도달했거나 반환한 결과의 형식 검증에 실패했다면 같은 방식으로 수동 재개한다. 기존 PR에서 교차 리뷰를 다시 실행하며, 현재 커밋의 리뷰와 필수 CI가 통과해야 병합한다. 리뷰 API 응답을 확인할 수 없는 경우에는 중복 호출을 막기 위해 수동 검토가 필요하다.
+
 AI 자격 증명은 `dev` 브랜치만 허용한 `ai-development` Environment의 Secrets에 두고 Repository Secrets 사본은 삭제한다. 게시 전에 격리 설정을 검사하며, 미설정·권한 부족이면 `needs_human`으로 멈춘다. 게시 PAT에는 Contents·Pull requests·Workflows 쓰기와 Actions·Secrets·Environments 읽기 권한이 필요하다. 일반 텍스트 읽기·편집 한도는 파일당 1MiB이며, 수정 후 `package.json`·`package-lock.json`으로 의존성을 설치하고 오프라인 검증한다.
 
 ## 문서 역할과 상세 규칙의 위치
