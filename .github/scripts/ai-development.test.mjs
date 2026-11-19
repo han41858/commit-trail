@@ -666,7 +666,11 @@ test('a successful merge leaves no stop notice', async () => {
 });
 
 test('every AI development job shares one queued concurrency group', () => {
-  const groups = ['ai-development.yml', 'ai-development-cleanup.yml']
+  const groups = [
+    'ai-development.yml',
+    'ai-development-cleanup.yml',
+    'ai-development-ci-followup.yml',
+  ]
     .map((name) =>
       readFileSync(new URL(`../workflows/${name}`, import.meta.url), 'utf8'),
     )
@@ -681,6 +685,42 @@ test('every AI development job shares one queued concurrency group', () => {
     'ai-development-${{ github.repository }}',
     'ai-development-${{ github.repository }}',
   ]);
+});
+
+test('AI follow-up triggers exclude ordinary CI before jobs are queued', () => {
+  const cleanup = readFileSync(
+    new URL('../workflows/ai-development-cleanup.yml', import.meta.url),
+    'utf8',
+  );
+  const followup = readFileSync(
+    new URL('../workflows/ai-development-ci-followup.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    cleanup,
+    /workflow_run:\n\s+workflows: \[AI development\]\n\s+branches: \[dev\]\n\s+types: \[completed\]/,
+  );
+  assert.match(cleanup, /conclusion != 'success'/);
+  assert.match(cleanup, /conclusion != 'skipped'/);
+  assert.match(cleanup, /run\.mjs --reconcile/);
+  assert.doesNotMatch(cleanup, /identify-ci-issue|complete-ci/);
+  assert.match(
+    followup,
+    /workflow_run:\n\s+workflows: \[CI\]\n\s+branches: \['ai\/issue-\*'\]\n\s+types: \[completed\]/,
+  );
+  assert.match(followup, /workflow_run\.event == 'pull_request'/);
+  assert.match(followup, /workflow_run\.conclusion == 'success'/);
+  assert.match(
+    followup,
+    /workflow_run\.head_repository\.full_name == github\.repository/,
+  );
+  assert.match(
+    followup,
+    /\^ai\/issue-\(\[1-9\]\[0-9\]\*\)-\(codex\|claude\)\$/,
+  );
+  assert.match(followup, /ref: refs\/heads\/dev/);
+  assert.match(followup, /AI_AUTOMATION_TOKEN:/);
+  assert.match(followup, /run\.mjs --complete-ci/);
 });
 
 test('provider requests use the configured turn, output and effort budget', async () => {
