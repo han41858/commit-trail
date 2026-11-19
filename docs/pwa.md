@@ -132,7 +132,8 @@ PWA는 전용 외부 API나 분석 서비스를 추가하지 않는다. 앱의 �
 ## 7. Vercel 배포 연동
 
 GitHub–Vercel Git Integration은 `feature/*`, `fix/*` 등 작업 브랜치와 `dev`를 Preview에, `main`을 Production에 배포한다.
-Production 성공 후 Release 자동화와 문서 전용 변경의 배포 생략은 [기술 가이드](technical-guide.md#deploy-to-vercel)를 따른다.
+Production 성공 후 Release 자동화는 기술 가이드의 [Vercel 배포](technical-guide.md#vercel-배포)를 따른다.
+문서 전용 변경의 배포 생략은 [문서 전용 변경 판정](technical-guide.md#문서-전용-변경-판정)을 따른다.
 PWA 전용 환경 변수·Secrets 또는 Vercel CLI를 이용한 별도 배포 워크플로는 사용하지 않는다.
 
 `vercel.json`은 `/sw.js`에 `no-cache, no-store, must-revalidate`, `/manifest.webmanifest`에 `no-cache`를 적용한다.
