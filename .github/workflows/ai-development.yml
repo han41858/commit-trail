@@ -1,0 +1,48 @@
+name: AI development
+run-name: 'AI development for Issue #${{ github.event.issue.number || inputs.issue }}'
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Number of a previously started AI Issue'
+        required: true
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: 'AI development for Issue #${{ github.event.issue.number || inputs.issue }}'
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    if: >-
+      github.ref == 'refs/heads/dev' &&
+      (github.event_name == 'workflow_dispatch' ||
+       contains(fromJSON('["ai:develop","ai:develop:codex","ai:develop:claude"]'), github.event.label.name))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Develop and review
+        run: node .github/scripts/ai-development/run.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AI_AUTOMATION_TOKEN: ${{ secrets.AI_AUTOMATION_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_CODEX_MODEL: ${{ vars.AI_CODEX_MODEL }}
+          AI_CLAUDE_MODEL: ${{ vars.AI_CLAUDE_MODEL }}
