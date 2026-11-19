@@ -15,7 +15,7 @@ Owner 조회·필터링·Split view에서 체크할 때의 동작은 [Owner 저�
   최근 방문 목록의 10개 제한과 독립적으로 관리하며 같은 메타데이터·PAT 변경 처리를 재사용한다.
   URL 진입이나 자동 선택은 이 기록을 덮어쓰지 않는다. 초기 브랜치 복원 순서는 [제품 명세의 브랜치 규칙](specification.md#25-브랜치)을 따른다.
 - 이전 제품에서 저장한 데이터는 읽거나 이전하지 않는다. 토큰·최근 저장소·브랜치·Split view 선택 등
-  브라우저 저장 데이터의 공통 정책은 [기술 가이드](technical-guide.md#product-rename-and-saved-browser-data)를 따른다.
+  브라우저 저장 데이터의 공통 정책은 [기술 가이드](technical-guide.md#제품-이름과-브라우저-데이터)를 따른다.
 - JSON 배열의 각 항목은 `repository`(소문자 `owner/repo`), `visibility`(`public`/`private`), `visitedAt`(성공 시각의 Unix 밀리초)만 포함한다.
 - 중복 저장소는 가장 최근 항목으로 합치며 최근순으로 최대 10개를 유지한다. 유효하지 않은 항목·시각·공개 여부와 알 수 없는 필드는 제거한다.
 - `History.open()`이 기존 `/repos/{owner}/{repo}` 응답을 받고 취소되지 않은 것을 확인한 시점에 기록한다. 주소 입력·추천 검색 자체는 기록하지 않는다.
