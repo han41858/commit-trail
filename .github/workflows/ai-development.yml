@@ -10,6 +10,10 @@ on:
         description: 'Number of a previously started AI Issue'
         required: true
         type: number
+      dependency_resume:
+        description: 'Reservation ID for automatic dependency resume'
+        required: false
+        type: string
 
 permissions: {}
 

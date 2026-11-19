@@ -8,6 +8,7 @@ import {
   executionLabels,
   reconcile,
   runPipeline,
+  wakeDependents,
 } from './engine.mjs';
 
 const system = `You are working on a user-authorized software development task.
@@ -157,6 +158,28 @@ async function main() {
     token: env.GH_TOKEN,
     publishingToken: env.AI_AUTOMATION_TOKEN,
   });
+  if (process.argv[2] === '--wake-dependents') {
+    const pr = event.pull_request;
+    if (
+      env.GITHUB_EVENT_NAME === 'pull_request_target' &&
+      env.GITHUB_REF === `refs/heads/${config.base}` &&
+      event.action === 'closed' &&
+      event.repository?.full_name === repository &&
+      event.repository.default_branch === config.base &&
+      pr?.merged === true &&
+      pr.base?.ref === config.base &&
+      pr.base.repo?.full_name === repository &&
+      Number.isSafeInteger(pr.number) &&
+      pr.number > 0 &&
+      /^[a-f0-9]{40}$/.test(pr.merge_commit_sha || '')
+    )
+      await wakeDependents(
+        github,
+        { number: pr.number, sha: pr.merge_commit_sha },
+        config.base,
+      );
+    return;
+  }
   if (process.argv[2] === '--reconcile') {
     if (
       event.workflow_run?.path === '.github/workflows/ai-development.yml' &&
@@ -217,7 +240,13 @@ async function main() {
   if (!Number.isSafeInteger(issueNumber) || issueNumber < 1)
     throw new Error('유효한 Issue 번호가 필요합니다.');
   const actor = event.sender?.login;
-  if (!actor || !(await github.canStart(actor))) {
+  const dependencyResume = resume ? event.inputs?.dependency_resume : undefined;
+  const botResume =
+    dependencyResume &&
+    /^[0-9a-f-]{36}$/.test(dependencyResume) &&
+    actor === 'github-actions[bot]' &&
+    event.sender.type === 'Bot';
+  if (!botResume && (!actor || !(await github.canStart(actor)))) {
     console.log('저장소 쓰기 권한이 없는 사용자의 이벤트입니다.');
     return;
   }
@@ -237,6 +266,7 @@ async function main() {
       config,
       issueNumber,
       resume,
+      dependencyResume,
       eventLabel: event.label?.name,
       runId: Number(env.GITHUB_RUN_ID),
       attempt: Number(env.GITHUB_RUN_ATTEMPT),
