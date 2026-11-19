@@ -857,7 +857,8 @@ test('provider requests use the configured turn, output and effort budget', asyn
   assert.equal(bodies[0].reasoning.effort, 'high');
   assert.equal(bodies[2].max_tokens, 1234);
   assert.match(bodies[0].instructions, /including this one: 2/);
-  assert.match(bodies[3].system, /including this one: 1/);
+  assert.match(bodies[2].system, /up to 2 API requests/);
+  assert.equal(bodies[3].system, bodies[2].system);
   assert.equal(config.limits.turns >= 10, true);
 });
 
@@ -1394,6 +1395,48 @@ test('Claude streams are rebuilt into tool calls, text, stop reason and cumulati
   assert.equal(bodies[0].stream, true);
 });
 
+test('Claude continuation preserves signed blocks and always sends a valid tool-result message', async () => {
+  const signed = { type: 'thinking', thinking: '', signature: 'signed-value' };
+  const redacted = { type: 'redacted_thinking', data: 'opaque-data' };
+  const calls = [
+    { type: 'tool_use', id: 'toolu_1', name: 'read_diff', input: { line: 1 } },
+    { type: 'tool_use', id: 'toolu_2', name: 'read_diff', input: { line: 2 } },
+  ];
+  let system;
+  const { run } = streamingModels((body) => {
+    if (body.messages.length === 1) {
+      system = body.system;
+      return Response.json({
+        stop_reason: 'tool_use',
+        content: [signed, redacted, { type: 'text', text: '' }, ...calls],
+      });
+    }
+    assert.equal(body.system, system);
+    assert.deepEqual(body.messages.slice(1), [
+      { role: 'assistant', content: [signed, redacted, ...calls] },
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'toolu_1', content: 'diff' },
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_2',
+            content: 'No matching lines.',
+          },
+        ],
+      },
+    ]);
+    return Response.json({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(pass) }],
+    });
+  });
+  assert.deepEqual(
+    await run('claude', (_name, { line }) => (line === 1 ? 'diff' : '')),
+    pass,
+  );
+});
+
 test('Codex streams return the response carried by the terminal event', async () => {
   const completed = (output) => [
     { type: 'response.created', response: { status: 'in_progress' } },
@@ -1496,7 +1539,8 @@ test('a provider rejection records the failed turn and a fixed reason without le
       {
         error: {
           type: 'invalid_request_error',
-          message: 'tool_result: private request data',
+          message:
+            'messages.2.content.0.tool_use_id: tool_result private request data',
         },
       },
       { status: 400 },
@@ -1506,7 +1550,7 @@ test('a provider rejection records the failed turn and a fixed reason without le
   await assert.rejects(run('claude'), (error) => {
     assert.match(
       error.message,
-      /Claude API HTTP 400.*리뷰 요청 2회차, 도구 호출 형식/,
+      /Claude API HTTP 400.*리뷰 요청 2회차, 도구 호출 형식, 필드 messages\.2\.content\.0\.tool_use_id/,
     );
     assert.doesNotMatch(error.message, /private request data/);
     assert.equal(error.requestRejected, true);
