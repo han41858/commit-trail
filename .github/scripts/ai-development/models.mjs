@@ -93,6 +93,8 @@ function validate(value, schema, label) {
 // Provider text can contain request data. Store only fixed diagnostic labels.
 function providerReason(error) {
   const message = typeof error?.message === 'string' ? error.message : '';
+  if (/thinking|redacted_thinking|signature/i.test(message))
+    return '추론 블록 또는 서명';
   if (/credit balance|billing|insufficient.quota/i.test(message))
     return '결제 또는 사용량';
   if (
@@ -129,8 +131,42 @@ function providerReason(error) {
   }
 }
 
+function providerField(error) {
+  if (typeof error?.message !== 'string') return '';
+  // Match only recognized request fields and bounded decimal indexes.
+  const field = error.message.match(
+    /^(messages\.\d{1,3}\.content\.\d{1,3}(?:\.(?:text|thinking|signature|input|tool_use_id|type))?|system|model|max_tokens|output_config)(?=\s*:)/,
+  )?.[1];
+  return field ? `, 필드 ${field}` : '';
+}
+
 function streamError(reason) {
   return Object.assign(new Error(reason), { streamReason: reason });
+}
+
+function claudeAssistantContent(blocks) {
+  return blocks.flatMap((block) => {
+    switch (block.type) {
+      case 'text': {
+        const { text, citations } = block;
+        return text.trim()
+          ? [{ type: 'text', text, ...(citations?.length && { citations }) }]
+          : [];
+      }
+      case 'tool_use': {
+        const { id, name, input } = block;
+        return [{ type: 'tool_use', id, name, input }];
+      }
+      // Claude validates the signature of thinking blocks on continuation.
+      case 'thinking':
+      case 'redacted_thinking':
+        return [block];
+      default:
+        throw new Error(
+          'Claude 도구 호출에 지원하지 않는 응답 블록이 있습니다.',
+        );
+    }
+  });
 }
 
 export function validateReview(value) {
@@ -251,6 +287,8 @@ async function readClaudeStream(events) {
       const block = message.content[event.index];
       const { delta } = event;
       if (delta.type === 'text_delta') block.text += delta.text;
+      else if (delta.type === 'citations_delta')
+        block.citations = [...(block.citations ?? []), delta.citation];
       else if (delta.type === 'input_json_delta')
         partialInputs.set(
           event.index,
@@ -263,7 +301,7 @@ async function readClaudeStream(events) {
     } else if (event.type === 'content_block_stop') {
       if (partialInputs.has(event.index)) {
         const json = partialInputs.get(event.index);
-        message.content[event.index].input = json ? JSON.parse(json) : {};
+        if (json) message.content[event.index].input = JSON.parse(json);
       }
     } else if (event.type === 'message_delta') {
       Object.assign(message, event.delta);
@@ -334,7 +372,8 @@ export function createModels({
             : readClaudeStream(events));
         }
         const payload = await response.json().catch(() => null);
-        rejectionReason = providerReason(payload?.error);
+        rejectionReason =
+          providerReason(payload?.error) + providerField(payload?.error);
       } catch (error) {
         const reason = timeout.aborted
           ? '요청 시간 초과'
@@ -379,6 +418,10 @@ export function createModels({
       const model = modelNames[agent];
       const turnLimit =
         mode === 'review' ? (limits.reviewTurns ?? limits.turns) : limits.turns;
+      const claudeSystem =
+        mode === 'review'
+          ? `${instructions}\nYou have up to ${turnLimit} API requests to complete this review. Return the final structured result before exhausting the budget.`
+          : instructions;
       for (let turn = 1; turn <= turnLimit; turn++) {
         const turnInstructions =
           mode === 'review'
@@ -415,7 +458,7 @@ export function createModels({
               }
             : {
                 model,
-                system: turnInstructions,
+                system: claudeSystem,
                 messages: input,
                 max_tokens: limits.outputTokens,
                 output_config: { format: { type: 'json_schema', schema } },
@@ -461,18 +504,19 @@ export function createModels({
         } else {
           const output = data.content ?? [];
           if (data.stop_reason === 'tool_use') {
+            const calls = output.filter(({ type }) => type === 'tool_use');
+            if (!calls.length)
+              throw new Error(
+                'Claude 도구 호출 응답에 실행할 도구가 없습니다.',
+              );
+            const results = calls.map(({ name, input: args, id }) => ({
+              type: 'tool_result',
+              tool_use_id: id,
+              content: invokeTool(inspect, name, args) || 'No matching lines.',
+            }));
             input.push(
-              { role: 'assistant', content: output },
-              {
-                role: 'user',
-                content: output
-                  .filter(({ type }) => type === 'tool_use')
-                  .map(({ name, input: args, id }) => ({
-                    type: 'tool_result',
-                    tool_use_id: id,
-                    content: invokeTool(inspect, name, args),
-                  })),
-              },
+              { role: 'assistant', content: claudeAssistantContent(output) },
+              { role: 'user', content: results },
             );
           } else if (data.stop_reason === 'end_turn') {
             return verifyResult(
