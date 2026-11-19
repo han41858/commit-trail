@@ -339,11 +339,33 @@ export function createWorkspace({
       const dependencies = prepareDependencies(source);
       if (!dependencies.ok) return dependencies;
       const checkMarker = `${container}:check:`;
+      const formatMarker = `${container}:formatted:`;
+      const paths = changes
+        .filter(({ text }) => text !== null)
+        .map(({ path }) => path);
+      const formatCandidate = `node --input-type=module <<'COMMIT_TRAIL_FORMAT'
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+const paths = ${JSON.stringify(paths)};
+execFileSync(
+  './node_modules/.bin/prettier',
+  ['--write', '--ignore-unknown', ...paths.map((path) => './' + path)],
+  { stdio: 'inherit' },
+);
+const formatted = paths
+  .map((path) => ({ path, text: readFileSync(path, 'utf8') }))
+  .filter(({ path, text }) => text !== readFileSync('/source/' + path, 'utf8'));
+console.log(${JSON.stringify(formatMarker)} + JSON.stringify(formatted));
+COMMIT_TRAIL_FORMAT`;
       const script = [
         'mkdir /tmp/project',
         'cp -a --no-preserve=ownership /source/. /tmp/project/',
         'cd /tmp/project',
         'cp -a --no-preserve=ownership /dependencies/node_modules ./node_modules',
+        ...(paths.length
+          ? [`printf '%s\\n' '${checkMarker}format'`, formatCandidate]
+          : []),
         ...config.checks.flatMap((command, index) => [
           `printf '%s\\n' '${checkMarker}${index}'`,
           command,
@@ -386,18 +408,55 @@ export function createWorkspace({
         throw new Error(
           '격리 테스트를 끝낼 수 없습니다. Docker 실행 환경과 제한 시간을 확인하세요.',
         );
-      const lastCheck = result.stdout
-        ?.split('\n')
-        .findLast((line) => line.startsWith(checkMarker));
-      const index = lastCheck
-        ? Number(lastCheck.slice(checkMarker.length))
-        : -1;
+      const lines = (result.stdout ?? '').split('\n');
+      if (result.status === 0) {
+        const formatted = new Map(
+          changes.map(({ path, text }) => [path, text]),
+        );
+        if (paths.length) {
+          const reports = lines.filter((line) => line.startsWith(formatMarker));
+          try {
+            if (reports.length !== 1) throw new Error('missing format result');
+            const seen = new Set();
+            for (const { path, text } of JSON.parse(
+              reports[0].slice(formatMarker.length),
+            )) {
+              if (
+                !formatted.has(path) ||
+                formatted.get(path) === null ||
+                seen.has(path) ||
+                typeof text !== 'string' ||
+                text.includes('\0') ||
+                Buffer.byteLength(text) > maxFileBytes
+              )
+                throw new Error('invalid format result');
+              seen.add(path);
+              formatted.set(path, text);
+            }
+          } catch {
+            return {
+              ok: false,
+              step: '포맷 결과 회수',
+              log: '변경한 파일의 포맷 결과를 검증할 수 없습니다.',
+            };
+          }
+        }
+        return {
+          ok: true,
+          changes: [...formatted].map(([path, text]) => ({ path, text })),
+        };
+      }
+      const lastCheck = lines.findLast((line) => line.startsWith(checkMarker));
+      const stage = lastCheck?.slice(checkMarker.length);
       return {
-        ok: result.status === 0,
-        ...(result.status !== 0 && {
-          step: config.checks[index] ?? '격리 검사 준비',
-        }),
-        log: `${result.stdout ?? ''}\n${result.stderr ?? ''}`.slice(-6500),
+        ok: false,
+        step:
+          stage === 'format'
+            ? '변경 파일 Prettier 적용'
+            : (config.checks[Number(stage)] ?? '격리 검사 준비'),
+        log: `${lines.filter((line) => !line.startsWith(formatMarker)).join('\n')}\n${result.stderr ?? ''}`.slice(
+          -6500,
+        ),
       };
     } finally {
       spawn('docker', ['container', 'rm', '--force', container], {

@@ -151,7 +151,10 @@ test('development retries a missing or ambiguous edit against the original snaps
           assert.deepEqual(changes, [
             { path, text: 'repeat updated left\nupdated right\n' },
           ]);
-          return { ok: true };
+          return {
+            ok: true,
+            changes: [{ path, text: 'validated output\n' }],
+          };
         },
       },
       { issue: { number: 233 }, state: {}, guard: async () => {} },
@@ -164,7 +167,7 @@ test('development retries a missing or ambiguous edit against the original snaps
       before === 'repeat' ? /여러 곳/ : /찾을 수 없/,
     );
     assert.equal(validations, 1);
-    assert.equal(result.changes.length, 1);
+    assert.deepEqual(result.changes, [{ path, text: 'validated output\n' }]);
   }
 });
 
@@ -190,6 +193,8 @@ test('dependencies use the edited manifests and invalidate the cache when either
     if (args[0] === 'run') {
       runs++;
       assert.equal(args[args.indexOf('--network') + 1], 'none');
+      const name = args[args.indexOf('--name') + 1];
+      return { status: 0, stdout: `${name}:formatted:[]\n`, stderr: '' };
     }
     return { status: 0, stdout: '', stderr: '' };
   });
@@ -230,6 +235,35 @@ test('dependencies use the edited manifests and invalidate the cache when either
       [1, 1, 2],
     );
     assert.equal(runs, 4);
+  } finally {
+    context.close();
+  }
+});
+
+test('validation returns formatted bytes only for existing candidate paths', () => {
+  let formatted = [{ path: 'example.js', text: 'const x = 1;\n' }];
+  const context = fixture((_command, args) => {
+    if (args[0] !== 'run') return { status: 0 };
+    const name = args[args.indexOf('--name') + 1];
+    const script = args.at(-1);
+    assert.match(script, /const paths = \["example\.js"\]/);
+    assert(script.indexOf("'--write'") < script.lastIndexOf('node --version'));
+    return {
+      status: 0,
+      stdout: `${name}:formatted:${JSON.stringify(formatted)}\n`,
+    };
+  });
+  try {
+    const changes = [
+      { path: 'example.js', text: 'const x=1;' },
+      { path: 'AGENTS.md', text: null },
+    ];
+    assert.deepEqual(context.workspace.runChecks(context.state, changes), {
+      ok: true,
+      changes: [{ path: 'example.js', text: 'const x = 1;\n' }, changes[1]],
+    });
+    formatted = [{ path: 'AGENTS.md', text: 'unexpected' }];
+    assert.equal(context.workspace.runChecks(context.state, changes).ok, false);
   } finally {
     context.close();
   }

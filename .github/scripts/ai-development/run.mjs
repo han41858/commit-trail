@@ -107,8 +107,15 @@ export async function develop(
       );
     await guard();
     const validation = workspace.runChecks(state, changes);
-    if (validation.ok)
-      return { title: plan.title, summary: plan.summary, changes };
+    if (validation.ok) {
+      const formatted = validation.changes.filter(
+        ({ path, text }) =>
+          text !== (snapshot.files.has(path) ? snapshot.read(path) : null),
+      );
+      if (!formatted.length)
+        throw new NeedsHuman('포맷 적용 후 커밋할 변경이 남지 않았습니다.');
+      return { title: plan.title, summary: plan.summary, changes: formatted };
+    }
     failedSteps.push(validation.step);
     failure = {
       step: validation.step,
