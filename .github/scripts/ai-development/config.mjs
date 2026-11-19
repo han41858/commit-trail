@@ -10,6 +10,7 @@ export const config = {
   // Provider call budget for one development or review request.
   limits: {
     turns: 30,
+    reviewTurns: 45,
     outputTokens: 32_000,
     edits: 80,
     // Responses are streamed: the idle limit bounds the gap between events, the request limit the whole call.
