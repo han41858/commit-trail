@@ -218,6 +218,34 @@ export async function runPipeline({
       displayedCheck = key;
   }
 
+  async function requireMergedDependencies() {
+    let dependencies;
+    try {
+      dependencies = await github.blockedBy(issueNumber);
+    } catch {
+      throw new NeedsHuman(
+        '이 Issue의 Blocked by 목록을 확인할 수 없어 대기합니다. GitHub 조회 상태를 확인한 뒤 수동 재개하세요.',
+      );
+    }
+    const waiting = [];
+    for (const { number, local } of dependencies) {
+      if (!local) {
+        waiting.push(`#${number} (다른 저장소)`);
+        continue;
+      }
+      try {
+        if (!(await github.hasMergedClosingPull(number, config.base)))
+          waiting.push(`#${number} (머지 확인 안 됨)`);
+      } catch {
+        waiting.push(`#${number} (연결 PR 조회 실패)`);
+      }
+    }
+    if (waiting.length)
+      throw new NeedsHuman(
+        `선행 작업 대기: ${waiting.join(', ')}. 연결된 PR이 ${config.base}에 머지된 뒤 수동 재개하세요.`,
+      );
+  }
+
   async function guard({ recovering = false, staleBase = false } = {}) {
     const currentIssue = await github.issue(issueNumber);
     if (
@@ -342,6 +370,7 @@ export async function runPipeline({
       throw new NeedsHuman(
         '현재 PR에 머지 충돌이 있습니다. PR을 수동으로 확인하세요.',
       );
+    await requireMergedDependencies();
 
     let converted = !pr.draft;
     if (pr.draft) {
@@ -362,6 +391,7 @@ export async function runPipeline({
       throw new NeedsHuman(
         '교차 리뷰와 필수 CI를 통과했습니다. PR의 Draft 해제를 확인하지 못했습니다. PR에서 Ready for review를 누른 뒤 확인하세요.',
       );
+    await requireMergedDependencies();
     delete state.awaitingCI;
     state.mergeAttempted = true;
     await save(
@@ -463,6 +493,7 @@ export async function runPipeline({
     }
     // The CI follow-up has no models to review a refreshed HEAD, so it keeps the strict check.
     await guard({ recovering: !ciCompletion, staleBase: !ciCompletion });
+    await requireMergedDependencies();
     if (ciCompletion) {
       const ci = await checkCI(state, guard);
       if (ci.ok) await completeMerge(ci);

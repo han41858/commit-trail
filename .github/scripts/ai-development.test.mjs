@@ -103,6 +103,8 @@ function fixture({
   };
   const github = {
     issue: async () => structuredClone(data.issue),
+    blockedBy: async () => [],
+    hasMergedClosingPull: async () => false,
     loadState: async () => structuredClone(data.record),
     saveState: async (_, state) => {
       data.record = { id: 290, state: structuredClone(state) };
@@ -445,6 +447,141 @@ test('conflicting labels block startup with a deduplicated notice; unlabeled and
   assert.equal(data.commits.length, 0);
   assert.equal(await run({ eventLabel: 'bug' }), undefined);
   await assert.rejects(run({ resume: true }), /최초 실행은 실행 라벨/);
+});
+
+test('all explicitly blocked issues must have a merged dev PR before a manual resume can develop', async () => {
+  const { data, github, run } = fixture();
+  const merged = new Set([11]);
+  github.blockedBy = async () => [
+    { number: 11, local: true },
+    { number: 12, local: true },
+  ];
+  github.hasMergedClosingPull = async (number, base) => {
+    assert.equal(base, 'dev');
+    return merged.has(number);
+  };
+
+  const paused = await run();
+  assert.equal(paused.status, 'needs_human');
+  assert.match(paused.reason, /#12/);
+  assert.equal(data.remote, null);
+  assert.equal(data.pull, null);
+  assert.equal(
+    data.events.some((event) => event?.developer),
+    false,
+  );
+
+  merged.add(12);
+  assert.equal((await run({ resume: true, runId: 101 })).status, 'merged');
+  assert.equal(data.events.filter((event) => event?.developer).length, 1);
+});
+
+test('dependency API failure does not start development', async () => {
+  const { data, github, run } = fixture();
+  github.blockedBy = async () => {
+    throw new Error('HTTP 403');
+  };
+  const paused = await run();
+  assert.equal(paused.status, 'needs_human');
+  assert.match(paused.reason, /Blocked by/);
+  assert.equal(data.remote, null);
+  assert.equal(
+    data.events.some((event) => event?.developer),
+    false,
+  );
+});
+
+test('a dependency added during CI blocks the normal and CI follow-up merge paths', async () => {
+  for (const followUp of [false, true]) {
+    const { data, github, run } = fixture({
+      ci: { ok: false, reason: 'CI 승인 필요' },
+    });
+    let blocked = false;
+    github.blockedBy = async () =>
+      blocked ? [{ number: 12, local: true }] : [];
+    if (followUp) {
+      assert.equal((await run()).awaitingCI, true);
+    }
+    const state = await run({
+      ...(followUp && {
+        resume: true,
+        runId: 101,
+        ciCompletion: { head_sha: heads[0], head_branch: 'ai/issue-13-codex' },
+      }),
+      async checkCI() {
+        blocked = true;
+        return { ok: true, url: 'https://github.com/ci' };
+      },
+    });
+    assert.equal(state.status, 'needs_human');
+    assert.match(state.reason, /#12/);
+    assert.equal(data.pull.draft, true);
+    assert.deepEqual(data.mergeRequests, []);
+  }
+});
+
+test('GitHub dependency lookup paginates and requires a closing PR merged into this repo dev', async () => {
+  const calls = [];
+  const github = createGitHub({
+    repository: 'owner/repo',
+    token: 'workflow-token',
+    async request(url, init) {
+      assert.equal(init.headers.authorization, 'Bearer workflow-token');
+      const parsed = new URL(url);
+      calls.push(parsed.pathname);
+      if (init.method === 'GET') {
+        const first = parsed.searchParams.get('page') === '1';
+        return Response.json(
+          Array.from({ length: first ? 100 : 1 }, (_, index) => ({
+            number: first ? index + 1 : 101,
+            repository_url: `https://api.github.com/repos/owner/${first ? 'repo' : 'other'}`,
+          })),
+        );
+      }
+      const { variables } = JSON.parse(init.body);
+      const node = (merged, baseRefName, nameWithOwner = 'owner/repo') => ({
+        merged,
+        baseRefName,
+        baseRepository: { nameWithOwner },
+      });
+      if (variables.issue === 3)
+        return Response.json({ errors: [{ message: 'Unavailable' }] });
+      const nodes = variables.after
+        ? variables.issue === 2
+          ? [node(true, 'dev')]
+          : []
+        : [
+            node(false, 'dev'),
+            node(true, 'main'),
+            node(true, 'dev', 'owner/other'),
+          ];
+      return Response.json({
+        data: {
+          repository: {
+            issue: {
+              closedByPullRequestsReferences: {
+                nodes,
+                pageInfo: {
+                  hasNextPage: !variables.after,
+                  endCursor: 'next-page',
+                },
+              },
+            },
+          },
+        },
+      });
+    },
+  });
+  const dependencies = await github.blockedBy(200);
+  assert.equal(dependencies.length, 101);
+  assert.deepEqual(dependencies.at(-1), { number: 101, local: false });
+  assert.equal(await github.hasMergedClosingPull(1, 'dev'), false);
+  assert.equal(await github.hasMergedClosingPull(2, 'dev'), true);
+  await assert.rejects(
+    github.hasMergedClosingPull(3, 'dev'),
+    /could not be verified/,
+  );
+  assert.equal(calls.length, 7);
 });
 
 test('approval wait pauses merging and resumes CI without repeating the same review', async () => {
