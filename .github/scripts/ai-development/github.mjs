@@ -33,7 +33,7 @@ export function createGitHub({
   sleep = wait,
 }) {
   const repo = `https://api.github.com/repos/${repository}`;
-  const owner = repository.split('/')[0];
+  const [owner, repoName] = repository.split('/');
   const reviewChecks = new Map();
 
   async function verifyCredentials() {
@@ -135,6 +135,74 @@ export function createGitHub({
     verifyCredentials,
     issue(number) {
       return api(`/issues/${number}`);
+    },
+    async blockedBy(issue) {
+      const dependencies = [];
+      for (let page = 1; ; page++) {
+        const issues = await api(
+          `/issues/${issue}/dependencies/blocked_by?per_page=100&page=${page}`,
+        );
+        if (!Array.isArray(issues))
+          throw new Error('Invalid issue dependency list');
+        for (const item of issues) {
+          if (
+            !Number.isSafeInteger(item?.number) ||
+            item.number < 1 ||
+            typeof item.repository_url !== 'string'
+          )
+            throw new Error('Invalid issue dependency');
+          dependencies.push({
+            number: item.number,
+            local: item.repository_url.toLowerCase() === repo.toLowerCase(),
+          });
+        }
+        if (issues.length < 100) return dependencies;
+      }
+    },
+    async hasMergedClosingPull(issue, base) {
+      let after = null;
+      const seen = new Set();
+      for (;;) {
+        const response = await api('/graphql', {
+          method: 'POST',
+          payload: {
+            query: `query ClosingPulls($owner: String!, $repo: String!, $issue: Int!, $after: String) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $issue) {
+                  closedByPullRequestsReferences(first: 50, after: $after) {
+                    nodes { merged baseRefName baseRepository { nameWithOwner } }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }
+            }`,
+            variables: { owner, repo: repoName, issue, after },
+          },
+        });
+        const prs =
+          response.data?.repository?.issue?.closedByPullRequestsReferences;
+        if (
+          response.errors?.length ||
+          !Array.isArray(prs?.nodes) ||
+          typeof prs.pageInfo?.hasNextPage !== 'boolean'
+        )
+          throw new Error('Closing pull requests could not be verified');
+        if (
+          prs.nodes.some(
+            (pr) =>
+              pr?.merged === true &&
+              pr.baseRefName === base &&
+              pr.baseRepository?.nameWithOwner?.toLowerCase() ===
+                repository.toLowerCase(),
+          )
+        )
+          return true;
+        if (!prs.pageInfo.hasNextPage) return false;
+        after = prs.pageInfo.endCursor;
+        if (typeof after !== 'string' || !after || seen.has(after))
+          throw new Error('Invalid closing pull request cursor');
+        seen.add(after);
+      }
     },
     pull(number) {
       return api(`/pulls/${number}`);
