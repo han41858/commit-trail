@@ -139,6 +139,36 @@ async function main() {
     }
     return;
   }
+  if (process.argv[2] === '--complete-ci') {
+    const run = event.workflow_run;
+    const match = /^ai\/issue-([1-9]\d*)-(codex|claude)$/.exec(
+      run?.head_branch,
+    );
+    const issueNumber = Number(match?.[1]);
+    if (
+      env.GITHUB_EVENT_NAME !== 'workflow_run' ||
+      run?.path !== `.github/workflows/${config.ciWorkflow}` ||
+      run.event !== 'pull_request' ||
+      run.head_repository?.full_name !== repository ||
+      run.status !== 'completed' ||
+      run.conclusion !== 'success' ||
+      !Number.isSafeInteger(issueNumber)
+    )
+      return;
+    const state = await runPipeline({
+      github,
+      config,
+      issueNumber,
+      resume: true,
+      ciCompletion: run,
+      runId: Number(env.GITHUB_RUN_ID),
+      attempt: Number(env.GITHUB_RUN_ATTEMPT),
+      checkCI: (current, guard) =>
+        waitForCI(github, config, current, guard, { attempts: 1 }),
+    });
+    if (state?.status === 'failed') throw new Error(state.reason);
+    return;
+  }
 
   if (
     env.GITHUB_REF !== `refs/heads/${config.base}` ||
