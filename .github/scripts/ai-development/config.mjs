@@ -7,6 +7,13 @@ export const config = {
     codex: process.env.AI_CODEX_MODEL || 'gpt-5.3-codex',
     claude: process.env.AI_CLAUDE_MODEL || 'claude-sonnet-4-6',
   },
+  // Provider call budget for one development or review request.
+  limits: {
+    turns: 30,
+    outputTokens: 16_000,
+    requestTimeout: 300_000,
+    codexEffort: 'medium',
+  },
   instructions: 'AGENTS.md',
   editablePaths: [
     'src/',

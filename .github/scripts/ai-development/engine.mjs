@@ -62,6 +62,23 @@ async function confirmedMerge(github, state, base) {
     return pr.merge_commit_sha;
 }
 
+// Editing the state comment sends no notification, so a stop also gets its own comment.
+async function notifyStop(github, issue, state) {
+  try {
+    await github.notice(
+      issue,
+      `**AI 개발 중단** · ` +
+        '`' +
+        state.status +
+        '`' +
+        `\n\n${state.reason}\n\n상태 댓글과 Actions 실행 ${state.runId}을 확인하세요.`,
+      `stop-${state.runId}-${state.attempt}`,
+    );
+  } catch (error) {
+    console.warn(`중단 알림 댓글을 남기지 못했습니다. ${error.message}`);
+  }
+}
+
 function mergedMessage(state, base) {
   return `PR #${state.pull}이 ${base}에 머지되었습니다. 머지 커밋 ${state.mergeCommit}.`;
 }
@@ -428,6 +445,7 @@ export async function runPipeline({
       error.message,
       needsHuman ? error.detail : undefined,
     );
+    await notifyStop(github, issueNumber, state);
     return state;
   }
 }
@@ -457,14 +475,12 @@ export async function reconcile(github, run, base) {
       return;
     }
   }
-  await github.saveState(
-    issue,
-    {
-      ...record.state,
-      status: run.conclusion === 'cancelled' ? 'needs_human' : 'failed',
-      reason:
-        '워크플로가 종료 상태를 기록하기 전에 중단되었습니다. Actions 로그와 현재 커밋을 확인한 뒤 수동 재개하세요.',
-    },
-    record.id,
-  );
+  const stopped = {
+    ...record.state,
+    status: run.conclusion === 'cancelled' ? 'needs_human' : 'failed',
+    reason:
+      '워크플로가 종료 상태를 기록하기 전에 중단되었습니다. Actions 로그와 현재 커밋을 확인한 뒤 수동 재개하세요.',
+  };
+  await github.saveState(issue, stopped, record.id);
+  await notifyStop(github, issue, stopped);
 }

@@ -14,7 +14,8 @@ jobs:
       github.event.workflow_run.head_branch == 'dev' &&
       github.event.workflow_run.conclusion != 'success'
     concurrency:
-      group: ${{ github.event.workflow_run.display_title }}
+      group: ai-development-${{ github.repository }}
+      queue: max
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -58,7 +59,8 @@ jobs:
     needs: identify-ci-issue
     if: needs.identify-ci-issue.outputs.issue != ''
     concurrency:
-      group: 'AI development for Issue #${{ needs.identify-ci-issue.outputs.issue }}'
+      group: ai-development-${{ github.repository }}
+      queue: max
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5

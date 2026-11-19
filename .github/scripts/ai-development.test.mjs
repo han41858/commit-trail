@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   NeedsHuman,
@@ -224,6 +225,11 @@ test('a developer blocker explains the stop on the Issue without starting review
   assert.equal(data.record.state.detail, detail);
   assert.equal(data.pull, null);
   assert.equal(data.reviews.size, 0);
+  // The stop is announced once in its own comment, without the model-supplied detail.
+  assert.deepEqual([...data.notes.keys()], ['13:stop-100-1']);
+  assert.match(data.notes.get('13:stop-100-1'), /needs_human/);
+  assert.match(data.notes.get('13:stop-100-1'), /사용자 판단이 필요합니다/);
+  assert.doesNotMatch(data.notes.get('13:stop-100-1'), /@example/);
 
   let body;
   const github = createGitHub({
@@ -301,7 +307,9 @@ test('conflicting labels block startup with a deduplicated notice; unlabeled and
 test('approval wait pauses merging and resumes CI without repeating the same review', async () => {
   const { data, run } = fixture({ ci: { ok: false, reason: 'CI 승인 필요' } });
   assert.equal((await run()).status, 'needs_human');
-  assert.equal(data.notes.size, 0);
+  // Only the stop is announced; the PR has no ready notice yet.
+  assert.deepEqual([...data.notes.keys()], ['13:stop-100-1']);
+  assert.match(data.notes.get('13:stop-100-1'), /CI 승인 필요/);
   assert.equal(data.mergeRequests.length, 0);
   const state = await run({
     resume: true,
@@ -312,7 +320,10 @@ test('approval wait pauses merging and resumes CI without repeating the same rev
   assert.equal(data.events.filter((item) => item?.reviewer).length, 1);
   assert.equal((await run({ resume: true, runId: 102 })).status, 'merged');
   assert.deepEqual(data.mergeRequests, [heads[0]]);
-  assert.equal(data.notes.size, 1);
+  assert.deepEqual(
+    [...data.notes.keys()],
+    ['13:stop-100-1', `99:ready-${heads[0]}`],
+  );
 });
 
 test('CI completion merges the verified PR without a manual run or another review', async () => {
@@ -525,10 +536,101 @@ test('cleanup only updates the exact interrupted attempt, and ai:stop halts work
     run_attempt: 2,
     conclusion: 'cancelled',
   };
+  data.notes.clear();
   await reconcile(github, event, config.base);
   assert.equal(data.record.state.status, 'reviewing');
+  assert.equal(data.notes.size, 0);
   await reconcile(github, { ...event, run_attempt: 1 }, config.base);
   assert.equal(data.record.state.status, 'needs_human');
+  assert.match(data.notes.get('13:stop-100-1'), /종료 상태를 기록하기 전에/);
+});
+
+test('a successful merge leaves no stop notice', async () => {
+  const { data, run } = fixture();
+  const state = await run();
+  assert.equal(state.status, 'merged');
+  assert.equal(
+    [...data.notes.keys()].some((key) => key.includes(':stop-')),
+    false,
+  );
+});
+
+test('every AI development job shares one queued concurrency group', () => {
+  const groups = ['ai-development.yml', 'ai-development-cleanup.yml']
+    .map((name) =>
+      readFileSync(new URL(`../workflows/${name}`, import.meta.url), 'utf8'),
+    )
+    .flatMap((text) => [
+      ...text.matchAll(
+        /concurrency:\n\s+group: (.+)\n\s+queue: max\n\s+cancel-in-progress: false/g,
+      ),
+    ])
+    .map((match) => match[1]);
+  assert.deepEqual(groups, [
+    'ai-development-${{ github.repository }}',
+    'ai-development-${{ github.repository }}',
+    'ai-development-${{ github.repository }}',
+  ]);
+});
+
+test('provider requests use the configured turn, output and effort budget', async () => {
+  const bodies = [];
+  const limits = {
+    turns: 2,
+    outputTokens: 1234,
+    requestTimeout: 1000,
+    codexEffort: 'high',
+  };
+  for (const agent of ['codex', 'claude']) {
+    const models = createModels({
+      keys: { codex: 'openai-mock', claude: 'anthropic-mock' },
+      modelNames: config.models,
+      limits,
+      log() {},
+      async request(_url, options) {
+        bodies.push(JSON.parse(options.body));
+        // Keep asking for a tool so the turn budget is what stops the loop.
+        return agent === 'codex'
+          ? Response.json({
+              status: 'completed',
+              output: [
+                {
+                  type: 'function_call',
+                  name: 'read_diff',
+                  arguments: '{"line":1}',
+                  call_id: 'call_1',
+                },
+              ],
+            })
+          : Response.json({
+              stop_reason: 'tool_use',
+              content: [
+                {
+                  type: 'tool_use',
+                  name: 'read_diff',
+                  input: { line: 1 },
+                  id: 'toolu_1',
+                },
+              ],
+            });
+      },
+    });
+    await assert.rejects(
+      models.run({
+        agent,
+        mode: 'review',
+        instructions: 'review',
+        context: 'issue',
+        inspect: () => 'diff',
+      }),
+      /최대 횟수/,
+    );
+  }
+  assert.equal(bodies.length, 4);
+  assert.equal(bodies[0].max_output_tokens, 1234);
+  assert.equal(bodies[0].reasoning.effort, 'high');
+  assert.equal(bodies[2].max_tokens, 1234);
+  assert.equal(config.limits.turns >= 10, true);
 });
 
 test('CI requires the configured job to succeed on the specific PR HEAD', async () => {

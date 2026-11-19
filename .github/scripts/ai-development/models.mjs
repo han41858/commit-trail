@@ -1,5 +1,5 @@
 import { setTimeout as wait } from 'node:timers/promises';
-import { agents } from './config.mjs';
+import { agents, config } from './config.mjs';
 
 const object = (properties) => ({
   type: 'object',
@@ -140,6 +140,7 @@ export function validateDevelopment(value) {
 export function createModels({
   keys,
   modelNames,
+  limits = config.limits,
   request = fetch,
   sleep = wait,
   log = console.log,
@@ -170,7 +171,7 @@ export function createModels({
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(75_000),
+          signal: AbortSignal.timeout(limits.requestTimeout),
         });
       } catch {
         // The provider may already have processed a request with an unknown transport outcome.
@@ -207,7 +208,7 @@ export function createModels({
       const input = [{ role: 'user', content: context }];
       const isCodex = agent === 'codex';
       const model = modelNames[agent];
-      for (let turn = 1; turn <= 10; turn++) {
+      for (let turn = 1; turn <= limits.turns; turn++) {
         const data = await call(
           agent,
           isCodex
@@ -217,8 +218,8 @@ export function createModels({
                 input,
                 store: false,
                 include: ['reasoning.encrypted_content'],
-                max_output_tokens: 8000,
-                reasoning: { effort: 'low' },
+                max_output_tokens: limits.outputTokens,
+                reasoning: { effort: limits.codexEffort },
                 text: {
                   format: {
                     type: 'json_schema',
@@ -241,7 +242,7 @@ export function createModels({
                 model,
                 system: instructions,
                 messages: input,
-                max_tokens: 8000,
+                max_tokens: limits.outputTokens,
                 output_config: { format: { type: 'json_schema', schema } },
                 tools: Object.entries(tools).map(
                   ([name, { description, input }]) => ({
