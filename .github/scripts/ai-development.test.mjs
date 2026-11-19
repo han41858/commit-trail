@@ -6,6 +6,7 @@ import {
   runPipeline,
   reconcile,
   pullMarker,
+  wakeDependents,
 } from './ai-development/engine.mjs';
 import { createGitHub, waitForCI } from './ai-development/github.mjs';
 import {
@@ -105,6 +106,7 @@ function fixture({
     issue: async () => structuredClone(data.issue),
     blockedBy: async () => [],
     hasMergedClosingPull: async () => false,
+    hasActiveDevelopment: async () => false,
     loadState: async () => structuredClone(data.record),
     saveState: async (_, state) => {
       data.record = { id: 290, state: structuredClone(state) };
@@ -476,6 +478,126 @@ test('all explicitly blocked issues must have a merged dev PR before a manual re
   assert.equal(data.events.filter((event) => event?.developer).length, 1);
 });
 
+test('merged dependencies reserve a waiting run only once and a manual resume consumes it', async () => {
+  for (const manualFirst of [false, true]) {
+    const { github, data, run } = fixture();
+    const merged = new Set([11]);
+    const dispatched = [];
+    github.blockedBy = async () => [
+      { number: 11, local: true },
+      { number: 12, local: true },
+    ];
+    github.hasMergedClosingPull = async (issue) => merged.has(issue);
+    github.closingIssues = async (pr) => [pr === 31 ? 11 : 12];
+    github.blocking = async () => [
+      { number: 13, local: true },
+      { number: 13, local: true },
+    ];
+    github.dispatchDependencyResume = async (issue, base, reservation) =>
+      dispatched.push({ issue, base, reservation });
+    await run();
+    assert.equal(data.record.state.waitingForDependencies, true);
+    await wakeDependents(github, { number: 31, sha: mergeCommit }, 'dev');
+    assert.deepEqual(dispatched, []);
+    merged.add(12);
+    data.issue.labels.push({ name: 'ai:stop' });
+    await wakeDependents(github, { number: 32, sha: mergeCommit }, 'dev');
+    assert.deepEqual(dispatched, []);
+    data.issue.labels.pop();
+    github.hasActiveDevelopment = async () => true;
+    await wakeDependents(github, { number: 32, sha: mergeCommit }, 'dev');
+    assert.deepEqual(dispatched, []);
+    github.hasActiveDevelopment = async () => false;
+    await wakeDependents(github, { number: 32, sha: mergeCommit }, 'dev');
+    await wakeDependents(github, { number: 32, sha: mergeCommit }, 'dev');
+    assert.equal(dispatched.length, 1);
+    const { issue, base, reservation } = dispatched[0];
+    assert.deepEqual({ issue, base }, { issue: 13, base: 'dev' });
+    assert.equal(
+      await run({ resume: true, dependencyResume: 'wrong-reservation' }),
+      undefined,
+    );
+    const automatic = {
+      resume: true,
+      dependencyResume: reservation,
+      runId: 101,
+    };
+    const first = manualFirst ? { resume: true, runId: 101 } : automatic;
+    assert.equal((await run(first)).status, 'merged');
+    assert.equal(await run(automatic), undefined);
+    assert.equal(data.commits.length, 1);
+    assert.equal(data.record.state.dependencyDispatch, undefined);
+  }
+});
+
+test('a chain reserves only the dependent whose immediate predecessor merged', async () => {
+  const b = fixture();
+  const c = fixture();
+  const merged = new Set();
+  const dependencies = new Map([
+    [13, 12],
+    [14, 13],
+  ]);
+  const blockedBy = async (issue) => [
+    { number: dependencies.get(issue), local: true },
+  ];
+  for (const job of [b, c]) {
+    job.github.blockedBy = blockedBy;
+    job.github.hasMergedClosingPull = async (issue) => merged.has(issue);
+  }
+  await b.run();
+  await c.run({ issueNumber: 14 });
+  const jobs = new Map([
+    [13, b],
+    [14, c],
+  ]);
+  const dispatched = [];
+  const github = {
+    blockedBy,
+    hasMergedClosingPull: async (issue) => merged.has(issue),
+    closingIssues: async (pr) => (pr === 31 ? [12] : [13]),
+    blocking: async (issue) => [{ number: issue + 1, local: true }],
+    issue: (issue) => jobs.get(issue).github.issue(issue),
+    loadState: (issue) => jobs.get(issue).github.loadState(issue),
+    saveState: (issue, state, id) =>
+      jobs.get(issue).github.saveState(issue, state, id),
+    hasActiveDevelopment: async () => false,
+    dispatchDependencyResume: async (issue) => dispatched.push(issue),
+  };
+  merged.add(12);
+  await wakeDependents(github, { number: 31, sha: mergeCommit }, 'dev');
+  assert.deepEqual(dispatched, [13]);
+  merged.add(13);
+  await wakeDependents(github, { number: 32, sha: mergeCommit }, 'dev');
+  assert.deepEqual(dispatched, [13, 14]);
+});
+
+test('an uncertain dependency dispatch leaves a notice and allows manual resume', async () => {
+  const { github, data, run } = fixture();
+  let merged = false;
+  let attempts = 0;
+  github.blockedBy = async () => [{ number: 12, local: true }];
+  github.hasMergedClosingPull = async () => merged;
+  github.closingIssues = async () => [12];
+  github.blocking = async () => [{ number: 13, local: true }];
+  github.dispatchDependencyResume = async () => {
+    attempts++;
+    throw new Error('Response lost');
+  };
+  await run();
+  merged = true;
+  await wakeDependents(github, { number: 32, sha: mergeCommit }, 'dev');
+  await wakeDependents(github, { number: 32, sha: mergeCommit }, 'dev');
+  assert.equal(attempts, 1);
+  assert.match(data.record.state.reason, /예약 결과를 확인하지 못했습니다/);
+  assert(
+    [...data.notes.keys()].some((key) =>
+      key.startsWith('13:dependency-dispatch-'),
+    ),
+  );
+  assert.equal((await run({ resume: true, runId: 101 })).status, 'merged');
+});
+
 test('dependency API failure does not start development', async () => {
   const { data, github, run } = fixture();
   github.blockedBy = async () => {
@@ -582,6 +704,68 @@ test('GitHub dependency lookup paginates and requires a closing PR merged into t
     /could not be verified/,
   );
   assert.equal(calls.length, 7);
+});
+
+test('dependency merge lookup trusts only a verified same-repo merge and dispatches to dev', async () => {
+  const calls = [];
+  const github = createGitHub({
+    repository: 'owner/repo',
+    token: 'workflow-token',
+    async request(url, init) {
+      assert.equal(init.headers.authorization, 'Bearer workflow-token');
+      const path = new URL(url).pathname;
+      const body = JSON.parse(init.body);
+      calls.push({ path, body });
+      if (path === '/graphql') {
+        const { pull, after } = body.variables;
+        const local = { nameWithOwner: 'owner/repo' };
+        return Response.json({
+          data: {
+            repository: {
+              pullRequest: {
+                merged: true,
+                baseRefName: pull === 31 ? 'dev' : 'main',
+                mergeCommit: { oid: mergeCommit },
+                closingIssuesReferences: {
+                  nodes: after
+                    ? [{ number: 12, repository: local }]
+                    : [
+                        { number: 11, repository: local },
+                        {
+                          number: 55,
+                          repository: { nameWithOwner: 'owner/other' },
+                        },
+                      ],
+                  pageInfo: { hasNextPage: !after, endCursor: 'next' },
+                },
+              },
+            },
+          },
+        });
+      }
+      return new Response(null, { status: 204 });
+    },
+  });
+  assert.deepEqual(
+    await github.closingIssues(31, mergeCommit, 'dev'),
+    [11, 12],
+  );
+  await assert.rejects(
+    github.closingIssues(32, mergeCommit, 'dev'),
+    /could not be verified/,
+  );
+  await assert.rejects(
+    github.closingIssues(31, heads[0], 'dev'),
+    /could not be verified/,
+  );
+  await github.dispatchDependencyResume(13, 'dev', 'reservation');
+  assert.deepEqual(calls.at(-1), {
+    path: '/repos/owner/repo/actions/workflows/ai-development.yml/dispatches',
+    body: {
+      ref: 'dev',
+      inputs: { issue: '13', dependency_resume: 'reservation' },
+    },
+  });
 });
 
 test('approval wait pauses merging and resumes CI without repeating the same review', async () => {

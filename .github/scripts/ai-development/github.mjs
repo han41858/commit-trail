@@ -131,64 +131,82 @@ export function createGitHub({
       payload: { body },
     });
 
+  async function issueDependencies(issue, direction) {
+    const dependencies = [];
+    for (let page = 1; ; page++) {
+      const issues = await api(
+        `/issues/${issue}/dependencies/${direction}?per_page=100&page=${page}`,
+      );
+      if (!Array.isArray(issues))
+        throw new Error('Invalid issue dependency list');
+      for (const item of issues) {
+        if (
+          !Number.isSafeInteger(item?.number) ||
+          item.number < 1 ||
+          typeof item.repository_url !== 'string'
+        )
+          throw new Error('Invalid issue dependency');
+        dependencies.push({
+          number: item.number,
+          local: item.repository_url.toLowerCase() === repo.toLowerCase(),
+        });
+      }
+      if (issues.length < 100) return dependencies;
+    }
+  }
+
+  async function* graphPages(query, parameters, select) {
+    let after = null;
+    const seen = new Set();
+    for (;;) {
+      const response = await api('/graphql', {
+        method: 'POST',
+        payload: {
+          query,
+          variables: { owner, repo: repoName, ...parameters, after },
+        },
+      });
+      if (response.errors?.length)
+        throw new Error('GraphQL connection could not be verified');
+      const connection = select(response.data?.repository);
+      if (
+        !Array.isArray(connection?.nodes) ||
+        typeof connection.pageInfo?.hasNextPage !== 'boolean'
+      )
+        throw new Error('GraphQL connection could not be verified');
+      yield connection.nodes;
+      if (!connection.pageInfo.hasNextPage) return;
+      after = connection.pageInfo.endCursor;
+      if (typeof after !== 'string' || !after || seen.has(after))
+        throw new Error('Invalid GraphQL cursor');
+      seen.add(after);
+    }
+  }
+
   return {
     verifyCredentials,
     issue(number) {
       return api(`/issues/${number}`);
     },
-    async blockedBy(issue) {
-      const dependencies = [];
-      for (let page = 1; ; page++) {
-        const issues = await api(
-          `/issues/${issue}/dependencies/blocked_by?per_page=100&page=${page}`,
-        );
-        if (!Array.isArray(issues))
-          throw new Error('Invalid issue dependency list');
-        for (const item of issues) {
-          if (
-            !Number.isSafeInteger(item?.number) ||
-            item.number < 1 ||
-            typeof item.repository_url !== 'string'
-          )
-            throw new Error('Invalid issue dependency');
-          dependencies.push({
-            number: item.number,
-            local: item.repository_url.toLowerCase() === repo.toLowerCase(),
-          });
-        }
-        if (issues.length < 100) return dependencies;
-      }
-    },
+    blockedBy: (issue) => issueDependencies(issue, 'blocked_by'),
+    blocking: (issue) => issueDependencies(issue, 'blocking'),
     async hasMergedClosingPull(issue, base) {
-      let after = null;
-      const seen = new Set();
-      for (;;) {
-        const response = await api('/graphql', {
-          method: 'POST',
-          payload: {
-            query: `query ClosingPulls($owner: String!, $repo: String!, $issue: Int!, $after: String) {
-              repository(owner: $owner, name: $repo) {
-                issue(number: $issue) {
-                  closedByPullRequestsReferences(first: 50, after: $after) {
-                    nodes { merged baseRefName baseRepository { nameWithOwner } }
-                    pageInfo { hasNextPage endCursor }
-                  }
-                }
+      for await (const nodes of graphPages(
+        `query ClosingPulls($owner: String!, $repo: String!, $issue: Int!, $after: String) {
+          repository(owner: $owner, name: $repo) {
+            issue(number: $issue) {
+              closedByPullRequestsReferences(first: 50, after: $after) {
+                nodes { merged baseRefName baseRepository { nameWithOwner } }
+                pageInfo { hasNextPage endCursor }
               }
-            }`,
-            variables: { owner, repo: repoName, issue, after },
-          },
-        });
-        const prs =
-          response.data?.repository?.issue?.closedByPullRequestsReferences;
+            }
+          }
+        }`,
+        { issue },
+        (repo) => repo?.issue?.closedByPullRequestsReferences,
+      )) {
         if (
-          response.errors?.length ||
-          !Array.isArray(prs?.nodes) ||
-          typeof prs.pageInfo?.hasNextPage !== 'boolean'
-        )
-          throw new Error('Closing pull requests could not be verified');
-        if (
-          prs.nodes.some(
+          nodes.some(
             (pr) =>
               pr?.merged === true &&
               pr.baseRefName === base &&
@@ -197,12 +215,95 @@ export function createGitHub({
           )
         )
           return true;
-        if (!prs.pageInfo.hasNextPage) return false;
-        after = prs.pageInfo.endCursor;
-        if (typeof after !== 'string' || !after || seen.has(after))
-          throw new Error('Invalid closing pull request cursor');
-        seen.add(after);
       }
+      return false;
+    },
+    async closingIssues(pull, sha, base) {
+      const issues = new Set();
+      for await (const nodes of graphPages(
+        `query ClosingIssues($owner: String!, $repo: String!, $pull: Int!, $after: String) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $pull) {
+              merged
+              baseRefName
+              mergeCommit { oid }
+              closingIssuesReferences(first: 50, after: $after) {
+                nodes { number repository { nameWithOwner } }
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+          }
+        }`,
+        { pull },
+        (repo) => {
+          const pr = repo?.pullRequest;
+          if (
+            pr?.merged !== true ||
+            pr.baseRefName !== base ||
+            pr.mergeCommit?.oid !== sha
+          )
+            throw new Error('Merged pull request could not be verified');
+          return pr.closingIssuesReferences;
+        },
+      )) {
+        for (const issue of nodes) {
+          if (
+            Number.isSafeInteger(issue?.number) &&
+            issue.number > 0 &&
+            issue.repository?.nameWithOwner?.toLowerCase() ===
+              repository.toLowerCase()
+          )
+            issues.add(issue.number);
+        }
+      }
+      return [...issues];
+    },
+    dispatchDependencyResume(issue, ref, dependencyResume) {
+      return api('/actions/workflows/ai-development.yml/dispatches', {
+        method: 'POST',
+        payload: {
+          ref,
+          inputs: { issue: String(issue), dependency_resume: dependencyResume },
+        },
+      });
+    },
+    async hasActiveDevelopment(issue, base, { runId, attempt }) {
+      const title = `AI development for Issue #${issue}`;
+      const active = [
+        'queued',
+        'pending',
+        'waiting',
+        'requested',
+        'in_progress',
+      ];
+      const matches = await Promise.all(
+        active.map(async (status) => {
+          for (let page = 1; ; page++) {
+            const query = new URLSearchParams({
+              branch: base,
+              status,
+              per_page: '100',
+              page: String(page),
+            });
+            const { workflow_runs: runs } = await api(
+              `/actions/workflows/ai-development.yml/runs?${query}`,
+            );
+            if (!Array.isArray(runs))
+              throw new Error('Invalid active run list');
+            if (
+              runs.some(
+                (run) =>
+                  run.display_title === title &&
+                  // The run that already saved the waiting state may still be closing.
+                  (run.id !== runId || run.run_attempt !== attempt),
+              )
+            )
+              return true;
+            if (runs.length < 100) return false;
+          }
+        }),
+      );
+      return matches.some(Boolean);
     },
     pull(number) {
       return api(`/pulls/${number}`);
