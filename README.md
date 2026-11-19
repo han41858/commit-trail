@@ -96,7 +96,7 @@ Public repositories work without a token. For private repositories or higher API
 | Contents      | Read-only | Commits, branches, tags and releases |
 | Pull requests | Read-only | PR-based branch suggestions          |
 
-The token is saved in this browser's localStorage and sent only to `api.github.com`. **Remove token & clear history** removes the saved token and displayed history. See the [technical guide](docs/technical-guide.md#use) for access checks, rate limits and storage behavior.
+The token is saved in this browser's localStorage and sent only to `api.github.com`. **Remove token & clear history** removes the saved token and displayed history. See the [product specification](docs/specification.md#22-공개비공개-저장소) for access checks, rate limits and storage behavior.
 
 ## Development & documentation
 
