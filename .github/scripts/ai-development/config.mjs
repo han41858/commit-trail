@@ -4,8 +4,8 @@ export const config = {
   requiredJob: 'Test and build',
   maxReviews: 3,
   models: {
-    codex: process.env.AI_CODEX_MODEL || 'gpt-5.3-codex',
-    claude: process.env.AI_CLAUDE_MODEL || 'claude-sonnet-4-6',
+    codex: process.env.AI_CODEX_MODEL || 'gpt-6.2-sol',
+    claude: process.env.AI_CLAUDE_MODEL || 'claude-sonnet-5-5',
   },
   // Provider call budget for one development or review request.
   limits: {
