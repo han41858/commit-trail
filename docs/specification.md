@@ -1,4 +1,4 @@
-# Commit Trail — 개발 명세서 v0.3
+# Commit Trail — 제품 명세
 
 > Explore the flow of Git history.
 

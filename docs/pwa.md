@@ -1,4 +1,4 @@
-# Commit Trail — PWA 개발 명세서 v0.1
+# Commit Trail — PWA 명세
 
 ## 1. 목적
 
@@ -40,7 +40,7 @@ Web App Manifest를 구성합니다.
 - 앱 이름과 아이콘은 기존 Commit Trail 브랜드 사용
 - 모바일 세로·가로 방향 모두 허용
 - 홈 화면에서 실행하면 Commit Trail의 시작 화면 표시
-- 특정 저장소 URL은 기존 `?repo=` 파라미터 유지. 반복 `repo`와 `mode=monitor`를 사용하는 분할 구성도 현재 URL에서 복원하며 상세 정책은 [Monitor Mode 명세](monitor-mode.md)를 따른다.
+- 특정 저장소 URL은 기존 `?repo=` 파라미터 유지. 반복 `repo`와 `mode=monitor`를 사용하는 분할 구성도 현재 URL에서 복원하며 상세 정책은 [Split view 명세](monitor-mode.md)를 따른다.
 - 주소창 없는 실행에서도 저장소 입력창에 `:debug`를 입력하고 제출해 개발자 진단을 연다. 명령은 현재 저장소를 유지하며 추가 API 조회나 페이지 이동을 발생시키지 않는다. 상세 활성화·종료 정책은 [개발자 디버그 모드 명세](developer-debug-mode.md)를 따른다.
 - 쿼리 파라미터에 따라 별개의 PWA로 인식되지 않도록 고정된 `id` 사용
 
