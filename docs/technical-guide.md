@@ -16,7 +16,13 @@ npm run build
 npm run format:check
 ```
 
-Formatting uses an exactly pinned Prettier version and the shared `han41858/ai-native` configuration in `prettier.config.mjs`. Run `npm run format` to format supported files across the repository, or `npm run format:check` to check them without writing. Generated outputs, local caches and the npm-managed `package-lock.json` are excluded. No formatting plugins or Git hooks are required. CI checks formatting even for documentation-only changes.
+The project pins Prettier in [`package.json`](../package.json) and defines its
+options in [`prettier.config.mjs`](../prettier.config.mjs). Run `npm run format`
+to format supported files across the repository, or `npm run format:check` to
+check without writing. [`.prettierignore`](../.prettierignore) excludes generated
+outputs, local caches and the npm-managed `package-lock.json`. No formatting
+plugins or Git hooks are required. CI checks formatting even for
+documentation-only changes.
 
 Deploy `dist/` to any static host. Repository selection uses `?repo=owner%2Frepo` and survives refresh without server rewrites.
 
@@ -98,11 +104,18 @@ The access-token panel, view options and Split view setup share a 45% black back
 
 Submitting a bare GitHub owner opens a repository picker below the existing field. Typing in the address or the picker's name filter makes no API requests. Direct repository paths and GitHub repository URLs keep the existing parsing, branch selection and loading path; they do not fetch owner lists. The current graph remains visible until a repository is selected. Recent suggestions stay local and owner lookup alone does not create a visit record.
 
-The picker merges anonymous `GET /users/{owner}/repos` results with `GET /user/repos` results from the applied PAT, filtering the latter to the exact owner case-insensitively. The public request carries no token, so an invalid PAT does not prevent public discovery. Repository IDs deduplicate the merged list; loaded entries sort by latest push descending, then by repository name. Names, Public/Private visibility and one-line descriptions are shown. Private entries are limited to what GitHub actually returns; absence is not proof that a repository does not exist or is inaccessible. No additional token grants are requested.
+The picker merges anonymous `GET /users/{owner}/repos` results with `GET /user/repos` results from the applied PAT, filtering the latter to the exact owner case-insensitively. The public request carries no token, so an invalid PAT does not prevent public discovery. Repository IDs deduplicate the merged list; loaded entries sort by case-insensitive repository name in ascending order, then by repository ID. Names, Public/Private visibility and one-line descriptions are shown. Private entries are limited to what GitHub actually returns; absence is not proof that a repository does not exist or is inaccessible. No additional token grants are requested.
 
 Public and authenticated sources each keep their own 100-item pages, caches, errors and retry deadlines. For an initial lookup, their first pages are requested in parallel and the list is published once all requests actually started by that action have settled, whether successful or failed. Successful results are merged, deduplicated and sorted together. Without a PAT, only the public request is needed; valid cached sources do not trigger another request. A public success and an authentication error are shown together after the action settles.
 
-**Load more** advances available healthy sources by one page; it does not scan through other owners automatically. Load more and Retry retain the previously displayed list until all requests started by that action settle, then publish the combined result. The endpoints and request count are unchanged by this presentation policy. An authenticated page with no matching owner can still have another page. Filtering matches loaded repository names case-insensitively and never starts a search request. Later-page errors retain earlier rows. Retry follows the existing GitHub error and rate-limit policy and only repeats failed sources.
+**Load more** or a downward scroll at the end of the list requests one page
+from each eligible source: the next page for a healthy source or the failed
+page for a source that can retry. There is no separate Retry button. The list
+keeps its previous results until all requests started by that action settle.
+An authenticated page with no matching owner can still have another page; the
+picker does not scan ahead automatically. Filtering searches loaded names
+case-insensitively and pauses pagination. Later-page errors retain earlier rows,
+and rate-limited sources wait until their retry time.
 
 `OwnerRepositories.ts` shares the query model across `RepositoryInput.tsx` and `MonitorSetup.tsx`; `OwnerRepositoryPicker.tsx` shares the list UI. It reuses `GitHubReader` for conditional requests, cancellation and in-flight request sharing. Successful source pages are cached in memory for 60 seconds from each source’s first-page completion, with at most ten recently used owners. Loading more does not extend the expiry. Owner case is normalized. Applying a different PAT or removing it closes the picker and invalidates its cached results. A token storage change from another tab also closes and clears this feature's authenticated context until the token is explicitly applied in this tab; the existing graph's token policy is unchanged. No owner history, API response or extra localStorage key is persisted.
 
@@ -165,7 +178,12 @@ All widths and Split view columns support the same path selection: clicking/tapp
 | `src/token/`      | Token storage, permission checks and token controls                                                                                 |
 | `src/shared/`     | Common Git data/model operations and emoji conversion; `github/`, `refresh/`, `debug/` and `ui/` group shared services and controls |
 
-Keep tests beside the implementation they exercise. `npm test` discovers `src/**/*.test.ts` recursively, including nested shared modules. Modules use explicit relative imports, and the existing feature/session lifetimes are preserved across single and Split view.
+Keep tests beside the implementation they exercise. `npm test` discovers
+`src/**/*.test.ts` recursively, including nested shared modules. Modules use
+explicit relative imports, and the existing feature/session lifetimes are
+preserved across single and Split view. App tests and automation tests under
+[`.github/scripts/`](../.github/scripts/) do not replace live browser,
+physical-device, long-running performance or GitHub/Vercel configuration checks.
 
 `main.tsx` owns app state, authentication, navigation and refresh lifetimes. `ViewOptions.tsx`, `AccessTokenPanel.tsx`, `AppStatus.tsx` and `MonitorControls.tsx` render their controls from explicit props. `PopupBackdrop.tsx` shares the background and pointer-gesture handling for token, settings and Split view popups. The settings button stays in the header while its panel renders beside the header so the backdrop covers the whole app. These controls do not create separate sessions or subscriptions.
 
@@ -180,6 +198,31 @@ Missing-parent boundaries depend on commits currently loaded, not on whether the
 After a complete branch refresh, loaded paths belonging only to deleted refs are retired even if an unrelated catalog head or parent is still unknown. Current reachable ancestry and prior heads of surviving refs protect shared commits and history behind unresolved gaps; actual merge parents remain connected, while obsolete squash-merged branch paths disappear. Immutable page caches remain available if later traversal needs a retired parent. A deleted selected base still keeps its cached history and existing notice.
 
 Activity discovery, recommendation and exact-name lookups compare late ref responses with the completed refresh version. Older results cannot restore removed names or changed heads. A complete catalog also ends old picker pagination. Parent responses whose boundary has disappeared are not integrated again; errors specific to that obsolete request are ignored, while authentication and rate-limit failures still surface. In-flight HTTP work may finish, but it cannot recreate the retired graph path.
+
+For code entry points by feature:
+
+- Graph paths: [`graphPaths.ts`](../src/graph/graphPaths.ts) assigns ownership;
+  [`graphColors.ts`](../src/graph/graphColors.ts),
+  [`graphHover.ts`](../src/graph/graphHover.ts) and
+  [`graphOpacity.ts`](../src/graph/graphOpacity.ts) handle color, highlight scope
+  and transitions. [`graphView.ts`](../src/graph/graphView.ts) handles responsive
+  graph display.
+- Branch selection: [`recommendations.ts`](../src/repository/recommendations.ts)
+  handles branch priority and recommendations;
+  [`BranchSelections.ts`](../src/repository/BranchSelections.ts) stores direct
+  choices and [`repositoryLocation.ts`](../src/repository/repositoryLocation.ts)
+  handles repository and branch URL parameters.
+- Refresh and metadata: [`RefreshLoop.ts`](../src/shared/refresh/RefreshLoop.ts)
+  owns the common schedule, [`MonitorSession.ts`](../src/monitor/MonitorSession.ts)
+  coordinates Split view jobs, and
+  [`CommitInfo.ts`](../src/shared/github/CommitInfo.ts) aggregates Actions
+  results. [`LoadingIndicator.tsx`](../src/shared/ui/LoadingIndicator.tsx) uses
+  the active request counts tracked by
+  [`requestActivity.ts`](../src/shared/github/requestActivity.ts).
+- See the dedicated specifications for [Owner selection](owner-repositories.md#구현과-검증-기준),
+  [recent repositories](recent-repositories.md#구현과-검증),
+  [PWA implementation](pwa.md#12-구현-구성) and
+  [diagnostic measurement points](developer-debug-mode.md#측정-구간과-의미).
 
 ## Deploy to Vercel
 

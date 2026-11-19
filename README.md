@@ -107,7 +107,7 @@ npm ci
 npm run dev
 ```
 
-- [Documentation map](docs/README.md) — document roles, implementation references and maintenance rules.
+- [Documentation map](docs/README.md) — product and feature specifications, development and operations, and screenshot notes.
 - [Technical guide](docs/technical-guide.md) — usage, architecture, API behavior, tests, deployment and releases.
 - [Product specification](docs/specification.md) · [Refresh and metadata](docs/auto-refresh-and-metadata.md) — implementation specifications.
 - [PWA](docs/pwa.md) · [Developer diagnostics](docs/developer-debug-mode.md) — installation, updates, recovery and local measurements.
