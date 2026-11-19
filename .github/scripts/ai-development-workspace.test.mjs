@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { develop } from './ai-development/run.mjs';
 import { createWorkspace, resolveEdits } from './ai-development/workspace.mjs';
 
 function fixture(spawn, lock = '{"lockfileVersion":3,"packages":{}}') {
@@ -113,6 +114,57 @@ test('isolated validation reports the last started check separately from its out
     assert.match(validation.log, /private candidate output/);
   } finally {
     context.close();
+  }
+});
+
+test('development retries a missing or ambiguous edit against the original snapshot', async () => {
+  for (const before of ['not present', 'repeat']) {
+    const text = 'repeat left\nrepeat right\n';
+    const path = 'example.md';
+    const calls = [];
+    let validations = 0;
+    const models = {
+      async run({ context }) {
+        calls.push(JSON.parse(context).previousFailure);
+        return {
+          status: 'completed',
+          edits: [
+            { path, before: 'left', after: 'updated left' },
+            {
+              path,
+              before: calls.length === 1 ? before : 'repeat right',
+              after: 'updated right',
+            },
+          ],
+        };
+      },
+    };
+    const result = await develop(
+      models,
+      {
+        snapshot: () => ({
+          files: new Map([[path, '100644']]),
+          read: () => text,
+        }),
+        runChecks(_state, changes) {
+          validations++;
+          assert.deepEqual(changes, [
+            { path, text: 'repeat updated left\nupdated right\n' },
+          ]);
+          return { ok: true };
+        },
+      },
+      { issue: { number: 233 }, state: {}, guard: async () => {} },
+    );
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].path, path);
+    assert.equal(calls[1].editNumber, 2);
+    assert.match(
+      calls[1].reason,
+      before === 'repeat' ? /여러 곳/ : /찾을 수 없/,
+    );
+    assert.equal(validations, 1);
+    assert.equal(result.changes.length, 1);
   }
 });
 

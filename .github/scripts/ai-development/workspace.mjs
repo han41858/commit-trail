@@ -50,9 +50,18 @@ function isEditable(path) {
   );
 }
 
+export class EditConflict extends Error {
+  constructor(path, index, reason) {
+    super(`${path} (${index + 1}번째 편집): ${reason}`);
+    this.path = path;
+    this.index = index;
+    this.reason = reason;
+  }
+}
+
 export function resolveEdits(edits, { files, read }) {
   const updated = new Map();
-  for (const { path, before, after } of edits) {
+  for (const [index, { path, before, after }] of edits.entries()) {
     if (!isEditable(path))
       throw new NeedsHuman(
         '저장소 밖 경로, Git 내부 데이터, 의존성 설치 폴더 또는 비밀 파일을 편집하려 했습니다. 수동 검토가 필요합니다.',
@@ -77,21 +86,33 @@ export function resolveEdits(edits, { files, read }) {
         : null;
     if (before === null) {
       if (current !== null || after === null)
-        throw new Error(
+        throw new EditConflict(
+          path,
+          index,
           '새 파일 편집이 기존 파일 또는 다른 편집과 충돌했습니다.',
         );
       updated.set(path, after);
     } else if (after === null) {
       if (current !== before)
-        throw new Error(
+        throw new EditConflict(
+          path,
+          index,
           '삭제할 파일 내용이 최신 HEAD와 정확히 일치하지 않습니다.',
         );
       updated.set(path, null);
     } else {
       const first = current?.indexOf(before) ?? -1;
-      if (!before || first < 0 || current.indexOf(before, first + 1) !== -1)
-        throw new Error(
-          '편집 위치의 원문이 없거나 여러 곳에 있습니다. 위치를 식별할 수 있는 원문이 필요합니다.',
+      if (!before || first < 0)
+        throw new EditConflict(
+          path,
+          index,
+          '편집할 원문을 찾을 수 없습니다. 파일의 실제 내용을 다시 확인하세요.',
+        );
+      if (current.indexOf(before, first + 1) !== -1)
+        throw new EditConflict(
+          path,
+          index,
+          '같은 원문이 여러 곳에 있습니다. 앞뒤 문맥을 포함해 한 곳을 지정하세요.',
         );
       updated.set(
         path,

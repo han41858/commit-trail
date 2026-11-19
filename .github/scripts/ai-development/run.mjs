@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { config } from './config.mjs';
 import { createGitHub, waitForCI } from './github.mjs';
 import { createModels } from './models.mjs';
-import { createWorkspace, resolveEdits } from './workspace.mjs';
+import { createWorkspace, EditConflict, resolveEdits } from './workspace.mjs';
 import {
   NeedsHuman,
   executionLabels,
@@ -59,7 +59,7 @@ function issueContext(issue, state, extra = {}) {
   return context;
 }
 
-async function develop(
+export async function develop(
   models,
   workspace,
   { developer, issue, state, feedback, guard },
@@ -84,7 +84,23 @@ async function develop(
         '개발 에이전트가 사용자 판단을 요청했습니다. 아래 사유를 확인하세요. 교차 리뷰를 시작하려면 Draft PR에 검토할 변경이 있어야 합니다.',
         plan.summary,
       );
-    const changes = resolveEdits(plan.edits, snapshot);
+    let changes;
+    try {
+      changes = resolveEdits(plan.edits, snapshot);
+    } catch (error) {
+      if (!(error instanceof EditConflict)) throw error;
+      failedSteps.push(`편집 적용 (${error.message})`);
+      failure = {
+        step: '편집 적용',
+        path: error.path,
+        editNumber: error.index + 1,
+        reason: error.reason,
+        beforePreview: plan.edits[error.index].before?.slice(0, 240) ?? null,
+        guidance:
+          'No edits from the old plan were applied. Read the named file again and return a complete corrected edit plan. Edits for the same file apply in order.',
+      };
+      continue;
+    }
     if (!changes.length)
       throw new NeedsHuman(
         '개발 에이전트가 적용할 유효한 변경을 만들지 못했습니다.',
@@ -105,7 +121,7 @@ async function develop(
     };
   }
   throw new NeedsHuman(
-    `두 번의 시도에서 격리 검증을 통과하지 못했습니다. 실패 단계는 ${failedSteps.map((step, i) => `${i + 1}차: ${step}`).join(', ')}입니다.`,
+    `두 번의 시도에서 변경을 준비하지 못했습니다. 실패 단계는 ${failedSteps.map((step, i) => `${i + 1}차: ${step}`).join(', ')}입니다.`,
   );
 }
 
@@ -240,7 +256,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}
