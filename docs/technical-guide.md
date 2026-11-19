@@ -171,6 +171,13 @@ GitHub API 한도에 좌우된다.
 이미 사라진 부모 경계의 응답은 그래프에 합치지 않는다. 그 요청에만 해당하는 오류는 무시하지만 인증·한도 오류는
 계속 알린다. 자세한 판정은 [제품 명세의 API 및 로딩](specification.md#52-api-및-로딩)을 따른다.
 
+### 주요 구현 위치
+
+- 그래프의 경로와 강조는 [graphPaths.ts](../src/graph/graphPaths.ts), [graphHover.ts](../src/graph/graphHover.ts), [graphOpacity.ts](../src/graph/graphOpacity.ts)에서 처리한다.
+- 브랜치 추천과 선택 저장은 [recommendations.ts](../src/repository/recommendations.ts)와 [BranchSelections.ts](../src/repository/BranchSelections.ts)에서 처리한다.
+- 공통 갱신은 [RefreshLoop.ts](../src/shared/refresh/RefreshLoop.ts), Actions 정보는 [CommitInfo.ts](../src/shared/github/CommitInfo.ts)에서 처리한다. 요청 수는 [requestActivity.ts](../src/shared/github/requestActivity.ts)에서 집계하고 [LoadingIndicator.tsx](../src/shared/ui/LoadingIndicator.tsx)에 표시한다.
+- 설정·상태·토큰·Split view 컨트롤은 [ViewOptions.tsx](../src/app/ViewOptions.tsx), [AppStatus.tsx](../src/app/AppStatus.tsx), [AccessTokenPanel.tsx](../src/token/AccessTokenPanel.tsx), [MonitorControls.tsx](../src/monitor/MonitorControls.tsx)에서 확인한다.
+
 ## Vercel 배포
 
 [`vercel.json`](../vercel.json)에 맞춰 Node.js **24.x**, Framework Preset **Vite**, 저장소 루트, 설치 명령
