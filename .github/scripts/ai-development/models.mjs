@@ -325,13 +325,19 @@ export function createModels({
       const input = [{ role: 'user', content: context }];
       const isCodex = agent === 'codex';
       const model = modelNames[agent];
-      for (let turn = 1; turn <= limits.turns; turn++) {
+      const turnLimit =
+        mode === 'review' ? (limits.reviewTurns ?? limits.turns) : limits.turns;
+      for (let turn = 1; turn <= turnLimit; turn++) {
+        const turnInstructions =
+          mode === 'review'
+            ? `${instructions}\nReview requests remaining, including this one: ${turnLimit - turn + 1}. Return the final structured result before exhausting the budget.`
+            : instructions;
         const data = await call(
           agent,
           isCodex
             ? {
                 model,
-                instructions,
+                instructions: turnInstructions,
                 input,
                 store: false,
                 include: ['reasoning.encrypted_content'],
@@ -357,7 +363,7 @@ export function createModels({
               }
             : {
                 model,
-                system: instructions,
+                system: turnInstructions,
                 messages: input,
                 max_tokens: limits.outputTokens,
                 output_config: { format: { type: 'json_schema', schema } },
