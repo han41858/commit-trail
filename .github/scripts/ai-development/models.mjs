@@ -115,12 +115,12 @@ export function validateReview(value) {
   return value;
 }
 
-export function validateDevelopment(value) {
+export function validateDevelopment(value, maxEdits = config.limits.edits) {
   validate(value, developmentSchema, 'development');
   if (
     !value.summary.trim() ||
     value.summary.length > 1200 ||
-    value.edits.length > 40
+    value.edits.length > maxEdits
   )
     throw new Error(
       '개발 결과의 요약 또는 변경 수가 허용 범위를 벗어났습니다.',
@@ -135,6 +135,97 @@ export function validateDevelopment(value) {
       '개발 결과의 제목은 GitMoji와 한국어를 포함한 저장소 형식이어야 합니다.',
     );
   return value;
+}
+
+// Yields the JSON payload of each server-sent event; `touch` runs whenever bytes arrive.
+// Reads race the abort signal so a silent stream ends even if the body ignores the signal.
+async function* serverEvents(body, touch, signal) {
+  const reader = body.getReader();
+  const aborted = new Promise((_, reject) => {
+    const fail = () => reject(new Error('aborted'));
+    if (signal.aborted) fail();
+    else signal.addEventListener('abort', fail, { once: true });
+  });
+  aborted.catch(() => {});
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) return;
+      touch();
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split(/\r?\n\r?\n/);
+      buffer = blocks.pop();
+      for (const block of blocks) {
+        const data = block
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart())
+          .join('\n');
+        if (!data || data === '[DONE]') continue;
+        yield JSON.parse(data);
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+}
+
+// The terminal event of a Responses stream carries the same object a non-streaming call returns.
+async function readCodexStream(events) {
+  for await (const event of events) {
+    if (event.type === 'error') throw new Error('stream error');
+    if (
+      ['response.completed', 'response.incomplete', 'response.failed'].includes(
+        event.type,
+      )
+    )
+      return event.response;
+  }
+  throw new Error('stream ended early');
+}
+
+// Rebuilds the Message a non-streaming call returns from its incremental events.
+async function readClaudeStream(events) {
+  let message;
+  const partialInputs = new Map();
+  for await (const event of events) {
+    if (event.type === 'error') throw new Error('stream error');
+    if (event.type === 'message_start') {
+      message = { ...event.message, content: [] };
+    } else if (!message) {
+      continue;
+    } else if (event.type === 'content_block_start') {
+      message.content[event.index] = { ...event.content_block };
+      if (event.content_block.type === 'tool_use')
+        partialInputs.set(event.index, '');
+    } else if (event.type === 'content_block_delta') {
+      const block = message.content[event.index];
+      const { delta } = event;
+      if (delta.type === 'text_delta') block.text += delta.text;
+      else if (delta.type === 'input_json_delta')
+        partialInputs.set(
+          event.index,
+          partialInputs.get(event.index) + delta.partial_json,
+        );
+      else if (delta.type === 'thinking_delta')
+        block.thinking += delta.thinking;
+      else if (delta.type === 'signature_delta')
+        block.signature = delta.signature;
+    } else if (event.type === 'content_block_stop') {
+      if (partialInputs.has(event.index)) {
+        const json = partialInputs.get(event.index);
+        message.content[event.index].input = json ? JSON.parse(json) : {};
+      }
+    } else if (event.type === 'message_delta') {
+      Object.assign(message, event.delta);
+      message.usage = { ...message.usage, ...event.usage };
+    } else if (event.type === 'message_stop') {
+      return message;
+    }
+  }
+  throw new Error('stream ended early');
 }
 
 export function createModels({
@@ -164,22 +255,46 @@ export function createModels({
         ? { authorization: `Bearer ${keys[agent]}` }
         : { 'x-api-key': keys[agent], 'anthropic-version': '2023-06-01' }),
     };
+    // The provider may already have processed a request with an unknown transport outcome.
+    const unknownOutcome = () =>
+      new Error(
+        `${name} API 응답을 확인할 수 없습니다. 네트워크 및 사용량을 확인하세요.`,
+      );
     for (let attempt = 0; attempt < 2; attempt++) {
+      const idle = new AbortController();
+      let timer;
+      const touch = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => idle.abort(), limits.idleTimeout);
+      };
       let response;
       try {
+        touch();
+        const signal = AbortSignal.any([
+          idle.signal,
+          AbortSignal.timeout(limits.requestTimeout),
+        ]);
         response = await request(endpoint, {
           method: 'POST',
           headers,
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(limits.requestTimeout),
+          body: JSON.stringify({ ...body, stream: true }),
+          signal,
         });
+        if (response.ok) {
+          if (
+            !response.headers.get('content-type')?.includes('text/event-stream')
+          )
+            return await response.json();
+          const events = serverEvents(response.body, touch, signal);
+          return await (isCodex
+            ? readCodexStream(events)
+            : readClaudeStream(events));
+        }
       } catch {
-        // The provider may already have processed a request with an unknown transport outcome.
-        throw new Error(
-          `${name} API 응답을 확인할 수 없습니다. 네트워크 및 사용량을 확인하세요.`,
-        );
+        throw unknownOutcome();
+      } finally {
+        clearTimeout(timer);
       }
-      if (response.ok) return response.json();
       const status = response.status;
       const retryAfter = response.headers.get('retry-after');
       await response.body?.cancel();
@@ -204,7 +319,9 @@ export function createModels({
     async run({ agent, mode, instructions, context, inspect }) {
       const schema = mode === 'development' ? developmentSchema : reviewSchema;
       const verifyResult =
-        mode === 'development' ? validateDevelopment : validateReview;
+        mode === 'development'
+          ? (value) => validateDevelopment(value, limits.edits)
+          : validateReview;
       const input = [{ role: 'user', content: context }];
       const isCodex = agent === 'codex';
       const model = modelNames[agent];
