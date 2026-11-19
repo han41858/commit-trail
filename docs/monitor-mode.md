@@ -1,4 +1,4 @@
-# Commit Trail — Monitor Mode v0.1
+# Commit Trail — Split view 명세
 
 ## 목적과 범위
 
