@@ -1472,8 +1472,57 @@ test('a stream error, an early end or a silent stream is an unknown outcome and 
     { ...streamLimits, idleTimeout: 30 },
   );
   const started = Date.now();
-  await assert.rejects(silent.run('claude'), /응답을 확인할 수 없습니다/);
+  await assert.rejects(
+    silent.run('claude'),
+    /리뷰 요청 1회차, 응답 대기 시간 초과/,
+  );
   assert.equal(Date.now() - started < 2000, true);
+});
+
+test('a provider rejection records the failed turn and a fixed reason without leaking provider text', async () => {
+  const replies = [
+    Response.json({
+      stop_reason: 'tool_use',
+      content: [
+        {
+          type: 'tool_use',
+          id: 'toolu_1',
+          name: 'read_diff',
+          input: { line: 1 },
+        },
+      ],
+    }),
+    Response.json(
+      {
+        error: {
+          type: 'invalid_request_error',
+          message: 'tool_result: private request data',
+        },
+      },
+      { status: 400 },
+    ),
+  ];
+  const { run } = streamingModels(() => replies.shift());
+  await assert.rejects(run('claude'), (error) => {
+    assert.match(
+      error.message,
+      /Claude API HTTP 400.*리뷰 요청 2회차, 도구 호출 형식/,
+    );
+    assert.doesNotMatch(error.message, /private request data/);
+    assert.equal(error.requestRejected, true);
+    return true;
+  });
+  assert.equal(replies.length, 0);
+});
+
+test('an incomplete Codex stream records the missing terminal event', async () => {
+  const { run } = streamingModels(() =>
+    eventStream([{ type: 'response.created', response: {} }]),
+  );
+  await assert.rejects(
+    run('codex'),
+    /리뷰 요청 1회차, 완료 이벤트 없이 스트림 종료/,
+  );
 });
 
 test('development results accept up to the configured number of edits', () => {
