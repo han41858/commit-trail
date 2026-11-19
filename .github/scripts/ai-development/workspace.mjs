@@ -14,7 +14,9 @@ import { NeedsHuman } from './engine.mjs';
 const maxBuffer = 8 * 1024 * 1024;
 const maxFileBytes = 128 * 1024;
 const regularModes = new Set(['100644', '100755']);
-const protectedNames = /^(?:\.|AGENTS\.md$|node_modules$)/i;
+const protectedNames = /^(?:\.git|node_modules)$/i;
+const environmentFile = /^\.env(?:\.|$)/i;
+const environmentExample = /^\.env\.example$/i;
 const shaPattern = /^[a-f0-9]{40}$/;
 
 function outputPage(text, start, span) {
@@ -30,27 +32,28 @@ function outputPage(text, start, span) {
   return result.join('\n');
 }
 
-function isEditable(path, roots) {
+function isEditable(path) {
   return (
     path.length <= 250 &&
     path
       .split('/')
       .every(
         (part) =>
-          /^[\p{L}\p{N}_.-]+$/u.test(part) && !protectedNames.test(part),
-      ) &&
-    roots.some((root) =>
-      root.endsWith('/') ? path.startsWith(root) : path === root,
-    )
+          /^[\p{L}\p{N}_.-]+$/u.test(part) &&
+          part !== '.' &&
+          part !== '..' &&
+          !protectedNames.test(part) &&
+          (!environmentFile.test(part) || environmentExample.test(part)),
+      )
   );
 }
 
-export function resolveEdits(edits, { files, read, editablePaths }) {
+export function resolveEdits(edits, { files, read }) {
   const updated = new Map();
   for (const { path, before, after } of edits) {
-    if (!isEditable(path, editablePaths))
+    if (!isEditable(path))
       throw new NeedsHuman(
-        '자동 편집 허용 범위 밖의 파일 변경이 필요합니다. 수동으로 파일과 접근 정책을 검토하세요.',
+        '저장소 밖 경로, Git 내부 데이터, 의존성 설치 폴더 또는 비밀 파일을 편집하려 했습니다. 수동 검토가 필요합니다.',
       );
     const mode = files.get(path);
     const ancestors = path.split('/').slice(0, -1);

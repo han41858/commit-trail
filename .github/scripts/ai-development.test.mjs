@@ -949,23 +949,29 @@ test('GitHub squash merge uses the publishing token and exact reviewed HEAD', as
   assert.equal(requests.length, 2);
 });
 
-test('developer writes only allowed regular paths and requires a unique exact edit', () => {
+test('developer requires repository paths, regular files and a unique exact edit', () => {
   const context = {
     files: new Map([
       ['src/a.ts', '100644'],
       ['src/link', '120000'],
     ]),
     read: () => 'aaa\naaa\n',
-    editablePaths: ['src/', 'docs/'],
   };
   assert.deepEqual(
     resolveEdits([{ path: 'src/b.ts', before: null, after: 'new' }], context),
     [{ path: 'src/b.ts', text: 'new' }],
   );
   for (const path of [
-    '.github/workflows/ci.yml',
+    '../outside',
+    '/etc/passwd',
+    'src/./a.ts',
     'src/../.github/ci.yml',
-    'docs/AGENTS.md',
+    '.git/config',
+    '.GIT/config',
+    'node_modules/package/index.js',
+    '.env',
+    '.env.production',
+    'config/.env.local',
     'src/link/child',
     'src/link',
   ]) {
@@ -978,6 +984,50 @@ test('developer writes only allowed regular paths and requires a unique exact ed
     () =>
       resolveEdits([{ path: 'src/a.ts', before: 'aa', after: 'new' }], context),
     /여러 곳/,
+  );
+});
+
+test('developer can edit automation, configuration, instructions and environment examples', () => {
+  const paths = [
+    '.github/workflows/ai-development-cleanup.yml',
+    '.github/scripts/ai-development.test.mjs',
+    '.github/scripts/ai-development/config.mjs',
+    'package.json',
+    'package-lock.json',
+    'vite.config.ts',
+    '.gitignore',
+    'AGENTS.md',
+    'docs/AGENTS.md',
+    '.env.example',
+  ];
+  const context = {
+    files: new Map(paths.map((path) => [path, '100644'])),
+    read: () => 'original',
+  };
+  assert.deepEqual(
+    resolveEdits(
+      paths.map((path) => ({ path, before: 'original', after: 'updated' })),
+      context,
+    ),
+    paths.map((path) => ({ path, text: 'updated' })),
+  );
+  assert.deepEqual(
+    resolveEdits(
+      [
+        {
+          path: '.github/workflows/ai-pr-ci-followup.yml',
+          before: null,
+          after: 'new workflow',
+        },
+      ],
+      context,
+    ),
+    [
+      {
+        path: '.github/workflows/ai-pr-ci-followup.yml',
+        text: 'new workflow',
+      },
+    ],
   );
 });
 

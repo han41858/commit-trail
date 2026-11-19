@@ -18,14 +18,6 @@ export const config = {
     codexEffort: 'medium',
   },
   instructions: 'AGENTS.md',
-  editablePaths: [
-    'src/',
-    'docs/',
-    'public/',
-    'assets/',
-    'README.md',
-    'index.html',
-  ],
   checks: [
     'npm run format:check',
     'npm test',
