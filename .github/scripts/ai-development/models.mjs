@@ -90,6 +90,49 @@ function validate(value, schema, label) {
   throw new Error(`AI 결과의 JSON 형식이 올바르지 않습니다 (${label}).`);
 }
 
+// Provider text can contain request data. Store only fixed diagnostic labels.
+function providerReason(error) {
+  const message = typeof error?.message === 'string' ? error.message : '';
+  if (/credit balance|billing|insufficient.quota/i.test(message))
+    return '결제 또는 사용량';
+  if (
+    /context.length|max(?:imum)? context|prompt is too long|too many input tokens/i.test(
+      message,
+    )
+  )
+    return '입력 길이 한도';
+  if (/tool_use|tool_result|function_call|tool call/i.test(message))
+    return '도구 호출 형식';
+  if (
+    /json.schema|output_config|response_format|structured output/i.test(message)
+  )
+    return '구조화 응답 형식';
+  if (/max_tokens|max_output_tokens/i.test(message)) return '출력 토큰 설정';
+  if (
+    /model/i.test(message) &&
+    /not found|not supported|access|invalid/i.test(message)
+  )
+    return '모델 설정 또는 접근 권한';
+  switch (error?.type ?? error?.code) {
+    case 'authentication_error':
+    case 'permission_error':
+      return '인증 또는 접근 권한';
+    case 'rate_limit_error':
+    case 'overloaded_error':
+    case 'server_error':
+    case 'api_error':
+      return 'API 한도 또는 공급자 장애';
+    case 'invalid_request_error':
+      return '잘못된 요청';
+    default:
+      return '세부 분류 없음';
+  }
+}
+
+function streamError(reason) {
+  return Object.assign(new Error(reason), { streamReason: reason });
+}
+
 export function validateReview(value) {
   validate(value, reviewSchema, 'review');
   if (
@@ -175,7 +218,10 @@ async function* serverEvents(body, touch, signal) {
 // The terminal event of a Responses stream carries the same object a non-streaming call returns.
 async function readCodexStream(events) {
   for await (const event of events) {
-    if (event.type === 'error') throw new Error('stream error');
+    if (event.type === 'error')
+      throw streamError(
+        `공급자 오류 이벤트: ${providerReason(event.error ?? event)}`,
+      );
     if (
       ['response.completed', 'response.incomplete', 'response.failed'].includes(
         event.type,
@@ -183,7 +229,7 @@ async function readCodexStream(events) {
     )
       return event.response;
   }
-  throw new Error('stream ended early');
+  throw streamError('완료 이벤트 없이 스트림 종료');
 }
 
 // Rebuilds the Message a non-streaming call returns from its incremental events.
@@ -191,7 +237,8 @@ async function readClaudeStream(events) {
   let message;
   const partialInputs = new Map();
   for await (const event of events) {
-    if (event.type === 'error') throw new Error('stream error');
+    if (event.type === 'error')
+      throw streamError(`공급자 오류 이벤트: ${providerReason(event.error)}`);
     if (event.type === 'message_start') {
       message = { ...event.message, content: [] };
     } else if (!message) {
@@ -225,7 +272,7 @@ async function readClaudeStream(events) {
       return message;
     }
   }
-  throw new Error('stream ended early');
+  throw streamError('완료 이벤트 없이 스트림 종료');
 }
 
 export function createModels({
@@ -243,7 +290,7 @@ export function createModels({
       );
   }
 
-  async function call(agent, body) {
+  async function call(agent, body, mode, turn) {
     const isCodex = agent === 'codex';
     const name = agents[agent].name;
     const endpoint = isCodex
@@ -256,10 +303,7 @@ export function createModels({
         : { 'x-api-key': keys[agent], 'anthropic-version': '2023-06-01' }),
     };
     // The provider may already have processed a request with an unknown transport outcome.
-    const unknownOutcome = () =>
-      new Error(
-        `${name} API 응답을 확인할 수 없습니다. 네트워크 및 사용량을 확인하세요.`,
-      );
+    const stage = `${mode === 'review' ? '리뷰' : '개발'} 요청 ${turn}회차`;
     for (let attempt = 0; attempt < 2; attempt++) {
       const idle = new AbortController();
       let timer;
@@ -268,12 +312,11 @@ export function createModels({
         timer = setTimeout(() => idle.abort(), limits.idleTimeout);
       };
       let response;
+      let rejectionReason;
+      const timeout = AbortSignal.timeout(limits.requestTimeout);
       try {
         touch();
-        const signal = AbortSignal.any([
-          idle.signal,
-          AbortSignal.timeout(limits.requestTimeout),
-        ]);
+        const signal = AbortSignal.any([idle.signal, timeout]);
         response = await request(endpoint, {
           method: 'POST',
           headers,
@@ -290,14 +333,25 @@ export function createModels({
             ? readCodexStream(events)
             : readClaudeStream(events));
         }
-      } catch {
-        throw unknownOutcome();
+        const payload = await response.json().catch(() => null);
+        rejectionReason = providerReason(payload?.error);
+      } catch (error) {
+        const reason = timeout.aborted
+          ? '요청 시간 초과'
+          : idle.signal.aborted
+            ? '응답 대기 시간 초과'
+            : (error?.streamReason ??
+              (response
+                ? '응답 본문 수신 또는 해석 실패'
+                : 'HTTP 응답 수신 실패'));
+        throw new Error(
+          `${name} API 응답을 확인할 수 없습니다. (${stage}, ${reason})`,
+        );
       } finally {
         clearTimeout(timer);
       }
       const status = response.status;
       const retryAfter = response.headers.get('retry-after');
-      await response.body?.cancel();
       if (!attempt && (status === 429 || status === 503 || status === 529)) {
         const seconds = retryAfter === null ? 2 : Number(retryAfter);
         if (Number.isFinite(seconds) && seconds >= 0 && seconds <= 10) {
@@ -306,9 +360,7 @@ export function createModels({
         }
       }
       throw Object.assign(
-        new Error(
-          `${name} API HTTP ${status}. Actions Secret, 모델 접근 권한 및 사용량 한도를 확인하세요.`,
-        ),
+        new Error(`${name} API HTTP ${status}. (${stage}, ${rejectionReason})`),
         { requestRejected: [400, 401, 403, 404, 422, 429].includes(status) },
       );
     }
@@ -376,6 +428,8 @@ export function createModels({
                   }),
                 ),
               },
+          mode,
+          turn,
         );
         const usage = Object.fromEntries(
           Object.entries(data.usage ?? {}).filter(
