@@ -227,8 +227,12 @@ For a first run, name a small code or documentation change and say how to verify
 
 Add the following repository Actions secrets after the workflow reaches `dev`.
 
-- `OPENAI_API_KEY` from the [OpenAI API keys page](https://platform.openai.com/api-keys). The default model is `gpt-5.3-codex` through the Responses API. Override it with the Actions variable `AI_CODEX_MODEL` if needed. Use a Codex model with structured output and function-tool support.
-- `ANTHROPIC_API_KEY` from the [Claude Console](https://console.anthropic.com/settings/keys). The default model is `claude-sonnet-4-6` through the Messages API. Override it with `AI_CLAUDE_MODEL` if needed. Use a Claude model with structured output and tool support.
+- `OPENAI_API_KEY` from the [OpenAI API keys page](https://platform.openai.com/api-keys). The default model is `gpt-6.2-sol` through the Responses API, matching the everyday coding model in the [official Codex model catalog](https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json). Override it with the Actions variable `AI_CODEX_MODEL` if needed. Use a model with structured output and function-tool support.
+- `ANTHROPIC_API_KEY` from the [Claude Console](https://console.anthropic.com/settings/keys). The default model is `claude-sonnet-5-5` through the Messages API, using the current Sonnet generation listed in the [official Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/model.py). Override it with `AI_CLAUDE_MODEL` if needed. Use a Claude model with structured output and tool support.
+
+The Actions variables take precedence over these defaults. If a variable still names an older model, update or remove that variable to use the new default. SDK and catalog entries identify model IDs; the repository's API account must also have access to the selected model. An inaccessible model stops the Issue with the reported provider error rather than silently falling back.
+
+To use Opus for the Claude role, set the repository Actions variable `AI_CLAUDE_MODEL` to `claude-opus-5-5`. Create it under **Settings → Secrets and variables → Actions → Variables**. The same variable selects Claude for development or cross-review according to the Issue label; it does not change the role assignment.
 
 With the built-in `GITHUB_TOKEN`, enable **Allow GitHub Actions to create and approve pull requests** in the repository's Actions settings so the workflow can open Draft PRs. GitHub can hold the regular PR CI for manual approval. Use **Approve workflows to run** on the PR when prompted. Once CI passes, a follow-up workflow uses the stored review of that SHA to finish the Issue and PR updates automatically. [GitHub's workflow-trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow)
 
