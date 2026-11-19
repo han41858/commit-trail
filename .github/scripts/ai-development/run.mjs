@@ -73,7 +73,8 @@ async function develop(
     });
     if (plan.status === 'needs_human')
       throw new NeedsHuman(
-        '개발 에이전트가 사용자 판단을 요청했습니다. 보호 파일과 Issue의 요구사항을 확인하세요.',
+        '개발 에이전트가 사용자 판단을 요청했습니다. 아래 사유를 확인하세요. 교차 리뷰를 시작하려면 Draft PR에 검토할 변경이 있어야 합니다.',
+        plan.summary,
       );
     const changes = resolveEdits(plan.edits, {
       ...snapshot,

@@ -18,7 +18,10 @@ function stateBody(state) {
   const status = `**AI 개발 상태** · ` + '`' + state.status + '`';
   const head = `기록된 커밋 ` + '`' + state.head + '`';
   const pull = state.pull ? ` · PR #${state.pull}` : '';
-  return `${status}\n\n${head}${pull} · Actions 실행 ${state.runId}\n\n${state.reason}\n\n<!-- commit-trail-ai-state:${encoded} -->`;
+  const detail = state.detail
+    ? `\n\n개발 에이전트가 보고한 사유 · ${plain(state.detail)}`
+    : '';
+  return `${status}\n\n${head}${pull} · Actions 실행 ${state.runId}\n\n${state.reason}${detail}\n\n<!-- commit-trail-ai-state:${encoded} -->`;
 }
 
 export function createGitHub({
