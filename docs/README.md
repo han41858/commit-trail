@@ -4,6 +4,8 @@
 
 `docs/`는 빌드에서 사용하지 않는 문서·예제·이미지 전용 폴더다. 이 폴더와 루트의 `README.md`·`AGENTS.md`·`LICENSE.md`만 변경되면 CI의 무거운 검사와 Vercel 배포를 생략한다. 앱·빌드에서 읽는 문서나 템플릿은 확장자와 관계없이 `src/`·`public/`·`templates/` 등 이 폴더 밖에서 관리한다. 판정과 필수 검사 유지 규칙은 [기술 가이드](technical-guide.md#documentation-only-change-detection)를 따른다.
 
+`AI development cleanup`은 `dev`의 AI 개발 완료 이벤트만 받고 중단된 실행을 정리한다. `AI development CI follow-up`은 `ai/issue-*` 브랜치의 CI 완료 이벤트만 받고, 성공한 동일 저장소 PR과 정확한 작업 브랜치 이름을 확인한 뒤 후속 처리한다. 일반 PR과 `dev`·`main` 푸시 CI는 두 후속 워크플로의 실행 기록을 만들지 않는다. 관련 AI 실행에서 조건에 맞지 않아 남는 스킵 기록은 있을 수 있다.
+
 PR 제목·본문 또는 대상 브랜치 변경에도 고정 이름의 필수 `Test and build` 검사를 실행한다. 작업 전체를 생략하거나 검사 이름을 동적으로 바꾸지 않으며, 문서만 변경된 경우에는 작업 내부의 무거운 단계만 생략한다. 이벤트와 필수 검사 정책은 [CI 이벤트 처리](technical-guide.md#ci-event-handling)를 따른다.
 
 AI 개발은 저장소 쓰기 권한자가 Issue에 `ai:develop`, `ai:develop:codex` 또는 `ai:develop:claude` 중 하나를 추가하면 시작한다. 반대 모델이 Draft PR을 검토하고, 같은 개발 모델이 필요 시 수정한다. 진행 중인 자동화를 멈추려면 같은 Issue에 `ai:stop` 라벨을 추가한다. 최종 커밋의 리뷰와 필수 CI가 통과하면 PR을 `dev`에 자동 스쿼시 머지하고, 연결된 Issue가 닫힌다. 토큰 권한이나 충돌 때문에 머지할 수 없으면 Issue에 사유를 기록한다. 여러 Issue는 하나의 대기열에서 순서대로 처리하며, 실행이 사람의 확인을 기다리며 멈추거나 실패하면 알림이 가도록 사유를 별도 댓글로 남긴다. CI를 기다리는 사이 `dev`가 바뀌어 멈춘 Issue는 `AI development`를 그 Issue 번호로 다시 실행하면 최신 `dev`를 작업 브랜치에 반영하고 리뷰와 CI를 다시 거친다. 모델 Secret, CI 승인 및 수동 재개 설정은 [AI 개발과 교차 리뷰](technical-guide.md#ai-development-and-cross-review)를 참조한다.

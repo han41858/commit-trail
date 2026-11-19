@@ -2,7 +2,8 @@ name: AI development cleanup
 
 on:
   workflow_run:
-    workflows: [AI development, CI]
+    workflows: [AI development]
+    branches: [dev]
     types: [completed]
 
 permissions: {}
@@ -12,7 +13,8 @@ jobs:
     if: >-
       github.event.workflow_run.path == '.github/workflows/ai-development.yml' &&
       github.event.workflow_run.head_branch == 'dev' &&
-      github.event.workflow_run.conclusion != 'success'
+      github.event.workflow_run.conclusion != 'success' &&
+      github.event.workflow_run.conclusion != 'skipped'
     concurrency:
       group: ai-development-${{ github.repository }}
       queue: max
@@ -33,52 +35,3 @@ jobs:
       - run: node .github/scripts/ai-development/run.mjs --reconcile
         env:
           GH_TOKEN: ${{ github.token }}
-
-  identify-ci-issue:
-    if: >-
-      github.event.workflow_run.path == '.github/workflows/ci.yml' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      startsWith(github.event.workflow_run.head_branch, 'ai/issue-')
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    outputs:
-      issue: ${{ steps.identify.outputs.issue }}
-    steps:
-      - id: identify
-        shell: bash
-        env:
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-        run: |
-          if [[ "$HEAD_BRANCH" =~ ^ai/issue-([1-9][0-9]*)-(codex|claude)$ ]]; then
-            printf 'issue=%s\n' "${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-          fi
-
-  complete-ci:
-    needs: identify-ci-issue
-    if: needs.identify-ci-issue.outputs.issue != ''
-    concurrency:
-      group: ai-development-${{ github.repository }}
-      queue: max
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    environment: ai-development
-    timeout-minutes: 5
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: refs/heads/dev
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .nvmrc
-      - run: node .github/scripts/ai-development/run.mjs --complete-ci
-        env:
-          GH_TOKEN: ${{ github.token }}
-          AI_AUTOMATION_TOKEN: ${{ secrets.AI_AUTOMATION_TOKEN }}
