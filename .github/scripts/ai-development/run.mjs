@@ -209,7 +209,10 @@ async function main() {
       eventLabel: event.label?.name,
       runId: Number(env.GITHUB_RUN_ID),
       attempt: Number(env.GITHUB_RUN_ATTEMPT),
-      verifyConfiguration: models.verify,
+      verifyConfiguration: async () => {
+        await github.verifyCredentials();
+        models.verify();
+      },
       develop: (args) => develop(models, workspace, args),
       review: (args) => review(models, workspace, args),
       checkCI: (current, guard) => waitForCI(github, config, current, guard),

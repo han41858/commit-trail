@@ -1,9 +1,11 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   chmodSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -12,7 +14,7 @@ import { dirname, join } from 'node:path';
 import { NeedsHuman } from './engine.mjs';
 
 const maxBuffer = 8 * 1024 * 1024;
-const maxFileBytes = 128 * 1024;
+const maxFileBytes = 1024 * 1024;
 const regularModes = new Set(['100644', '100755']);
 const protectedNames = /^(?:\.git|node_modules)$/i;
 const environmentFile = /^\.env(?:\.|$)/i;
@@ -132,12 +134,13 @@ export function createWorkspace({
   repository,
   token,
   cwd = process.cwd(),
+  spawn = spawnSync,
 }) {
   const scratch = mkdtempSync(
     join(process.env.RUNNER_TEMP || tmpdir(), 'commit-trail-ai-'),
   );
   const image = `commit-trail-ai:${randomUUID()}`;
-  let cachedBase;
+  let cachedDependencies;
   const git = (args, options = {}) =>
     execFileSync('git', args, {
       cwd,
@@ -228,12 +231,30 @@ export function createWorkspace({
     };
   }
 
-  function prepareDependencies(base) {
-    if (cachedBase === base) return;
+  function prepareDependencies(source) {
+    const manifests = new Map();
+    try {
+      for (const name of ['package.json', 'package-lock.json']) {
+        const path = join(source, name);
+        if (!lstatSync(path).isFile())
+          throw new Error('Dependency manifests must be regular files.');
+        manifests.set(name, readFileSync(path));
+      }
+    } catch {
+      return {
+        ok: false,
+        log: '수정 후 package.json과 package-lock.json이 일반 파일로 존재해야 합니다.',
+      };
+    }
+    const digest = createHash('sha256');
+    for (const [name, bytes] of manifests)
+      digest.update(name).update('\0').update(bytes).update('\0');
+    const key = digest.digest('hex');
+    if (cachedDependencies === key) return { ok: true };
     const context = join(scratch, 'dependencies');
     mkdirSync(context, { recursive: true });
-    for (const name of ['package.json', 'package-lock.json'])
-      writeFileSync(join(context, name), git(['show', `${base}:${name}`]));
+    for (const [name, bytes] of manifests)
+      writeFileSync(join(context, name), bytes);
     writeFileSync(
       join(context, 'Dockerfile'),
       [
@@ -251,19 +272,26 @@ export function createWorkspace({
         '--secret',
         `id=npm_ca,src=${process.env.NODE_EXTRA_CA_CERTS}`,
       );
-    const result = spawnSync('docker', [...build, context], {
+    const result = spawn('docker', [...build, context], {
       timeout: 240_000,
       maxBuffer,
     });
-    if (result.status !== 0)
+    if (result.error || result.status === 125)
       throw new Error(
-        '신뢰된 잠금 파일에서 Docker 검증 이미지를 만들지 못했습니다. Actions의 Docker 및 npm 연결을 확인하세요.',
+        'Docker 의존성 설치를 실행하지 못했습니다. 실행 환경과 연결을 확인하세요.',
       );
-    cachedBase = base;
+    if (result.status !== 0)
+      return {
+        ok: false,
+        log: `수정 후 의존성 설치가 실패했습니다. package.json과 package-lock.json의 일치를 확인하세요.\n${result.stdout ?? ''}\n${result.stderr ?? ''}`.slice(
+          -6500,
+        ),
+      };
+    cachedDependencies = key;
+    return { ok: true };
   }
 
   function runChecks(state, changes) {
-    prepareDependencies(state.base);
     const source = mkdtempSync(join(scratch, 'source-'));
     chmodSync(source, 0o755);
     const container = `commit-trail-ai-${randomUUID()}`;
@@ -285,6 +313,8 @@ export function createWorkspace({
           writeFileSync(file, text);
         }
       }
+      const dependencies = prepareDependencies(source);
+      if (!dependencies.ok) return dependencies;
       const script = [
         'mkdir /tmp/project',
         'cp -a --no-preserve=ownership /source/. /tmp/project/',
@@ -292,7 +322,7 @@ export function createWorkspace({
         'cp -a --no-preserve=ownership /dependencies/node_modules ./node_modules',
         ...config.checks,
       ].join('\n');
-      const result = spawnSync(
+      const result = spawn(
         'docker',
         [
           'run',
@@ -334,7 +364,7 @@ export function createWorkspace({
         log: `${result.stdout ?? ''}\n${result.stderr ?? ''}`.slice(-6500),
       };
     } finally {
-      spawnSync('docker', ['container', 'rm', '--force', container], {
+      spawn('docker', ['container', 'rm', '--force', container], {
         timeout: 10_000,
         stdio: 'ignore',
       });
@@ -346,8 +376,8 @@ export function createWorkspace({
     snapshot,
     runChecks,
     close() {
-      if (cachedBase)
-        spawnSync('docker', ['image', 'rm', image], {
+      if (cachedDependencies)
+        spawn('docker', ['image', 'rm', image], {
           timeout: 10_000,
           stdio: 'ignore',
         });

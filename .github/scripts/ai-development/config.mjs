@@ -18,6 +18,7 @@ export const config = {
     codexEffort: 'medium',
   },
   instructions: 'AGENTS.md',
+  credentialsEnvironment: 'ai-development',
   checks: [
     'npm run format:check',
     'npm test',

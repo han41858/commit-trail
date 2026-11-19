@@ -1,6 +1,7 @@
 import { setTimeout as wait } from 'node:timers/promises';
 import { NeedsHuman, pullMarker, reviewMarker } from './engine.mjs';
-import { agents } from './config.mjs';
+import { agents, config } from './config.mjs';
+import { verifyCredentialIsolation } from './credentials.mjs';
 
 const bot = 'github-actions[bot]';
 const stateMarker = /<!-- commit-trail-ai-state:([a-zA-Z0-9+/=]+) -->/;
@@ -34,7 +35,22 @@ export function createGitHub({
   const repo = `https://api.github.com/repos/${repository}`;
   const owner = repository.split('/')[0];
 
-  async function api(path, { method = 'GET', payload, publish = false } = {}) {
+  async function verifyCredentials() {
+    if (!publishingToken)
+      throw new NeedsHuman(
+        '게시 전에 ai-development Environment에 AI_AUTOMATION_TOKEN을 설정하세요.',
+      );
+    await verifyCredentialIsolation(
+      (target) => api(target, { credentialCheck: true }),
+      { environment: config.credentialsEnvironment, base: config.base },
+    );
+  }
+
+  async function api(
+    path,
+    { method = 'GET', payload, publish = false, credentialCheck = false } = {},
+  ) {
+    if (publish) await verifyCredentials();
     const url =
       path === '/graphql' ? 'https://api.github.com/graphql' : `${repo}${path}`;
     let response;
@@ -44,7 +60,7 @@ export function createGitHub({
           method,
           headers: {
             accept: 'application/vnd.github+json',
-            authorization: `Bearer ${publish && publishingToken ? publishingToken : token}`,
+            authorization: `Bearer ${(publish || credentialCheck) && publishingToken ? publishingToken : token}`,
             'content-type': 'application/json',
             'user-agent': 'commit-trail-ai-development',
             'x-github-api-version': '2022-11-28',
@@ -115,6 +131,7 @@ export function createGitHub({
     });
 
   return {
+    verifyCredentials,
     issue(number) {
       return api(`/issues/${number}`);
     },
@@ -166,6 +183,13 @@ export function createGitHub({
       });
     },
     async commit(branch, expectedHeadOid, changes, message) {
+      const workflowChange = changes.some(({ path }) =>
+        path.startsWith('.github/workflows/'),
+      );
+      const workflowPermission = () =>
+        new NeedsHuman(
+          '워크플로 커밋이 거부되었습니다. 게시 토큰의 Contents·Pull requests·Workflows 쓰기 권한(classic PAT는 workflow scope)을 확인한 뒤 기존 Issue 번호로 재개하세요.',
+        );
       const operation = await api('/graphql', {
         method: 'POST',
         publish: true,
@@ -195,6 +219,10 @@ export function createGitHub({
             },
           },
         },
+      }).catch((error) => {
+        if (workflowChange && [403, 404].includes(error.status))
+          throw workflowPermission();
+        throw error;
       });
       const oid = operation.data?.createCommitOnBranch?.commit?.oid;
       if (!shaPattern.test(oid || '')) {
@@ -202,6 +230,15 @@ export function createGitHub({
           throw new NeedsHuman(
             '커밋 직전에 브랜치가 변경되었습니다. PR을 수동으로 확인하세요.',
           );
+        if (
+          workflowChange &&
+          operation.errors?.some(
+            ({ type, message }) =>
+              type === 'FORBIDDEN' ||
+              /workflow|permission|not accessible|not permitted/i.test(message),
+          )
+        )
+          throw workflowPermission();
         throw new Error(
           'GraphQL 커밋 결과를 확인할 수 없습니다. 브랜치 권한을 확인하고 기존 상태에서 수동 재개하세요.',
         );
