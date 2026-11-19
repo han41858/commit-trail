@@ -62,6 +62,23 @@ async function confirmedMerge(github, state, base) {
     return pr.merge_commit_sha;
 }
 
+// Editing the state comment sends no notification, so a stop also gets its own comment.
+async function notifyStop(github, issue, state) {
+  try {
+    await github.notice(
+      issue,
+      `**AI 개발 중단** · ` +
+        '`' +
+        state.status +
+        '`' +
+        `\n\n${state.reason}\n\n상태 댓글과 Actions 실행 ${state.runId}을 확인하세요.`,
+      `stop-${state.runId}-${state.attempt}`,
+    );
+  } catch (error) {
+    console.warn(`중단 알림 댓글을 남기지 못했습니다. ${error.message}`);
+  }
+}
+
 function mergedMessage(state, base) {
   return `PR #${state.pull}이 ${base}에 머지되었습니다. 머지 커밋 ${state.mergeCommit}.`;
 }
@@ -124,8 +141,8 @@ export async function runPipeline({
     existing?.state.developer ?? executionLabels.get(eventLabel);
   const reviewer = otherAgent(developer);
   const branch = `ai/issue-${issueNumber}-${developer}`;
-  const base = existing?.state.base ?? (await github.ref(config.base));
-  if (!base)
+  const initialBase = existing?.state.base ?? (await github.ref(config.base));
+  if (!initialBase)
     throw new Error(`기본 브랜치 ${config.base}를 조회할 수 없습니다.`);
   const state = existing?.state ?? {
     version: 1,
@@ -133,8 +150,8 @@ export async function runPipeline({
     issueFingerprint: fingerprint(issue),
     developer,
     branch,
-    base,
-    head: base,
+    base: initialBase,
+    head: initialBase,
     pull: null,
     reviews: [],
   };
@@ -146,7 +163,7 @@ export async function runPipeline({
     recordId = await github.saveState(issueNumber, state, recordId);
   }
 
-  async function guard({ recovering = false } = {}) {
+  async function guard({ recovering = false, staleBase = false } = {}) {
     const currentIssue = await github.issue(issueNumber);
     if (
       currentIssue.state !== 'open' ||
@@ -167,9 +184,17 @@ export async function runPipeline({
       );
     if (
       remote !== state.head &&
-      (remote || state.head !== base || state.pull)
+      (remote || state.head !== state.base || state.pull)
     ) {
-      if (
+      // A base update whose response was lost left a merge of the recorded HEAD and dev.
+      const refreshed =
+        recovering && state.pendingRefresh && remote
+          ? await github.refreshedBase(remote, state.head)
+          : null;
+      if (refreshed) {
+        applyRefresh({ head: remote, base: refreshed });
+        await save(state.status, '직전 실행의 브랜치 갱신을 복구했습니다.');
+      } else if (
         !recovering ||
         !state.pendingCommit ||
         !remote ||
@@ -178,13 +203,14 @@ export async function runPipeline({
         throw new NeedsHuman(
           `작업 브랜치 HEAD가 변경되었거나 브랜치가 삭제되었습니다. 확인한 HEAD ${remote ?? '없음'}. 현재 PR을 수동으로 검토하세요.`,
         );
+      } else {
+        state.head = remote;
+        state.branchCreated = true;
+        delete state.pendingCommit;
+        await save(state.status, '직전 실행이 기록한 커밋을 복구했습니다.');
       }
-      state.head = remote;
-      state.branchCreated = true;
-      delete state.pendingCommit;
-      await save(state.status, '직전 실행이 기록한 커밋을 복구했습니다.');
     }
-    if (remote === base && !state.branchCreated)
+    if (remote === state.base && !state.branchCreated)
       throw new NeedsHuman(
         '같은 이름의 작업 브랜치를 자동 실행이 생성했는지 확인할 수 없습니다. 기존 브랜치를 확인하세요.',
       );
@@ -194,7 +220,7 @@ export async function runPipeline({
       pr = await github.pull(state.pull);
       if (
         !github.matchesPull(pr, state, config.base, {
-          allowReady: hasPassingReview(state),
+          allowReady: hasPassingReview(state) || state.readied === true,
         }) ||
         fingerprint(pr) !== state.pullFingerprint
       ) {
@@ -203,11 +229,50 @@ export async function runPipeline({
         );
       }
     }
-    if ((await github.ref(config.base)) !== base)
+    if (!staleBase && (await github.ref(config.base)) !== state.base)
       throw new NeedsHuman(
-        `${config.base} 브랜치가 작업 시작 후 변경되었습니다. 브랜치 보호 정책에 맞춰 현재 PR을 수동으로 확인하세요.`,
+        `${config.base} 브랜치가 작업 시작 후 변경되었습니다. AI development를 이 Issue 번호로 다시 실행하면 최신 ${config.base}를 반영한 뒤 리뷰와 CI를 다시 진행합니다.`,
       );
     return { remote, pr };
+  }
+
+  function applyRefresh({ head, base }) {
+    state.base = base;
+    state.head = head;
+    state.branchCreated = true;
+    delete state.pendingRefresh;
+    delete state.awaitingCI;
+  }
+
+  // Runs only between development and review steps, never while a snapshot of the old HEAD is in use.
+  async function refreshBase() {
+    const current = await github.ref(config.base);
+    if (!current)
+      throw new Error(`기본 브랜치 ${config.base}를 조회할 수 없습니다.`);
+    if (current === state.base) return;
+    if (state.head === state.base && !state.branchCreated && !state.pull) {
+      state.base = current;
+      state.head = current;
+      await save(
+        state.status,
+        `${config.base}의 새 커밋을 기준으로 시작합니다.`,
+      );
+      return;
+    }
+    if (!state.pull)
+      throw new NeedsHuman(
+        `${config.base} 브랜치가 변경되었지만 갱신할 PR이 없습니다. 작업 브랜치를 수동으로 확인하세요.`,
+      );
+    state.pendingRefresh = true;
+    await save(
+      state.status,
+      `${config.base}의 새 커밋을 작업 브랜치에 반영하고 있습니다.`,
+    );
+    applyRefresh(await github.updateBranch(state));
+    await save(
+      'reviewing',
+      `최신 ${config.base}를 작업 브랜치에 반영했습니다. 새 HEAD의 리뷰와 CI를 다시 진행합니다.`,
+    );
   }
 
   async function recordMerge(sha) {
@@ -237,6 +302,7 @@ export async function runPipeline({
       `교차 리뷰와 필수 CI가 커밋 ${state.head}에서 통과했습니다. 새 커밋에는 별도 검증이 필요합니다.\n\n${ci.url}`,
       `ready-${state.head}`,
     );
+    if (!pr.draft) state.readied = true;
     if (pr.draft && !converted)
       throw new NeedsHuman(
         '교차 리뷰와 필수 CI를 통과했습니다. PR의 Draft 해제를 확인하지 못했습니다. PR에서 Ready for review를 누른 뒤 확인하세요.',
@@ -303,11 +369,11 @@ export async function runPipeline({
     state.pendingCommit = randomUUID();
     await save(phase, '검증된 변경의 커밋 결과를 기록하고 있습니다.');
     if (!remote) {
-      if ((await github.ref(config.base)) !== base)
+      if ((await github.ref(config.base)) !== state.base)
         throw new NeedsHuman(
-          `${config.base} 브랜치에 새 커밋이 있습니다. 새 기준에서 다시 작업하세요.`,
+          `${config.base} 브랜치에 새 커밋이 있습니다. AI development를 이 Issue 번호로 다시 실행하세요.`,
         );
-      await github.createBranch(branch, base);
+      await github.createBranch(branch, state.base);
       state.branchCreated = true;
       await save(phase, '작업 브랜치를 생성했습니다.');
     }
@@ -340,7 +406,8 @@ export async function runPipeline({
           '시작 전에 같은 이름의 작업 브랜치 또는 PR이 발견되었습니다. 기존 작업을 확인하세요.',
         );
     }
-    await guard({ recovering: !ciCompletion });
+    // The CI follow-up has no models to review a refreshed HEAD, so it keeps the strict check.
+    await guard({ recovering: !ciCompletion, staleBase: !ciCompletion });
     if (ciCompletion) {
       const ci = await checkCI(state, guard);
       if (ci.ok) await completeMerge(ci);
@@ -351,13 +418,15 @@ export async function runPipeline({
       throw new NeedsHuman(
         '직전 리뷰가 결과를 기록하기 전에 중단되었습니다. 동일 커밋에 자동 리뷰를 다시 청구하지 않으므로 PR을 직접 검토하세요.',
       );
-    if (state.head !== base) await ensurePull();
-    if (state.head === base) {
+    if (state.head !== state.base) await ensurePull();
+    await refreshBase();
+    if (state.head === state.base) {
       await verifyConfiguration();
       await implement();
     }
 
     for (;;) {
+      await refreshBase();
       await guard();
       let entry = state.reviews.at(-1);
       if (entry?.head !== state.head) {
@@ -428,6 +497,7 @@ export async function runPipeline({
       error.message,
       needsHuman ? error.detail : undefined,
     );
+    await notifyStop(github, issueNumber, state);
     return state;
   }
 }
@@ -457,14 +527,12 @@ export async function reconcile(github, run, base) {
       return;
     }
   }
-  await github.saveState(
-    issue,
-    {
-      ...record.state,
-      status: run.conclusion === 'cancelled' ? 'needs_human' : 'failed',
-      reason:
-        '워크플로가 종료 상태를 기록하기 전에 중단되었습니다. Actions 로그와 현재 커밋을 확인한 뒤 수동 재개하세요.',
-    },
-    record.id,
-  );
+  const stopped = {
+    ...record.state,
+    status: run.conclusion === 'cancelled' ? 'needs_human' : 'failed',
+    reason:
+      '워크플로가 종료 상태를 기록하기 전에 중단되었습니다. Actions 로그와 현재 커밋을 확인한 뒤 수동 재개하세요.',
+  };
+  await github.saveState(issue, stopped, record.id);
+  await notifyStop(github, issue, stopped);
 }

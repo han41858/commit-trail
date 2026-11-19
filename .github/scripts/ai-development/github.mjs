@@ -29,6 +29,7 @@ export function createGitHub({
   token,
   publishingToken,
   request = fetch,
+  sleep = wait,
 }) {
   const repo = `https://api.github.com/repos/${repository}`;
   const owner = repository.split('/')[0];
@@ -86,6 +87,27 @@ export function createGitHub({
     }
   }
 
+  // The second parent of a merge of `previous` and the base branch, or null for anything else.
+  async function refreshedBase(sha, previous) {
+    const commit = await api(`/commits/${sha}`);
+    const [first, second] = commit.parents;
+    return commit.parents.length === 2 &&
+      first.sha === previous &&
+      shaPattern.test(second.sha)
+      ? second.sha
+      : null;
+  }
+
+  async function branchHead(branch) {
+    try {
+      const ref = await api(`/git/ref/heads/${branch}`);
+      return ref.object.sha;
+    } catch (error) {
+      if (error.status === 404) return null;
+      throw error;
+    }
+  }
+
   const addComment = (number, body) =>
     api(`/issues/${number}/comments`, {
       method: 'POST',
@@ -105,14 +127,36 @@ export function createGitHub({
       );
       return ['admin', 'maintain', 'write'].includes(permission);
     },
-    async ref(branch) {
-      try {
-        const ref = await api(`/git/ref/heads/${branch}`);
-        return ref.object.sha;
-      } catch (error) {
-        if (error.status === 404) return null;
+    ref: branchHead,
+    refreshedBase,
+    async updateBranch(state) {
+      // The publishing token makes the new HEAD start the regular pull_request CI.
+      await api(`/pulls/${state.pull}/update-branch`, {
+        method: 'PUT',
+        publish: true,
+        payload: { expected_head_sha: state.head },
+      }).catch((error) => {
+        if (error.status === 422)
+          throw new NeedsHuman(
+            '최신 기준 브랜치를 작업 브랜치에 반영할 수 없습니다. 충돌이 있거나 브랜치가 변경되었습니다. PR을 수동으로 확인하세요.',
+          );
         throw error;
+      });
+      // GitHub merges in the background and answers before the branch moves.
+      for (let attempt = 0; attempt < 15; attempt++) {
+        await sleep(2000);
+        const head = await branchHead(state.branch);
+        if (!head || head === state.head) continue;
+        const base = await refreshedBase(head, state.head);
+        if (!base)
+          throw new NeedsHuman(
+            '작업 브랜치에 예상하지 못한 커밋이 있습니다. PR을 수동으로 확인하세요.',
+          );
+        return { head, base };
       }
+      throw new Error(
+        '작업 브랜치 갱신 결과를 확인할 수 없습니다. Actions 로그를 확인하고 수동 재개하세요.',
+      );
     },
     createBranch(branch, sha) {
       return api('/git/refs', {

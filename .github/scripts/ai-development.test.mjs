@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   NeedsHuman,
@@ -142,6 +143,22 @@ function fixture({
       if (data.loseMergeResponse) throw new Error('머지 응답 확인 불가');
       return mergeCommit;
     },
+    async updateBranch(state) {
+      assert.equal(state.head, data.pull.head);
+      const sha = heads[data.commits.length];
+      data.commits.push({ sha, parent: state.head, mergedBase: data.base });
+      data.remote = sha;
+      data.pull.head = sha;
+      if (data.loseRefreshResponse) {
+        data.loseRefreshResponse = false;
+        throw new Error('갱신 응답 확인 불가');
+      }
+      return { head: sha, base: data.base };
+    },
+    refreshedBase: async (sha, previous) =>
+      data.commits.find(
+        (commit) => commit.sha === sha && commit.parent === previous,
+      )?.mergedBase ?? null,
     async notice(number, message, key) {
       data.notes.set(`${number}:${key}`, message);
     },
@@ -224,6 +241,11 @@ test('a developer blocker explains the stop on the Issue without starting review
   assert.equal(data.record.state.detail, detail);
   assert.equal(data.pull, null);
   assert.equal(data.reviews.size, 0);
+  // The stop is announced once in its own comment, without the model-supplied detail.
+  assert.deepEqual([...data.notes.keys()], ['13:stop-100-1']);
+  assert.match(data.notes.get('13:stop-100-1'), /needs_human/);
+  assert.match(data.notes.get('13:stop-100-1'), /사용자 판단이 필요합니다/);
+  assert.doesNotMatch(data.notes.get('13:stop-100-1'), /@example/);
 
   let body;
   const github = createGitHub({
@@ -301,7 +323,9 @@ test('conflicting labels block startup with a deduplicated notice; unlabeled and
 test('approval wait pauses merging and resumes CI without repeating the same review', async () => {
   const { data, run } = fixture({ ci: { ok: false, reason: 'CI 승인 필요' } });
   assert.equal((await run()).status, 'needs_human');
-  assert.equal(data.notes.size, 0);
+  // Only the stop is announced; the PR has no ready notice yet.
+  assert.deepEqual([...data.notes.keys()], ['13:stop-100-1']);
+  assert.match(data.notes.get('13:stop-100-1'), /CI 승인 필요/);
   assert.equal(data.mergeRequests.length, 0);
   const state = await run({
     resume: true,
@@ -312,7 +336,10 @@ test('approval wait pauses merging and resumes CI without repeating the same rev
   assert.equal(data.events.filter((item) => item?.reviewer).length, 1);
   assert.equal((await run({ resume: true, runId: 102 })).status, 'merged');
   assert.deepEqual(data.mergeRequests, [heads[0]]);
-  assert.equal(data.notes.size, 1);
+  assert.deepEqual(
+    [...data.notes.keys()],
+    ['13:stop-100-1', `99:ready-${heads[0]}`],
+  );
 });
 
 test('CI completion merges the verified PR without a manual run or another review', async () => {
@@ -442,6 +469,96 @@ test('a closed or manually edited PR and a newer dev stop without overwriting ch
   }
 });
 
+test('an Issue parked for CI survives a later merge to dev by refreshing on resume', async () => {
+  const newerDev = 'f'.repeat(40);
+  const { data, github, run } = fixture({
+    results: [pass, pass],
+    ci: { ok: false, reason: 'CI 승인 필요' },
+  });
+  // Issue A passes review, then leaves the queue while it waits for CI.
+  assert.equal((await run()).status, 'needs_human');
+  assert.equal(data.record.state.awaitingCI, true);
+  // Another Issue merges into dev before the CI of A completes.
+  data.base = newerDev;
+  const completion = await runPipeline({
+    github,
+    config,
+    issueNumber: 13,
+    resume: true,
+    ciCompletion: { head_sha: heads[0], head_branch: 'ai/issue-13-codex' },
+    runId: 101,
+    attempt: 1,
+    checkCI: async () => ({ ok: true, url: 'https://github.com/ci' }),
+  });
+  assert.equal(completion.status, 'needs_human');
+  assert.match(completion.reason, /다시 실행하면 최신 dev를 반영/);
+  assert.equal(data.mergeRequests.length, 0);
+  assert.equal(data.commits.length, 1);
+
+  // An explicit resume merges dev into the branch, then reviews and checks the new HEAD.
+  const state = await run({
+    resume: true,
+    runId: 102,
+    checkCI: async (current, guard) => {
+      await guard();
+      data.events.push({ ci: current.head });
+      return { ok: true, url: 'https://github.com/ci' };
+    },
+  });
+  assert.equal(state.status, 'merged');
+  assert.equal(state.base, newerDev);
+  assert.deepEqual(data.commits[1], {
+    sha: heads[1],
+    parent: heads[0],
+    mergedBase: newerDev,
+  });
+  assert.deepEqual(
+    data.events.filter((item) => item?.reviewer).map(({ head }) => head),
+    [heads[0], heads[1]],
+  );
+  assert.deepEqual(
+    data.events.filter((item) => item?.ci).map(({ ci }) => ci),
+    [heads[0], heads[1]],
+  );
+  assert.deepEqual(data.mergeRequests, [heads[1]]);
+});
+
+test('a dev change before anything is published restarts from the new dev', async () => {
+  const newerDev = 'f'.repeat(40);
+  const { data, run } = fixture();
+  await run({
+    async develop() {
+      throw new NeedsHuman('사용자 판단이 필요합니다.');
+    },
+  });
+  data.base = newerDev;
+  const state = await run({ resume: true, runId: 101 });
+  assert.equal(state.status, 'merged');
+  assert.equal(state.base, newerDev);
+  assert.equal(data.commits[0].parent, newerDev);
+  assert.equal(data.commits.length, 1);
+});
+
+test('a lost branch refresh response is recovered without a second merge of dev', async () => {
+  const newerDev = 'f'.repeat(40);
+  const { data, run } = fixture({
+    results: [pass, pass],
+    ci: { ok: false, reason: 'CI 승인 필요' },
+  });
+  await run();
+  data.base = newerDev;
+  data.loseRefreshResponse = true;
+  assert.equal((await run({ resume: true, runId: 101 })).status, 'failed');
+  assert.equal(data.record.state.pendingRefresh, true);
+  const ci = async () => ({ ok: true, url: 'https://github.com/ci' });
+  const state = await run({ resume: true, runId: 102, checkCI: ci });
+  assert.equal(state.status, 'merged');
+  assert.equal(state.base, newerDev);
+  assert.equal(state.pendingRefresh, undefined);
+  assert.equal(data.commits.length, 2);
+  assert.deepEqual(data.mergeRequests, [heads[1]]);
+});
+
 test('a lost commit or PR response is recovered on explicit resume without double publication', async () => {
   for (const flag of ['loseCommitResponse', 'losePullResponse']) {
     const { data, run } = fixture();
@@ -525,10 +642,101 @@ test('cleanup only updates the exact interrupted attempt, and ai:stop halts work
     run_attempt: 2,
     conclusion: 'cancelled',
   };
+  data.notes.clear();
   await reconcile(github, event, config.base);
   assert.equal(data.record.state.status, 'reviewing');
+  assert.equal(data.notes.size, 0);
   await reconcile(github, { ...event, run_attempt: 1 }, config.base);
   assert.equal(data.record.state.status, 'needs_human');
+  assert.match(data.notes.get('13:stop-100-1'), /종료 상태를 기록하기 전에/);
+});
+
+test('a successful merge leaves no stop notice', async () => {
+  const { data, run } = fixture();
+  const state = await run();
+  assert.equal(state.status, 'merged');
+  assert.equal(
+    [...data.notes.keys()].some((key) => key.includes(':stop-')),
+    false,
+  );
+});
+
+test('every AI development job shares one queued concurrency group', () => {
+  const groups = ['ai-development.yml', 'ai-development-cleanup.yml']
+    .map((name) =>
+      readFileSync(new URL(`../workflows/${name}`, import.meta.url), 'utf8'),
+    )
+    .flatMap((text) => [
+      ...text.matchAll(
+        /concurrency:\n\s+group: (.+)\n\s+queue: max\n\s+cancel-in-progress: false/g,
+      ),
+    ])
+    .map((match) => match[1]);
+  assert.deepEqual(groups, [
+    'ai-development-${{ github.repository }}',
+    'ai-development-${{ github.repository }}',
+    'ai-development-${{ github.repository }}',
+  ]);
+});
+
+test('provider requests use the configured turn, output and effort budget', async () => {
+  const bodies = [];
+  const limits = {
+    turns: 2,
+    outputTokens: 1234,
+    requestTimeout: 1000,
+    codexEffort: 'high',
+  };
+  for (const agent of ['codex', 'claude']) {
+    const models = createModels({
+      keys: { codex: 'openai-mock', claude: 'anthropic-mock' },
+      modelNames: config.models,
+      limits,
+      log() {},
+      async request(_url, options) {
+        bodies.push(JSON.parse(options.body));
+        // Keep asking for a tool so the turn budget is what stops the loop.
+        return agent === 'codex'
+          ? Response.json({
+              status: 'completed',
+              output: [
+                {
+                  type: 'function_call',
+                  name: 'read_diff',
+                  arguments: '{"line":1}',
+                  call_id: 'call_1',
+                },
+              ],
+            })
+          : Response.json({
+              stop_reason: 'tool_use',
+              content: [
+                {
+                  type: 'tool_use',
+                  name: 'read_diff',
+                  input: { line: 1 },
+                  id: 'toolu_1',
+                },
+              ],
+            });
+      },
+    });
+    await assert.rejects(
+      models.run({
+        agent,
+        mode: 'review',
+        instructions: 'review',
+        context: 'issue',
+        inspect: () => 'diff',
+      }),
+      /최대 횟수/,
+    );
+  }
+  assert.equal(bodies.length, 4);
+  assert.equal(bodies[0].max_output_tokens, 1234);
+  assert.equal(bodies[0].reasoning.effort, 'high');
+  assert.equal(bodies[2].max_tokens, 1234);
+  assert.equal(config.limits.turns >= 10, true);
 });
 
 test('CI requires the configured job to succeed on the specific PR HEAD', async () => {
@@ -613,6 +821,48 @@ test('GitHub adapter requires exact CI identity and uses compare-and-swap for pu
     3,
   );
   assert.equal(seen[1].options.headers.authorization, 'Bearer app-mock');
+});
+
+test('GitHub branch refresh publishes with the exact HEAD and returns the merged base', async () => {
+  const previous = 'b'.repeat(40);
+  const merged = 'c'.repeat(40);
+  const dev = 'f'.repeat(40);
+  const state = { pull: 99, head: previous, branch: 'ai/issue-13-codex' };
+  const requests = [];
+  let polls = 0;
+  let status = 202;
+  const github = createGitHub({
+    repository: 'owner/repo',
+    token: 'workflow-token',
+    publishingToken: 'publishing-token',
+    sleep: async () => {},
+    async request(url, options) {
+      requests.push({ url, options });
+      if (url.endsWith('/pulls/99/update-branch'))
+        return Response.json({ message: 'Updating' }, { status });
+      if (url.endsWith('/git/ref/heads/ai/issue-13-codex'))
+        return Response.json({
+          object: { sha: polls++ ? merged : previous },
+        });
+      return Response.json({ parents: [{ sha: previous }, { sha: dev }] });
+    },
+  });
+  assert.deepEqual(await github.updateBranch(state), {
+    head: merged,
+    base: dev,
+  });
+  assert.equal(requests[0].options.method, 'PUT');
+  assert.equal(
+    requests[0].options.headers.authorization,
+    'Bearer publishing-token',
+  );
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    expected_head_sha: previous,
+  });
+  // A commit that is not a merge of the recorded HEAD is never treated as a refresh.
+  assert.equal(await github.refreshedBase(merged, dev), null);
+  status = 422;
+  await assert.rejects(github.updateBranch(state), NeedsHuman);
 });
 
 test('GitHub readiness mutation must confirm the reviewed head is no longer a draft', async () => {
