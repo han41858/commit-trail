@@ -59,4 +59,5 @@ GIF는 파란색 진행 표시와 기본 1분 간격의 예약된 저장소 확�
 6. GIF는 Options에서 1분 갱신 간격을 선택하고 메뉴를 닫은 뒤, 카운트다운 시작 약 48초 후부터 다음 자동 확인까지 8 fps로 녹화한다.
    수정하지 않은 프레임을 반복 재생하는 GIF로 인코딩한다.
 
-Save the browser’s output without altering the UI or data. Live repository contents and workflow states can change, so later captures need not have the same commit count or timestamps.
+UI나 데이터를 변경하지 않고 브라우저 출력을 그대로 저장한다.
+실제 저장소 내용과 워크플로 상태가 바뀌면 이후 촬영의 커밋 수나 타임스탬프가 달라질 수 있다.
