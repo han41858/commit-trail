@@ -11,7 +11,7 @@ export const config = {
   limits: {
     turns: 30,
     outputTokens: 16_000,
-    requestTimeout: 300_000,
+    requestTimeout: 600_000,
     codexEffort: 'medium',
   },
   instructions: 'AGENTS.md',
