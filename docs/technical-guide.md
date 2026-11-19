@@ -1,50 +1,95 @@
-# Commit Trail technical guide
+# Commit Trail 개발·운영 가이드
 
-Detailed usage, architecture, API behavior, development and deployment notes. See the [README](../README.md) for a product overview and screenshots.
+Commit Trail은 React, TypeScript, Vite, Canvas 2D로 GitHub 커밋 DAG를 표시하는 읽기 전용 웹앱이다.
+별도 백엔드나 데이터베이스 없이 동작한다. 제품 소개와 화면은 [README](../README.md),
+기능별 규칙은 [문서 안내](README.md)에 연결한 전용 명세에서 확인한다.
 
-Explore the flow of Git history. A responsive, read-only GitHub commit DAG viewer, built with React, TypeScript, Vite and Canvas 2D. No backend or database.
+## 개발 환경과 검증
 
-## Development
-
-Use Node.js **24.x** and npm, matching [`.nvmrc`](../.nvmrc) and the package engine requirement.
+[`.nvmrc`](../.nvmrc)와 [`package.json`](../package.json)의 `engines.node`에 맞춰 Node.js **24.x**와 npm을 사용한다.
+`npm ci`로 잠금 파일에 맞춰 의존성을 설치하고 `npm run dev`로 개발 서버를 시작한다.
 
 ```sh
 npm ci
 npm run dev
-npm test
-npm run build
-npm run format:check
 ```
 
-Formatting uses an exactly pinned Prettier version and the shared `han41858/ai-native` configuration in `prettier.config.mjs`. Run `npm run format` to format supported files across the repository, or `npm run format:check` to check them without writing. Generated outputs, local caches and the npm-managed `package-lock.json` are excluded. No formatting plugins or Git hooks are required. CI checks formatting even for documentation-only changes.
+`npm run format:check`는 파일을 고치지 않고 검사한다. `npm test`는 하위 모듈을 포함해 `src/**/*.test.ts`를 실행하고,
+`node --test --test-isolation=none .github/scripts/*.test.mjs`는 저장소 자동화를 검증한다.
+`npm run build`는 TypeScript 검사와 Vite 빌드를 실행하며, `npm run preview -- --port 4173`으로 빌드 결과를 로컬에서 확인한다.
 
-Deploy `dist/` to any static host. Repository selection uses `?repo=owner%2Frepo` and survives refresh without server rewrites.
+```sh
+npm run format:check
+npm test
+node --test --test-isolation=none .github/scripts/*.test.mjs
+npm run build
+npm run preview -- --port 4173
+```
 
-The bottom of Options shows the running app's build time right-aligned with a `Built at` prefix, using the browser's local date format and time zone with a consistent 24-hour `HH:mm` time. Vite embeds one UTC timestamp at build time; every device displays that same instant with its local date and zero-padded 24-hour time, without AM/PM, seconds or a time zone label. It stays fixed offline or across reloads of the same build, and the menu expands within the available viewport to keep it on one line. Unusually long values use an ellipsis, with the full localized timestamp available in the time element’s tooltip. A cached PWA keeps its previous build time until an app update is applied. Rebuilding the same commit changes the timestamp and bundle hash, so it can trigger a PWA update. The development server shows `Development`.
+포맷은 `package.json`에 고정한 Prettier `3.9.10`과 `prettier.config.mjs`의 공통 설정을 사용한다.
+`npm run format`은 저장소에서 지원하는 파일에 포맷을 적용한다. 생성물, 로컬 캐시와 npm이 관리하는
+`package-lock.json`은 `.prettierignore`로 제외하며 별도 플러그인이나 Git 훅은 필요하지 않다.
+문서만 변경해도 PR CI는 포맷을 검사한다.
 
-## Product rename and saved browser data
+빌드 산출물 `dist/`는 정적 호스트에서 제공할 수 있다. `?repo=owner%2Frepo`로 저장소를 지정하므로
+별도 서버 rewrite 없이 새로고침해도 선택을 복원한다.
 
-The product name is **Commit Trail**, the GitHub repository is `han41858/commit-trail`, and the Production domain is `https://commit-trail-view.vercel.app/`. The Vercel project name is `commit-trail`. GitHub repository names and Vercel project/domain settings are managed in their dashboards; changing source-code names alone does not rename those external resources. Verify that the renamed Vercel project is connected to the renamed GitHub repository, keeps `main` as its Production Branch, and serves the new public domain. Existing project IDs, team ownership and Git deployment settings should be retained.
+**Options** 하단에는 빌드 시각을 오른쪽에 `Built at`으로 표시한다. Vite가 빌드 때 삽입한 UTC 시각 하나를
+브라우저 현지 날짜와 시간대의 24시간제 `HH:mm`으로 표시하며 AM/PM·초·시간대 이름은 붙이지 않는다.
+같은 빌드에서는 오프라인이나 새로고침 후에도 시각이 바뀌지 않는다. 메뉴는 화면 안에서 한 줄을 유지하도록
+넓어지고, 공간이 부족하면 말줄임과 툴팁을 사용한다. 캐시된 PWA는 업데이트를 적용할 때까지 이전 시각을
+유지한다. 같은 커밋을 다시 빌드해도 시각과 번들 해시가 바뀌므로 PWA 업데이트가 생길 수 있다.
+개발 서버는 `Development`를 표시한다.
 
-Commit Trail starts fresh with `commit-trail.*` localStorage keys for the token, recent repositories, branch choices, Split view selection and view options (`commit-trail.view-options`: theme, auto refresh and interval). Previous product keys are neither read nor migrated. Users enter their token and configure their repositories again. A new Vercel domain also has separate localStorage, Service Workers and PWA installations; no token or setting is transferred through links, redirects or analytics. The PWA manifest's `id`, `start_url` and `scope` remain `/`; its visible names change to Commit Trail.
+## 제품 이름과 브라우저 데이터
 
-## Anonymous web analytics
+제품과 Vercel 프로젝트 이름은 각각 **Commit Trail**과 `commit-trail`이다. GitHub 저장소는
+`han41858/commit-trail`, Production 도메인은 `https://commit-trail-view.vercel.app/`이다.
+저장소·프로젝트·도메인은 각 서비스의 대시보드에서 관리하며 소스 이름을 바꿔도 외부 리소스는 바뀌지 않는다.
+설정을 점검할 때는 기존 프로젝트 ID·팀 소유권·Git 배포 설정을 유지하고, 저장소 연결과 Production Branch
+`main`, 공개 도메인을 확인한다.
 
-Commit Trail uses Vercel Web Analytics via the official `@vercel/analytics/react` component in Production. It collects page views only; the app does not emit custom interaction events or integrate Google Analytics. Analytics is best-effort and must not block GitHub history.
+PAT, 최근 저장소, 브랜치 선택, Split view 구성과 표시 옵션은 `commit-trail.*` localStorage 키를 사용한다.
+`commit-trail.view-options`는 `theme`, `autoRefresh`, `interval`을 저장한다. 이전 제품의 키는 읽거나
+이전하지 않으므로 사용자가 토큰을 다시 입력하고 저장소와 옵션을 설정한다. 도메인이 달라져도 localStorage,
+Service Worker와 PWA 설치가 분리된다. 링크·리디렉션·분석을 통해 토큰이나 설정을 이전하지 않는다.
+PWA 매니페스트의 표시 이름은 Commit Trail이며 `id`, `start_url`, `scope`는 모두 `/`이다.
 
-The SDK's `beforeSend` filter removes URL search parameters, fragments and URL credentials from events. This includes repository and branch names in `repo` / `branch` parameters, which can be sensitive for private repositories. Only the initial page view per document is retained. Client-side changes to repository, branch, Split view order, or browser history do not create additional counted page views. No PAT, GitHub API response, commit details or selected repository names are explicitly sent as custom events.
+## 익명 웹 분석
 
-The existing `Referrer-Policy: no-referrer` and restrictive CSP are kept; the Vercel deployment must serve the analytics script and collection route from the same origin. The app does not add cookies or user identifiers. This instrumentation is not an assertion that Vercel receives no request-level metadata; review Vercel's own documentation and applicable privacy requirements before rollout.
+Production에서는 공식 `@vercel/analytics/react` 컴포넌트로 Vercel Web Analytics의 페이지 조회만 수집한다.
+앱은 사용자 동작에 대한 커스텀 이벤트를 보내거나 Google Analytics를 연동하지 않는다. 분석이 실패하거나
+차단돼도 GitHub 이력 조회를 막지 않는다.
 
-**Enable separately:** Open the Vercel project **commit-trail → Analytics → Enable**, then deploy to Production. Confirm that the browser Network panel shows the Vercel Analytics script and page-view request, and that no `repo` or `branch` query values are sent. Compare counts when switching repositories and changing Split view order within the same document. Browser extensions and network filters may block analytics. Do not enable new custom events without a separate privacy review.
+`beforeSend`는 URL의 검색 파라미터·fragment·인증 정보를 제거하며, 잘못된 URL이나 HTTP(S)가 아닌 URL은
+전송하지 않는다. 비공개 이름이 포함될 수 있는 `repo`와 `branch` 역시 전송 URL에서 제거한다. 문서당 첫
+페이지 조회만 집계하므로 같은 문서에서 저장소·브랜치·Split view 순서나 브라우저 이력을 바꿔도 집계가 늘지
+않는다. PAT, GitHub API 응답, 커밋 상세와 선택한 저장소 이름을 커스텀 이벤트로 보내지 않는다.
 
-## Link previews and search metadata
+`Referrer-Policy: no-referrer`와 제한적인 CSP를 유지한다. 분석 스크립트와 수집 경로는 Vercel 배포의 같은
+출처에서 제공해야 한다. 앱은 쿠키나 사용자 식별자를 추가하지 않지만 Vercel이 요청 수준 메타데이터를 받지
+않는다는 보장은 아니다. 활성화 전에 Vercel 문서와 적용되는 개인정보 보호 요구사항을 확인한다.
 
-`index.html` includes the product title, description, canonical URL, Open Graph metadata and an X summary card in the initial HTML. Link-preview crawlers do not need to run JavaScript or call GitHub. Both cards reuse the existing public 512×512 PNG logo at `https://commit-trail-view.vercel.app/icons/app-logo-512.png`; the square image matches the summary-card format.
+분석은 Vercel 프로젝트의 **commit-trail → Analytics → Enable**에서 별도로 활성화하고 Production에 배포한다.
+브라우저 Network 패널에서 스크립트와 페이지 조회 요청을 확인하고 `repo`·`branch` 값이 전송되지 않는지,
+같은 문서에서 저장소 전환이나 Split view 재정렬 후 조회 수가 늘지 않는지 점검한다. 브라우저 확장과 네트워크
+필터가 수집을 막을 수 있다. 새 커스텀 이벤트는 별도 개인정보 검토 없이 추가하지 않는다.
 
-Single-repository and Split view links keep their query configuration for the app, while previews always describe Commit Trail. Canonical and Open Graph URLs point to the public Production root. Repository names, PATs and other query values are not inserted into metadata. `public/robots.txt` permits crawling and points to `public/sitemap.xml`, which lists only the product root.
+## 링크 미리보기와 검색 메타데이터
 
-After deployment, inspect the raw HTML at `/`, `/?repo=owner/repo` and a repeated-`repo` Split view URL without running JavaScript. Check the image URL, `/robots.txt` and `/sitemap.xml` for successful public responses and the expected content types. Vercel Preview protection and automatic noindex behavior are unchanged; use the public Production URL when validating a chat preview. Existing pasted links may retain a service's cached card until that service fetches the URL again. These metadata changes provide the card data; individual services still decide whether and how to display it.
+`index.html`의 초기 HTML에 제품 제목·설명·canonical URL·Open Graph 메타데이터·X `summary` 카드를 제공한다.
+크롤러는 JavaScript를 실행하거나 GitHub API를 호출할 필요가 없다. 두 카드 모두 공개 512×512 정사각형 PNG
+로고 `https://commit-trail-view.vercel.app/icons/app-logo-512.png`를 사용한다.
+
+단일 저장소와 Split view 링크의 쿼리는 앱에서 그대로 사용하지만, 미리보기는 항상 Commit Trail을 소개한다.
+canonical URL과 `og:url`은 공개 Production 루트이며 저장소 이름·PAT·기타 쿼리 값은 메타데이터에 넣지 않는다.
+`public/robots.txt`는 크롤링을 허용하고 제품 루트만 나열하는 `public/sitemap.xml`을 안내한다.
+
+배포 후 `/`, `/?repo=owner/repo`, `repo`가 반복되는 Split view URL의 원본 HTML을 JavaScript 실행 없이 확인한다.
+이미지 URL, `/robots.txt`, `/sitemap.xml`의 공개 응답과 콘텐츠 유형을 점검한다. Vercel Preview 보호와 자동
+`noindex` 동작은 유지하므로 채팅 미리보기는 공개 Production URL로 확인한다. 이미 붙여 넣은 링크는 서비스가
+다시 가져올 때까지 캐시된 카드를 표시할 수 있다. 메타데이터는 카드 데이터를 제공할 뿐, 외부 서비스의 표시
+여부나 형식을 보장하지 않는다.
 
 ## Use
 
@@ -152,166 +197,316 @@ Each Graph is independent. Hover adds no API request, periodic timer or DAG layo
 
 All widths and Split view columns support the same path selection: clicking/tapping a branch badge or line retains its highlight without inspecting a commit. Node/message/version-icon clicks still open details. Retained paths are independent per column. Badge/line clicks close the one shared detail popup without clearing other columns’ retained paths. Empty space, detail close or deleted targets clear the relevant selection; valid targets survive resize and reordering. Hover temporarily overrides it. Truncated badge taps also show the full-name tooltip until another press or any graph scroll. Mouse line hits use 5 CSS pixels; touch uses 12. The cursor is a pointer only over actual click targets. Touch movement beyond 8 CSS pixels, cancellation and holds over 500ms do not create a selection; native scrolling is preserved. The common resolver and opacity transition are reused without additional API requests.
 
-## Architecture and limits
+## 코드 구조와 기술적 한계
 
-`src/main.tsx` is the application entry and composes the feature modules. Source files, their styles and their `*.test.ts` files are grouped by responsibility:
+`src/main.tsx`가 진입점이며 앱 상태·인증·내비게이션·갱신 수명을 관리한다. 화면 컨트롤은 명시적인 props로
+상태를 받아 렌더링하고 별도 세션이나 구독을 만들지 않는다. `PopupBackdrop.tsx`는 토큰·설정·Split view
+팝업의 배경과 포인터 처리를 공유한다. 설정 패널은 헤더 밖에 렌더링해 배경이 앱 전체를 덮도록 한다.
+파일은 관련 기능별로 모으고 스타일과 테스트를 구현 옆에 두며 모듈은 명시적 상대 경로로 가져온다.
 
-| Directory         | Responsibility                                                                                                                      |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `src/app/`        | App notices, status, view settings, analytics and global styles; `pwa/` owns app updates                                            |
-| `src/graph/`      | Graph rendering, layout presentation, path highlighting, input and commit details                                                   |
-| `src/repository/` | Repository/branch selection, owner lookup, navigation, history loading and metadata stores                                          |
-| `src/monitor/`    | Split view selection, ordering, sessions, panes and detail positioning                                                              |
-| `src/token/`      | Token storage, permission checks and token controls                                                                                 |
-| `src/shared/`     | Common Git data/model operations and emoji conversion; `github/`, `refresh/`, `debug/` and `ui/` group shared services and controls |
+- `src/app/`은 공통 화면·알림·표시 옵션·분석·전역 스타일을, `src/app/pwa/`는 앱 업데이트를 담당한다.
+- `src/graph/`는 그래프 렌더링·입력·경로 강조·커밋 상세를 담당한다. `Graph.tsx`는 배치·입력·스크롤·
+  애니메이션을 조정하고 `graphCanvas.ts`는 DPR을 반영해 그린 배지와 메시지의 클릭 판정 범위를 반환한다.
+  Canvas는 선택 상태나 요청 수명을 소유하지 않는다.
+- `src/repository/`는 저장소와 브랜치 선택, Owner 조회, 내비게이션, 이력·메타데이터를 담당한다.
+  `history.ts`가 탐색 방향·페이지 요청·취소를 조정하고, `HistoryCommitPages.ts`가 요청 풀·중복 제거·불변
+  페이지 캐시·HEAD 검증을 맡는다. `historyTraversal.ts`는 탐색 경계·조회 범위·조상 관계를 계산한다.
+- `src/monitor/`는 Split view의 선택·정렬·세션·열·상세 위치를, `src/token/`은 토큰 저장·권한 검사·
+  토큰 컨트롤을 담당한다.
+- `src/shared/`는 공통 Git 모델과 이모지 변환, `github/`·`refresh/`·`debug/`·`ui/`의 공통 기능을 담당한다.
+  `model.ts`는 SHA로 중복을 제거하고 날짜가 아닌 부모 관계로 위상 배치를 계산한다. 가능한 경우 부모 레인과
+  이전 배치를 재사용한다. `src/shared/github/api.ts`는 페이지 단위 REST 요청을 담당한다.
 
-Keep tests beside the implementation they exercise. `npm test` discovers `src/**/*.test.ts` recursively, including nested shared modules. Modules use explicit relative imports, and the existing feature/session lifetimes are preserved across single and Split view.
+브랜치 참조·경로·화면 레인은 별개다. `graphColors.ts`는 배치와 별도로 색상을 결정하고 강조와 배지 트랙에
+같은 경로 ID를 사용한다. 페이지 추가로 경계나 인접 관계가 바뀌면 색이 달라질 수 있지만, 최종 스냅샷과 기준
+HEAD가 같으면 새 브라우저에서도 같은 색을 배정한다. `branchLabels.ts`는 브랜치 HEAD뿐 아니라 가시 곡선
+구간에도 라벨을 배치한다. 상세 규칙은 [경로 색상과 하이라이트](dag-hover-highlight.md)와
+[월·일 날짜 구분선](date-separators.md)을 따른다. 날짜 구분선은 별도 설정·의존성·API 요청을 추가하지 않는다.
 
-`main.tsx` owns app state, authentication, navigation and refresh lifetimes. `ViewOptions.tsx`, `AccessTokenPanel.tsx`, `AppStatus.tsx` and `MonitorControls.tsx` render their controls from explicit props. `PopupBackdrop.tsx` shares the background and pointer-gesture handling for token, settings and Split view popups. The settings button stays in the header while its panel renders beside the header so the backdrop covers the whole app. These controls do not create separate sessions or subscriptions.
+Canvas는 뷰포트와 작은 여유 영역만 그리지만 배치와 선 탐색은 메모리에 올라온 이력을 처리한다.
+합성 커밋 10,000개를 자동 테스트로 검증하며, 실제 대형 저장소와 100,000개 커밋의 성능은 따로 실측해야 한다.
+무한 스크롤은 점진적 로딩이며 무제한 메모리나 성능을 보장하지 않는다. 오프라인 Git 이력 캐시는 없고 비공개
+이력은 지우거나 새로고침할 때까지 메모리에서 보일 수 있다. 접속 여부와 조회량은 브라우저 네트워크 정책과
+GitHub API 한도에 좌우된다.
 
-`model.ts` owns data and topological lane layout; `api.ts` owns paginated REST requests. `history.ts` coordinates cancellation, encountered-parent traversal, directional pagination and bounded loading batches. `HistoryCommitPages.ts` owns that traversal’s request pool, in-flight deduplication, immutable page cache and head validation; History still supplies the cancellation signals and resets the reader at the same traversal boundaries. `historyTraversal.ts` contains pure frontier, loaded-history range and ancestry calculations.
+추가 로딩은 가로로 보이는 레인의 현재 화면 하단까지를 기준으로 한다. 큰 점프 뒤에는 화면 위의 미완료 경계도
+이어 읽으며, 화면 아래 경계와 최신 추적 애니메이션의 중간 위치는 조회하지 않는다. 이전 방문 범위를 누적하거나
+필요한 경로를 임의로 자르지 않는다. 이미 예약된 작업은 화면 밖으로 나가도 유지하고, 대기열 정리 뒤 남은 경계를
+다시 검사한다. 각 `History`의 커밋 요청은 최대 16개까지 병렬 처리한다. Split view의 저장소와 메타데이터 요청은
+별도로 동작하므로 앱 전체의 HTTP 상한은 아니다. 느린 분기가 다른 빈 슬롯을 막지 않고 동일한 진행 요청은 공유한다.
 
-`Graph.tsx` owns layout, input, scrolling and animation scheduling. `graphCanvas.ts` draws each DPR-aware frame and returns the painted badge and message bounds used for hit testing; it does not own selection or request lifetimes. Branch refs and lanes are separate. Commit identity is deduplicated by SHA. Parent relationships, rather than dates, determine order. Parent lanes are reused where possible, with earlier assignments preferred as pages arrive. `graphColors.ts` computes deterministic path colors separately from rendered lane placement, and its shared path IDs also bound highlighting and badge tracks. Pagination can change a path boundary or collision neighborhood; the same final snapshot and selected base/HEAD SHA still produce identical assignments in a fresh browser. `branchLabels.ts` anchors labels to visible curve segments rather than only branch heads.
+빈 응답이나 요청 SHA와 맞지 않는 응답은 완료로 처리하지 않고 **Retry**를 제공한다. 오류가 나면 새 자동 요청을
+멈추되 이미 시작한 독립 요청의 결과는 유지하고, 실패한 소스만 재시도한다. 저장소·방향·토큰을 바꾸면 대기 및
+진행 요청을 취소한다. 이름 조회만으로 커밋을 요청하지 않고, 활동 탐색은 배치당 메타데이터 한 페이지와 독립 이력
+최대 세 개를 처리하며 이미 읽은 HEAD와 공유 조상은 다시 받지 않는다. 활동 탐색 실패 시 **Retry branches**를
+제공한다. 오래된 순에는 마지막 페이지 정보가 필요하며, 없으면 전체 이력을 훑는 대신 오류를 표시한다.
 
-The canvas bounds its drawing to the viewport, but layout and edge traversal still process loaded history. No claim of unlimited history: 10,000 synthetic commits are covered by automated tests; live large-repository and 100,000-commit performance still need measurement. New history pages are requested from unresolved boundaries at or before the current viewport bottom, within horizontally visible lanes. This includes boundaries above the viewport: after a large jump, one page may still leave a path disconnected from the visible history. Layout and queue-cleanup scans keep following successor pages until the boundary moves below the viewport, reaches a root or rejoins loaded ancestry. Both display directions use the same rule without tracking prior scroll positions. This intentionally replaces the earlier rule that excluded newly inserted offscreen rows: new boundaries above the viewport are eligible, while boundaries below it remain deferred. Previously visited ranges are not accumulated. Required paths are not truncated by an arbitrary batch budget; existing concurrency, deduplication, cancellation, error and rate-limit handling still apply. Latest-follow animations do not fetch from transient viewport positions. Each History instance limits its commit request pool to sixteen concurrent HTTP requests across parent paths and activity-discovered branches. Monitor repositories use independent pools, and metadata requests use their own readers; sixteen is not an application-wide HTTP concurrency cap. A slow branch never blocks another available slot; loading continues to accept new visible boundaries, and queued work survives scrolling out of view. Identical in-flight commit queries share one request. Accepted boundary work is registered before subscribers run, and cleanup publishes the remaining queue so unresolved cursors are reconsidered without another scroll event. Empty or mismatched boundary responses keep the gap unresolved and expose Retry rather than falsely marking the path complete. Repository, direction, or token changes cancel queued and in-flight work. Fully loaded shared ancestry is not fetched again just because an API source still has additional pages. Branch-name discovery never starts commit requests. Activity discovery scans at most one metadata page and three independent histories per batch, skips already loaded heads, and pauses with a Retry branches control if it fails. Oldest-first uses API pagination metadata to avoid downloading the complete history before rendering; if last-page metadata is unavailable, it reports an error instead of scanning every page. Errors pause new automatic loading while already accepted independent requests can finish; Retry repeats failed sources without refetching successful paths. Infinite scroll is incremental loading, not an unlimited memory or performance guarantee. No offline Git history cache; private history remains visible in memory until cleared or refreshed. GitHub access depends on the browser network policy and API quota.
+미조회 부모는 현재 메모리의 커밋을 기준으로 판정하며 다시 필요한 조상은 유효한 불변 페이지 캐시에서 복원한다.
+날짜 필터 없는 40자 SHA 고정 첫 페이지는 해당 커밋이 있어야 캐시한다. 갱신 HEAD가 이 조건을 통과하지 못하면
+이전 그래프·참조·HEAD를 유지하고 다음 갱신에서 재시도한다. 날짜 필터를 사용한 활동 조회와 오래된 순의 후속
+페이지는 HEAD 포함 검증에서 제외한다.
 
-Missing-parent boundaries depend on commits currently loaded, not on whether their SHA was fetched earlier. If branch deletion prunes an ancestor and a later merge needs it again, traversal restores it from a valid immutable page in memory when available, without another HTTP request. An unfiltered first page pinned to a 40-character SHA must contain that commit before it enters the page cache. Empty or mismatched responses are not cached, so Retry can recover. If this validation fails for a refreshed HEAD, the previous graph, refs and HEAD remain in place for the next refresh to retry. Since-filtered activity discovery and later pages in oldest-first traversal may legitimately omit the pinned HEAD and are exempt from that check.
+전체 참조 갱신을 마치면 삭제된 참조에만 속한 경로를 정리한다. 남은 참조의 도달 가능한 조상과 이전 HEAD는 공유
+이력과 미조회 경계 너머를 보호한다. 실제 머지 부모는 남고 squash로 통합된 뒤 불필요해진 경로는 사라진다. 선택한
+기준 브랜치가 삭제돼도 캐시 이력과 안내를 유지한다. 뒤늦게 도착한 활동·추천·이름 조회 응답은 완료된 갱신 버전과
+비교해 옛 이름이나 HEAD를 되살리지 않으며, 전체 참조 목록이 확인되면 이전 선택 목록의 페이지 탐색을 끝낸다.
+이미 사라진 부모 경계의 응답은 그래프에 합치지 않는다. 그 요청에만 해당하는 오류는 무시하지만 인증·한도 오류는
+계속 알린다. 자세한 판정은 [제품 명세의 API 및 로딩](specification.md#52-api-및-로딩)을 따른다.
 
-After a complete branch refresh, loaded paths belonging only to deleted refs are retired even if an unrelated catalog head or parent is still unknown. Current reachable ancestry and prior heads of surviving refs protect shared commits and history behind unresolved gaps; actual merge parents remain connected, while obsolete squash-merged branch paths disappear. Immutable page caches remain available if later traversal needs a retired parent. A deleted selected base still keeps its cached history and existing notice.
+## Vercel 배포
 
-Activity discovery, recommendation and exact-name lookups compare late ref responses with the completed refresh version. Older results cannot restore removed names or changed heads. A complete catalog also ends old picker pagination. Parent responses whose boundary has disappeared are not integrated again; errors specific to that obsolete request are ignored, while authentication and rate-limit failures still surface. In-flight HTTP work may finish, but it cannot recreate the retired graph path.
+[`vercel.json`](../vercel.json)에 맞춰 Node.js **24.x**, Framework Preset **Vite**, 저장소 루트, 설치 명령
+`npm ci --no-audit --no-fund`, 빌드 명령 `npm run build`, 출력 경로 `dist`를 사용한다. 백엔드·Functions·
+빌드 환경변수·빌드용 GitHub 토큰은 필요하지 않다. `VITE_*` 값은 브라우저 번들에 공개되므로 PAT를 넣지 않는다.
 
-## Deploy to Vercel
+### Git 연동
 
-The repository includes `vercel.json`. Use Node.js **24.x**, framework **Vite**, install command `npm ci --no-audit --no-fund`, build command `npm run build`, and output directory `dist`. No backend, functions, environment variables, or build-time GitHub token are required. Never add a PAT as a `VITE_*` variable: those values would be public in the browser bundle.
+Vercel 프로젝트 `commit-trail`을 `han41858/commit-trail`과 연결하고 Production Branch는 **main**, GitHub 기본
+브랜치는 **dev**로 유지한다. `vercel.json`의 `git.deploymentEnabled: true`는 Git 자동 배포를 활성화한다.
+Vercel Preview도 켜 둔다(`previewDeploymentsDisabled: false`). `gitProviderOptions.createDeployments`는
+GitHub 배포 기록을 제어하며 Vercel 빌드 스위치와는 다르다.
 
-### Git integration
+기능·수정·문서·설정 작업은 최신 `dev`에서 분기하고 `dev` 대상 PR로 먼저 반영한다. `feature/*`, 기존 `feat/*`
+및 `dev`는 Preview 대상이며 `main`에 승격 PR을 머지하면 Production 빌드를 시작한다. 확인된 빌드 비대상
+문서만 변경한 경우에는 아래의 문서 전용 규칙으로 빌드를 취소한다.
 
-The existing Vercel project `commit-trail` is linked to `han41858/commit-trail`. Keep the repository root as Root Directory, the Framework Preset as **Vite**, automatic Git deployments enabled, and the Production Branch as **main**. The GitHub default branch remains **dev**.
+GitHub Actions는 검증을, Vercel Git Integration은 배포를 담당한다. Preview는 CI와 병렬로 빌드할 수 있다.
+`main` PR의 필수 검사는 머지를 제어할 뿐, 머지 후 검사까지 Production 도메인 반영을 보류하려면 별도의
+Vercel Deployment Checks가 필요하다.
 
-`vercel.json` explicitly enables Git deployments with `git.deploymentEnabled: true`. Keep Vercel's Preview Deployments enabled (`previewDeploymentsDisabled: false`). The separate `gitProviderOptions.createDeployments` option controls GitHub deployment records and is not the Vercel build switch.
+### CI 이벤트 처리
 
-- Feature branches (`feature/*` and existing `feat/*`) and `dev` receive Preview deployments through Vercel Git Integration, unless the documentation-only rule below cancels the build.
-- Merging a PR into `main` starts the Production build and deployment unless only audited non-build documentation changed. Every feature, fix, documentation and configuration change first reaches `dev` through a PR. Only a PR from this repository's `dev` branch may target `main`; the required CI job rejects other source branches and forks. Feature, recovery and release branches must not promote directly to `main`.
-- `.github/workflows/ci.yml` starts **Test and build** when PRs targeting `dev` or `main` open, reopen, receive commits or are edited, and on pushes to those branches. Each validation runs the promotion guard. For code, build inputs, automation or uncertain changes it retains `npm ci`, all application and automation tests, and `npm run build`, using `.nvmrc` and the npm download cache. Every validation sets up Node, installs dependencies and runs `npm run format:check`. For verified documentation-only changes it skips application and automation tests and the build. No new Secrets are needed.
-- The required GitHub Actions check is **Test and build**. The Ruleset definitions in `.github/rulesets/` retain the existing protections and add this check. `dev` also requires PR branches to be up to date, so concurrent feature PRs are tested against the latest `dev`. `main` does not require an up-to-date head, but every main-targeted PR still validates its proposed merge. Its intentional file difference from `dev` is `.github/workflows/production-release.yml`. Ordinary `dev` → `main` merge commits preserve this main-only addition; do not copy it back into `dev` or merge a main-based feature branch into dev. These JSON files are definitions; changing them in Git does not update GitHub's active Rulesets automatically.
-- GitHub Actions performs validation; Vercel Git Integration performs deployment. Preview builds can run alongside CI. Main's PR checks gate merging; gating production-domain assignment on post-merge checks would require separate Vercel Deployment Checks.
+`.github/workflows/ci.yml`은 `dev`·`main` 대상 PR의 열기·다시 열기·커밋 추가·수정과 두 브랜치의 push를
+검증한다. 대상 변경뿐 아니라 제목·본문만 고쳐도 고정 이름 **Test and build**로 실행한다. 항상 러너에서 승격
+경로를 검사하고 `.nvmrc`와 npm 다운로드 캐시를 사용해 Node와 의존성을 준비한 다음 `npm run format:check`를
+실행한다. 문서 전용으로 확인한 경우에만 작업 내부의 앱 테스트·자동화 테스트·빌드를 생략한다. 추가 Secret은
+필요하지 않다.
 
-### CI event handling
+필수 작업 전체를 건너뛰거나 이름을 동적으로 바꾸지 않는다. 스킵된 작업의 이름 표현식이 평가되지 않은 채
+기록되면 성공했던 실행을 다시 돌려도 필수 검사가 대기 상태에 남을 수 있다. PR 또는 브랜치마다 같은 동시성
+그룹을 사용해 최신 실행이 이전 검증을 대체한다.
 
-Pull-request `edited` events remain enabled to validate target-branch changes. Retargeting must rerun the dev-to-main promotion guard and the target branch's release-entrypoint checks. Title/body edits also run validation. Every run uses the literal job name **Test and build**, allocates a runner and executes the promotion guard. Required-check names must not be conditional, and the required job itself must not be skipped. Verified documentation-only changes skip heavy steps inside that job.
+`.github/rulesets/`의 정의에서 `dev`는 최신 기준 브랜치를 요구하고 `main`은 요구하지 않지만, 어느 쪽이든
+PR의 병합 결과를 검증한다. `dev` Ruleset에 PR 자체를 강제하는 규칙은 없으나 운영 절차는 PR을 거친다.
+PR에서 검사한 트리가 이후 push와 같다고 단정할 수 없고 릴리즈 진입점 검사도 대상 브랜치에 따라 다르므로
+push 검증을 유지한다. 저장소의 JSON을 변경해도 GitHub에서 활성화된 Ruleset은 자동으로 바뀌지 않는다.
 
-Do not assume a newer metadata-only skipped run preserves the required-check association of an older successful run. GitHub can record a skipped job's dynamic name as unevaluated expression text, leaving **Test and build** expected and blocking merge even after an older validation is rerun. The workflow uses one concurrency group per PR or branch; a newer run replaces superseded validation with a new complete check. The existing Ruleset remains unchanged.
+### AI 개발과 교차 리뷰
 
-PR and post-merge push validation both remain enabled. `dev` protection does not require a PR, and `main` allows a PR whose head is not up to date with its base. A PR's tested merge therefore does not automatically prove that a later push has the same tree. Automation checks also depend on the destination branch. Reusing results would require verified equivalent inputs and a successful validation for the same branch context. This workflow retains full validation for those events.
+저장소 쓰기 권한자가 열린 Issue에 실행 라벨 하나를 추가하면 기본 브랜치 `dev`에서 `AI development`가 GitHub
+호스팅 Ubuntu 러너로 실행한다. 필요한 라벨은 저장소에 미리 만든다. 실행 라벨이 여러 개면 시작하지 않는다.
 
-### AI development and cross-review
+- `ai:develop` 또는 `ai:develop:codex`: OpenAI Codex가 개발하고 Anthropic Claude가 리뷰한다.
+- `ai:develop:claude`: Anthropic Claude가 개발하고 OpenAI Codex가 리뷰한다.
 
-`AI development` runs on GitHub-hosted Ubuntu runners after a repository user with write access adds one of the following labels to an open Issue. Create the labels in the repository before first use.
+한 PR로 끝낼 변경과 완료·검증 조건을 Issue에 적는다. 첫 실행은 역할과 Issue·`dev`의 기준 상태를 기록한다.
+컨트롤러는 개발 모델의 편집을 검증한 뒤 `ai/issue-<number>-<developer>`에 커밋하고 `dev` 대상 Draft PR 하나를
+연다. 리뷰 모델은 Git 스냅샷과 전체 diff를 읽고, 컨트롤러는 구조화한 지적 사항을 PR 댓글로 남긴다. 수정 요청은
+원래 개발 모델에 돌려보내며 통과하지 못한 채 리뷰 한도 3회에 도달하거나, 같은 결함이 반복되거나, 모델이 사람의
+판단을 요청하면 멈춘다. 댓글만 요청하면 리뷰할 Draft PR이 없으므로 상태 댓글의 사유를 확인하고 구체적인 편집을
+새 Issue에 적는다.
 
-| Label               | Developer        | Reviewer         |
-| ------------------- | ---------------- | ---------------- |
-| `ai:develop`        | OpenAI Codex     | Anthropic Claude |
-| `ai:develop:codex`  | OpenAI Codex     | Anthropic Claude |
-| `ai:develop:claude` | Anthropic Claude | OpenAI Codex     |
+리뷰가 통과하면 현재 PR HEAD의 **Test and build**를 확인한다. CI가 없거나 승인 대기 또는 실패 상태라면
+`needs_human`으로 멈춘다. 저장소 정책에 따라 **Approve workflows to run**을 눌러야 할 수 있다. 같은 SHA의
+교차 리뷰와 CI가 모두 통과하면 Draft를 해제하고 그 SHA로 `dev`에 스쿼시 머지를 요청한다. GitHub가 기존 브랜치
+규칙을 적용하며, 성공하면 Issue에 `merged`와 머지 커밋을 기록하고 연결된 Issue가 닫힌다. 충돌·PR 또는 HEAD
+변경·머지 거부는 사람의 확인이 필요하다. `main` 승격은 AI 스쿼시 머지와 별도의 수동 절차다.
 
-Create an Issue with a focused change and explicit acceptance criteria, then apply one label. A collision blocks startup. The first run records the role and a snapshot of the Issue and current `dev`. The developer proposes edits and the workflow validates them before publishing a commit to `ai/issue-<number>-<developer>` and opening one Draft PR against `dev`. The reviewer can read Git snapshots and the diff. The workflow publishes structured findings as PR comments. It sends requested changes back to the original developer and stops after three reviews, a repeated defect, or a request for human judgment.
+#### 공유 큐와 한 Issue의 CI 후속 처리
 
-`AI development cleanup` listens only for completed `AI development` runs on `dev` and reconciles interrupted attempts; successful or skipped runs do not allocate a cleanup runner. `AI development CI follow-up` listens only for completed `CI` runs whose head branch matches `ai/issue-*`. It then requires a successful pull-request run from the same repository and an exact `ai/issue-<number>-(codex|claude)` branch before continuing the recorded review and merge. Ordinary PR branches and `dev`/`main` push CI therefore create no AI follow-up workflow run. Related AI runs can still leave skipped records because `workflow_run` cannot filter by conclusion at the trigger level.
+개발·정리·머지 후속 작업은 저장소 단위의 공유 동시성 그룹(`queue: max`, `cancel-in-progress: false`)을 사용한다.
+여러 작은 Issue에는 각각 실행 라벨을 붙여 큐에 넣는다. 작업은 대기한 순서대로 한 번에 하나씩 실행하며, 앞선
+작업이 머지됐다면 다음 새 Issue는 그 변경을 포함한 `dev`를 사용한다. 앞선 Issue가 CI 대기로 큐를 비우면 다른
+작업이 먼저 진행될 수 있다. 큐는 Issue 의존성을 해석하거나 다음 Issue를 자동으로 시작하는 기능이 아니다.
 
-All AI development jobs, including the separate cleanup and CI follow-up jobs, share one concurrency queue, so Issues are processed one at a time in the order their runs were queued. A later Issue starts from the `dev` that already contains the earlier merge. An Issue that left the queue to wait for CI, or a run interrupted by a manual merge, can still find `dev` changed; it stops with `needs_human`. Running `AI development` again with that Issue number merges the latest `dev` into the working branch with GitHub's update-branch API, then reviews the new HEAD and waits for its CI before merging. The refresh counts toward the three-review limit, and a merge conflict is left for human follow-up. The CI follow-up job never refreshes by itself because it has no model access to review the new HEAD.
+`AI development CI follow-up`은 `ai/issue-*` 브랜치에서 완료된 `CI`를 받는다. 성공한 같은 저장소의 PR 실행과
+정확한 `ai/issue-<number>-(codex|claude)` 이름을 확인한 뒤, 이미 리뷰를 통과해 CI를 기다리는 **같은 Issue의 같은
+HEAD**만 자동으로 이어서 처리한다. CI를 기다리는 사이 다른 머지 등으로 `dev`가 바뀌면 `needs_human`으로
+멈춘다. 후속 작업에는 모델 접근 권한이 없어 새 HEAD의 브랜치 갱신이나 리뷰를 대신하지 않는다.
 
-Provider responses are streamed over server-sent events and reassembled into the same object a non-streaming call returns, so long outputs are not bound by one fixed response timeout. Each request can make up to 30 tool turns, return up to 32,000 output tokens and propose up to 80 edits; it ends when no bytes arrive for five minutes or after 30 minutes in total. Codex uses medium reasoning effort. A stream that reports an error, ends early or goes silent has an unknown outcome and is not retried automatically. Adjust `limits` in `.github/scripts/ai-development/config.mjs` to change this budget. Keep Issues small enough for one focused PR.
+`AI development cleanup`은 `dev`에서 완료된 `AI development`의 중단 상태를 정리한다. 성공·스킵한 실행에는
+정리 러너를 할당하지 않는다. 일반 PR과 `dev`·`main` push CI는 AI CI 후속 워크플로를 시작하지 않는다.
+`workflow_run`은 트리거에서 결론을 거를 수 없으므로 관련 AI 실행에 스킵 기록은 남을 수 있다.
 
-For a first run, name a small code or documentation change and say how to verify it. A request for role-by-role comments alone gives the reviewer no Draft PR to inspect. If the developer asks for human judgment, the Issue state includes the reason supplied by the developer. Start a new Issue with a concrete edit if the original Issue only requested comments.
+#### 모델과 자격 증명
 
-#### Credentials and required CI
+**Settings → Environments → ai-development → Deployment branches and tags**에서 `ai-development` Environment를
+설정하고 선택된 브랜치에 `dev` **브랜치**만 추가한다. 태그나 와일드카드는 허용하지 않는다. 개발 작업과 CI 머지
+후속 작업은 이 Environment를 사용한다. 다음 세 Secret은 여기에 두고 Repository Secrets 사본을 삭제한다.
 
-Create an Actions Environment named `ai-development` before using the updated automation. Under **Settings → Environments → ai-development → Deployment branches and tags**, choose selected branches and allow only the `dev` **branch**, without tags or wildcards. The development job and CI merge follow-up bind this Environment. Put these Secrets in that Environment and delete their Repository Secrets copies:
+- `OPENAI_API_KEY`: [OpenAI API 키](https://platform.openai.com/api-keys)로 설정한다. Codex는 Responses API와
+  기본 모델 `gpt-6.2-sol`을 사용한다. 모델 ID는 [공식 Codex 카탈로그](https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json)에서 확인한다.
+- `ANTHROPIC_API_KEY`: [Claude Console](https://console.anthropic.com/settings/keys)의 키로 설정한다. Claude는
+  Messages API와 기본 모델 `claude-sonnet-5-5`를 사용한다. 모델 ID는 [공식 Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/model.py)에서 확인한다.
+- `AI_AUTOMATION_TOKEN`: `han41858/commit-trail`로 범위를 제한한 fine-grained PAT를 사용한다. **Contents**,
+  **Pull requests**, **Workflows**는 읽기/쓰기, **Actions**, **Secrets**, **Environments**는 읽기 권한을 준다.
+  Workflows 쓰기는 `.github/workflows/` 커밋에 필요하고 읽기 권한은 Secret 값이 아닌 격리 메타데이터를 검사한다.
+  classic PAT를 사용한다면 `workflow` 스코프도 필요하다. 짧은 만료 기간과 저장소 범위 제한을 권장한다.
+  [GitHub PAT 안내](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)를 참조한다.
 
-- `OPENAI_API_KEY` from the [OpenAI API keys page](https://platform.openai.com/api-keys). The default model is `gpt-6.2-sol` through the Responses API, matching the everyday coding model in the [official Codex model catalog](https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json). Override it with the Actions variable `AI_CODEX_MODEL` if needed. Use a model with structured output and function-tool support.
-- `ANTHROPIC_API_KEY` from the [Claude Console](https://console.anthropic.com/settings/keys). The default model is `claude-sonnet-5-5` through the Messages API, using the current Sonnet generation listed in the [official Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/model.py). Override it with `AI_CLAUDE_MODEL` if needed. Use a Claude model with structured output and tool support.
+**Settings → Secrets and variables → Actions → Variables**의 저장소 Actions 변수 `AI_CODEX_MODEL`과
+`AI_CLAUDE_MODEL`은 기본 모델보다 우선한다. 예를 들어 Claude에 Opus를 사용하려면 `AI_CLAUDE_MODEL`을
+`claude-opus-5-5`로 설정한다. 개발·리뷰 역할은 그대로이고 해당 공급자 모델만 바뀐다. 이전 ID를 지정한 변수가
+있으면 갱신하거나 삭제한다. 선택한 모델은 구조화 출력과 도구 호출을 지원해야 하며 API 계정의 접근 권한도
+필요하다. 사용할 수 없는 모델이면 공급자 오류를 기록하고 중단하며 다른 모델로 자동 전환하지 않는다.
 
-The Actions variables take precedence over these defaults. If a variable still names an older model, update or remove that variable to use the new default. SDK and catalog entries identify model IDs; the repository's API account must also have access to the selected model. An inaccessible model stops the Issue with the reported provider error rather than silently falling back.
+기본 `GITHUB_TOKEN`은 상태·리뷰 댓글·Draft 해제에 사용한다. 브랜치·커밋·PR 게시와 스쿼시 머지에는
+`AI_AUTOMATION_TOKEN`을 사용해 일반 PR 및 머지 후 CI가 시작될 수 있도록 한다. 컨트롤러는 모델 실행과 게시
+변경 전에 Repository Secrets가 비어 있는지, 세 자격 증명이 `dev` 전용 Environment에 있는지, Secret을 담은
+다른 Environment가 명시적인 `dev` 또는 `main` 브랜치로만 제한되는지 확인한다. 비어 있는 Preview·Production
+Environment에는 브랜치 제한이 필요하지 않다. 검사는 개인 소유 저장소만 지원하며 조직 Secret 상속은 별도 검토가
+필요하다. 권한 부족·안전하지 않은 정책·불완전한 메타데이터는 게시 전에 `needs_human`으로 처리한다. 워크플로
+커밋 권한 오류는 필요한 Workflows 권한을 안내한다.
 
-To use Opus for the Claude role, set the repository Actions variable `AI_CLAUDE_MODEL` to `claude-opus-5-5`. Create it under **Settings → Secrets and variables → Actions → Variables**. The same variable selects Claude for development or cross-review according to the Issue label; it does not change the role assignment.
+#### 실행 격리와 게시 전 검증
 
-The built-in `GITHUB_TOKEN` records state, review comments and PR readiness. Publishing uses `AI_AUTOMATION_TOKEN` from the protected Environment, so regular PR and post-merge CI can start. Repository policy can still require **Approve workflows to run**; a reviewed HEAD continues after its required CI succeeds.
+모델에는 Issue, 신뢰된 `AGENTS.md`, 제한된 Git 텍스트 스냅샷을 제공하며 도구에 셸·GitHub·공급자 자격 증명을
+노출하지 않는다. 워크플로·자동화·의존성 설정·`AGENTS.md`를 포함한 일반 텍스트를 Issue 범위 안에서 편집할 수
+있고 별도의 디렉터리 허용 목록은 없다. Git 내부 파일·`node_modules`·저장소 밖 경로·`.env` 비밀 파일·심볼릭
+링크·비텍스트·크기 초과 파일은 제외하며 `.env.example`은 허용한다. 잠금 파일을 포함해 UTF-8 파일당 읽기·편집
+한도는 1 MiB다.
 
-Configure `AI_AUTOMATION_TOKEN` as a repository-scoped fine-grained personal access token for `han41858/commit-trail` with **Contents**, **Pull requests** and **Workflows** read/write, plus **Actions**, **Secrets** and **Environments** read. Workflows write permits commits under `.github/workflows/`; the read permissions inspect isolation metadata, not Secret values. A classic PAT also needs `workflow` scope. Prefer a short expiration and repository-scoped access. [Personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+공급자 응답은 SSE로 받아 하나의 결과로 조합한다. `.github/scripts/ai-development/config.mjs`의 `limits`는
+요청당 도구 턴 30회, 출력 32,000토큰, 편집 80개, 수신 유휴 5분과 전체 30분을 제한한다. Codex의 추론 설정은
+`medium`이다. 오류·조기 종료·무응답으로 결과를 알 수 없는 스트림은 자동으로 다시 요청하지 않는다. 공급자가
+토큰 사용량을 반환하면 Actions 로그에 기록한다.
 
-Before model execution and every publishing mutation, the controller verifies that Repository Secrets are empty, all three credentials exist in the dev-only Environment, and any other Environment containing Secrets is restricted to explicit `dev`/`main` branches. Empty Preview/Production Environments can remain unrestricted. This check targets the current personal repository; inherited organization Secrets require separate review. Missing permissions, unsafe rules or incomplete metadata stop the Issue as `needs_human` before publication. Workflow commit permission errors explicitly name the required Workflows permission. These checks preserve editing and automatic merging of workflow files while keeping unreviewed branches from using stored Secrets.
-
-The pipeline checks the existing **Test and build** job on the current PR head. A missing run, approval wait or failed check keeps the Issue in `needs_human` until CI succeeds for the reviewed SHA. Once both checks succeed, the workflow marks the PR ready for review and requests a squash merge into `dev` with the reviewed SHA. GitHub enforces the existing branch rules. The Issue records `merged` and the merge commit, and GitHub closes the linked Issue. Conflicts, a changed PR or HEAD, or a rejected merge are reported for human follow-up. `dev` → `main` promotion remains a manual merge-commit PR.
-
-#### Isolation and recovery
-
-Provider calls receive the Issue, trusted `AGENTS.md` instructions, and bounded access to Git text snapshots. Models have no shell, GitHub credentials, or provider credentials in their tool context. Development may edit regular text files throughout the repository, including workflows, automation scripts, dependency configuration and `AGENTS.md`, within the Issue's scope. There is no directory allowlist. Git internals, `node_modules`, path traversal and `.env` secret files remain blocked; `.env.example` may be edited. Symlinks and non-text or oversized files remain excluded. The per-file UTF-8 read/edit limit is 1 MiB, including the paged package lock. A Docker build installs the edited tree's `package.json` and `package-lock.json` with `npm ci --ignore-scripts`, without application credentials. The dependency image cache is keyed by both files' contents. Manifest/lock mismatches and installation failures return validation feedback for the next correction attempt. The edited tree runs the usual format, tests and build in a separate offline container with no credentials. Actions logs report provider token data when available.
-
-The Issue has a state comment with the last recorded commit, PR and Actions run. Editing that comment sends no notification, so whenever a run stops as `needs_human` or `failed` the workflow also posts a separate comment with the reason. Add an `ai:stop` label or cancel the Actions run to stop work. A follow-up workflow records an interrupted run if it left an active state. To resume, reopen the Issue and remove `ai:stop` if applicable, then explicitly run `AI development` on `dev` with that Issue number. Recovery preserves the original role and reuses the existing branch and PR. It checks for concurrent edits and closed PRs before proceeding, and brings a changed `dev` into the branch as described above. A review with an unknown outcome is escalated rather than silently repeated. Refer to the state comment and PR findings for the required next action.
-
-For `needs_human`, read both the stop notice and the state comment's detailed reason. Fix the reported condition, then choose **Actions → AI development → Run workflow**, select **dev**, and enter the existing Issue number. Reapplying an execution label does not resume a recorded run. A controller change must reach `dev` before resuming an Issue blocked by the previous implementation. If the notice calls for direct PR review because a model review's outcome is unknown, follow that instruction rather than requesting the same review again.
-
-### Documentation-only change detection
-
-`.github/scripts/change-impact.mjs` is the shared policy for CI and Vercel. `docs/` is reserved for non-build documentation and its assets; any regular file under that exact directory, including new guides, examples and images, is eligible for skipping. Only the root documents `README.md`, `AGENTS.md` and `LICENSE.md` are listed separately. Extensions do not determine build impact, and similarly named directories such as `docs-build/` are not included.
-
-The build starts at `index.html` and `src/main.tsx`; TypeScript includes `src`, Vite copies `public`, and `vite.config.ts` generates the PWA manifest/service worker. Neither `docs/` nor the three root documents are build inputs. Build-consumed documents and templates must live outside `docs/`, for example in `src/`, `public/` or `templates/`. Do not import or read documentation-only paths from application/build code. Other paths, including packages/lockfiles, TypeScript/Vite/Vercel settings, workflows, rulesets and automation scripts, keep full validation. A change mixing documentation and any such path also runs all checks.
-
-CI fetches history and compares the PR base SHA to the checked-out merge result, or the full push `before`/`after` range. Rename sources and destinations are both considered. Missing history, new/force-pushed branches, invalid event data, empty comparisons, non-regular documentation files and detector errors fall back to full validation. Do not add workflow-level `paths-ignore` or skip the required job: its **Test and build** name must keep reporting a result for the existing dev/main Rulesets. The branch-promotion guard remains mandatory even for documentation.
-
-`vercel.json` sets `ignoreCommand` to the same script with `--vercel`. Per Vercel's [Ignored Build Step contract](https://vercel.com/docs/project-configuration/vercel-json#ignorecommand), exit 0 cancels before dependency installation/build/deployment, while exit 1 continues normally. The comparison starts at `VERCEL_GIT_PREVIOUS_SHA`, not `HEAD^`, so earlier application changes in a multi-commit range cannot be hidden by a final documentation commit. First deployments, missing/shallow history, unrelated ancestry and same-SHA redeployments build normally. Skipping does not replace the currently served deployment or publish a new production release. Actual Git Integration behavior is verified after this configuration is merged; this does not add a CLI deployment path.
-
-### Branch promotion
-
-Create the promotion PR only after the final development merge, using `dev` itself as its head. Merge with a merge commit, then verify that the final dev SHA is an ancestor of main. Do not squash or rebase a promotion. `.github/scripts/check-promotion.mjs` checks the PR event's base, head branch and head repository before dependencies are installed; its regression tests run with the existing release-automation tests. See the project-specific rules in [AGENTS.md](../AGENTS.md).
-
-The shared-ancestor repair in #103/#104 is historical context. Its separate release-branch promotion path must not be reused; the corrected history now preserves the existing main-only entrypoint through normal dev → main promotions.
-
-Use the Git deployment as the normal release path. A manual CLI deployment is an explicit exception: it can create another deployment for the same SHA, and uncommitted files can differ from that SHA. Do not add a Vercel CLI deployment step or Vercel credentials to the CI workflow.
-
-Verify public Production access at the project's assigned production domain using an anonymous browser session or an HTTP request without Vercel authentication. Check for HTTP 200, no login redirect, working JS/CSS, and a public repository graph. A protected generated deployment URL or an authenticated fetch does not establish anonymous access.
-
-### Production releases
-
-Only `main` contains `.github/workflows/production-release.yml`, the **Production release** entrypoint for `deployment_status`. It calls the same-commit `.github/workflows/release.yml`, which is reusable and also exposes **Production release recovery** for manual execution. On `dev` and feature branches based on it, `release.yml` has no deployment-status trigger, so new Preview deployment events do not create skipped Production release runs. Existing run history is retained.
-
-After a successful Vercel Production deployment, the shared workflow creates a `rel-YYYYMMDDHHmmss` tag and GitHub Release on the **deployed commit**. The timestamp uses the verified success time in **Asia/Seoul**. Release notes contain the changes, commit, production URL, and deployment links. Preview and failed deployments do not publish releases.
-
-Only the newest automated Production release is retained. After successful publication or reuse, the workflow re-lists releases and combines that response with the earlier catalog and the release returned by publication or reuse. This keeps the newly published release eligible for retention even when GitHub temporarily returns an older or empty list. When the same release ID appears in both snapshots, the later response takes precedence so edits to a manual release, draft or prerelease remain protected. Managed releases found only in the earlier catalog are checked by release ID before any deletion: a 404 or a change to manual/draft/prerelease removes them from retention and deletion candidates, while other lookup errors or identity changes stop cleanup without deleting releases. This prevents a concurrently deleted newest release from causing the last real release to be deleted. The release returned by this run’s publication or reuse remains trusted when absent from the list, since an immediate individual lookup can lag behind a successful write too. It deletes older published Production releases, including releases from the former Git Stream name. It identifies them by their `rel-` timestamp tags and automation marker in the body. Git tags, commits and deployment records remain intact; drafts, prereleases and manual releases are excluded. New-publication failures leave existing releases untouched. Cleanup failures surface as errors, and retrying the same deployment resumes cleanup without creating another tag or release. Delayed events for older deployments do not recreate pruned releases. Manual dry runs never delete releases.
-
-Vercel's GitHub deployment records must be enabled (`gitProviderOptions.createDeployments: enabled`) so GitHub receives `deployment_status` events. This records deployments; Vercel Git Integration still performs the builds. Repository-dispatch events can stay disabled. No additional Secrets or deployment CLI are needed; only the publishing job receives `contents: write`.
-
-The workflow verifies the persisted GitHub deployment and status from the Vercel bot, the team/project dashboard URL, and that the deployed SHA belongs to `main`.
-
-Dashboard paths and generated deployment hosts share the `TEAM` setting, currently `han41858`, and require the exact `commit-trail` project. Only the current team URL is accepted; the public Production domain is also accepted. A team URL rename must update this shared setting.
-
-Automation code is checked out from the protected default branch, not from the event's deployed commit. Publication and cleanup runs are serialized across the repository with `queue: max` (up to 100 pending jobs) and `cancel-in-progress: false`, so delayed events and manual dry runs do not replace an already waiting publication. Queue order follows when jobs start waiting, so the tag-time guard still prevents older deployments from replacing the newer release. Repeated events and redeployments reuse the retained commit's release; failed publication reuses its tag on retry. Existing tags are never moved. A timestamp collision with another commit uses the next free second, and older deployment events keep their Git tags without recreating pruned releases or replacing the newer release.
-
-To verify or recover a missed event, run **Production release recovery** from the default branch (`dev`) with its **GitHub deployment ID**. Keeping the manual workflow on the default branch preserves GitHub's Run workflow button. Dry run is enabled by default and writes no tag or release; disable it only to publish the verified successful Production deployment. Preview IDs are safe to test and are skipped. Existing historical deployments are not backfilled automatically.
-
-The main-only entrypoint is already installed and remains on main. Changes to the shared `release.yml` and release logic first merge into dev and then promote from dev to main; do not create a separate direct-to-main configuration PR. The protected default branch (`dev`) supplies the trusted automation code, and publication uses the exact automation commit verified by the inspection job. The CI job also runs `node --test --test-isolation=none .github/scripts/*.test.mjs`; a branch-placement regression check rejects the automatic entrypoint on dev and requires it on main.
-
-### Before publishing
+컨트롤러는 수정된 `package.json`과 `package-lock.json`에서 Docker로 `npm ci --ignore-scripts --no-audit --no-fund`를
+실행해 의존성을 설치하고, 두 파일의 내용으로 이미지를 캐시한다. 잠금 파일 불일치나 설치 실패는 수정 시도에
+검증 결과로 돌려준다. 그다음 자격 증명과 네트워크가 없는 별도 컨테이너에서 아래의 `config.checks`를 적용한다.
+문서 전용 PR CI의 생략 규칙은 이 게시 전 검증에 적용하지 않는다.
 
 ```sh
-npm ci --no-audit --no-fund
+npm run format:check
 npm test
+node --test --test-isolation=none .github/scripts/*.test.mjs
 npm run build
-npm run preview -- --port 4173
 ```
 
-On the deployment, open a public repository such as `han41858/commit-trail` and `angular/angular`; verify real commit data, branch selection, loading older history, direction reversal, commit links, and refreshing a `?repo=owner%2Frepo` URL. Test tapping and fixed-width vertical scrolling in narrow layouts, and wide-layout content-sized graph columns capped at 50% and messages capped at 50%. A fine-grained PAT can be entered in the app for a private-repository check; remove it afterwards and confirm the history clears. Check invalid repository and API-limit messages.
+#### 중단과 수동 재개
 
-The current cloud environment's `api.github.com` egress policy is separate from Vercel. API requests originate in the visitor's browser. Unit tests and mocked browser checks do not establish that live GitHub access works; live API and private-repository validation remain release checks.
+Issue에 `ai:stop`을 붙이면 컨트롤러가 다음 상태 점검에서 멈춘다. 즉시 실행을 끊어야 하면 Actions 실행을
+취소한다. 정리 워크플로는 활성 상태가 남은 중단 실행을 정리한다. 상태 댓글에는 마지막 기록 커밋·PR·Actions
+실행을 남긴다. 상태 댓글의 편집은 알림을 보내지 않으므로 `needs_human`이나 `failed`로 멈출 때 별도 중단
+댓글도 남긴다.
 
-Hashed Vite assets use immutable caching; the HTML keeps Vercel's default caching. Security headers disable framing and sensitive device permissions, prevent MIME sniffing, and omit the referrer. A Content Security Policy allows scripts and PWA shell requests from this site and GitHub API requests to `api.github.com`, so a stored token cannot be sent elsewhere by injected code. Query-based navigation does not require a catch-all rewrite.
+1. 중단 댓글, 상태 댓글의 상세 사유, 필요한 경우 PR 지적 사항과 Actions 로그를 확인한다. 권한·격리 설정·CI 승인
+   등 보고된 원인을 먼저 해결한다. 컨트롤러 수정이 필요하면 그 변경을 먼저 `dev`에 반영한다.
+2. Issue가 닫혔다면 다시 열고 `ai:stop`을 제거한다. **Actions → AI development → Run workflow**에서 **dev**를
+   선택하고 기존 Issue 번호를 입력한다. 실행 라벨을 다시 붙이는 것만으로는 재개하지 않는다.
+3. 자동화는 원래 역할과 작업 브랜치·PR을 재사용하며 Issue 제목·본문 및 PR·HEAD의 동시 변경이나 닫힌 PR을
+   확인한다. 요청 자체를 바꾸려면 새 Issue를 사용한다. 기존 PR에 새 `dev`가 필요하면 GitHub의 update-branch
+   API로 반영하고 새 HEAD의 리뷰와 CI를 다시 거친다. 새 리뷰도 총 3회 한도에 포함하며 충돌은 사람이 확인한다.
 
-Vercel GitHub bot comments are disabled through the project’s commit/PR comment settings and `github.silent` in `vercel.json`.
+직전 리뷰의 결과가 기록되지 않아 직접 PR 검토를 요청하는 안내가 나오면 해당 PR을 사람이 검토한다. 같은
+커밋의 결과 불명 리뷰를 자동으로 다시 요청하지 않는다.
 
-Month and day separators span the graph's visible width with left-aligned labels above the lines. Valid committer timestamps take priority over valid author timestamps, and calendar groups use the browser's local time zone independently of Locale. Month labels use `Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric' })` for the anchor's actual full date, following local conventions such as `2026년 11월 3일`; day labels use `{ day: 'numeric' }`. The selected branch's loaded first-parent history supplies the oldest base month and date as independent lower bounds for monthly and daily markers. Every loaded month or date newer than its bound gets a marker even if it occurs only on a side branch or ahead of the selected base tip. For example, December work on dev gets a full December label before main advances beyond November. When the base path is not loaded, the available timeline supplies that context. Partial oldest months and days independently wait for older context unless a known root confirms their beginning. An unrelated old branch cannot confirm a partial base period.
+### 문서 전용 변경 판정
 
-Each confirmed month and day attaches to the earliest timestamp among **all loaded commits**, including merged side branches; timestamp ties use SHA. Loading an earlier candidate moves its anchor. A month marker suppresses only a day marker at the same SHA. Date reversals never create multiple markers for one calendar date or reorder the DAG. Month lines/text retain stronger emphasis, while day labels use a smaller font and lower opacity. Labels sit 4px inside the visible left edge with 3px background padding, both reduced in very narrow columns. Their Canvas bottom reference is 1px below the separator row so the visible glyphs sit close to the line; the 15px background ends 2px below that row. Text and backgrounds stay before the commit message column when messages are visible, or use the full visible width when messages are hidden. Text is measured, and narrow areas fit the complete Locale label using Canvas `maxWidth`. If horizontal scrolling leaves no space before messages, the label is omitted while its line remains. Labels retain the existing background and fit on adjacent 31px rows. `dateMarkers.ts` computes both periods with shared logic, `Graph.tsx` memoizes the result, and formatters are reused outside animation frames. The existing monthly API and regression tests remain available. Single/Split view and both directions share the policy without new settings, dependencies or API requests; commit geometry, pagination and scroll behavior are unchanged. See [date separators](date-separators.md).
+`.github/scripts/change-impact.mjs`는 CI와 Vercel이 함께 사용한다. `docs/` 아래의 일반 파일과 루트의
+`README.md`, `AGENTS.md`, `LICENSE.md`만 빌드에 사용하지 않는 문서 경로로 판정한다. `docs/`에는 새 가이드·
+예제·이미지도 둘 수 있지만 확장자만으로 판정하지 않으며 `docs-build/` 같은 다른 디렉터리는 포함하지 않는다.
+패키지·잠금 파일, TypeScript·Vite·Vercel 설정, 워크플로·Ruleset·자동화 등 다른 경로가 함께 바뀌면 전체 검사와
+빌드를 유지한다.
+
+빌드의 진입점은 `index.html`과 `src/main.tsx`이며 TypeScript는 `src`를 검사하고 Vite는 `public`을 복사한다.
+`vite.config.ts`는 PWA 매니페스트와 Service Worker를 생성한다. 앱이나 빌드가 읽는 문서·템플릿은
+`src/`, `public/`, `templates/` 등 위 문서 전용 경로 밖에 둔다.
+
+CI는 전체 이력을 가져오고 PR의 기준 SHA에서 체크아웃된 병합 결과까지, 또는 push의 `before`에서 `after`까지
+비교한다. 이름 변경은 이전 경로와 새 경로를 모두 검사한다. 새 브랜치·강제 push 등으로 비교가 확실하지 않거나,
+이력 누락·잘못된 이벤트·빈 비교·일반 파일이 아닌 문서·판정 오류가 있으면 전체 검증으로 처리한다. 문서 전용이어도
+승격 검사와 **Test and build** 결과를 유지해야 하므로 워크플로 수준의 `paths-ignore`를 사용하지 않는다.
+
+Vercel은 `ignoreCommand`에서 같은 스크립트를 `--vercel`로 실행한다.
+[Ignored Build Step](https://vercel.com/docs/project-configuration/vercel-json#ignorecommand)에 따라 종료 코드
+0은 설치·빌드·배포 전에 취소하고, 1은 정상 진행한다. `HEAD^`가 아닌 `VERCEL_GIT_PREVIOUS_SHA`부터 비교해
+마지막 문서 커밋이 앞선 앱 변경을 가리지 않도록 한다. 최초 배포·이력 부족·조상 관계 불일치·같은 SHA 재배포는
+정상 빌드한다. 취소 시 현재 제공 중인 배포를 교체하거나 새 Production 릴리즈를 만들지 않는다. 실제 연동 동작은
+Vercel 대시보드와 Git 배포에서 검증하며, 이 규칙은 CLI 배포 경로를 추가하지 않는다.
+
+### 브랜치 승격
+
+1. `dev`의 최종 개발 머지를 마친 뒤 **같은 저장소의 `dev` 자체**를 head로 하는 `main` 대상 PR을 연다. 포크의
+   `dev`나 기능·복구·릴리즈 브랜치는 허용하지 않는다. `.github/scripts/check-promotion.mjs`는 의존성 설치 전에
+   PR의 대상·소스 브랜치·소스 저장소를 검증한다. 이 규칙의 회귀 테스트는 자동화 테스트와 함께 실행한다.
+2. 필수 CI를 통과한 PR은 **merge commit**으로 머지한다. 승격에는 squash나 rebase를 사용하지 않는다. 해당
+   최종 `dev` SHA가 `main`의 조상인지 확인한다.
+3. `main`에만 있는 `.github/workflows/production-release.yml`을 유지한다. `main` 전체나 `main` 기반 작업
+   브랜치를 `dev`로 합치지 않고 별도 릴리즈 브랜치로 우회하지 않는다. [AGENTS.md](../AGENTS.md)의 프로젝트
+   전용 브랜치 규칙을 따른다.
+
+일반 배포 경로는 Git 연동이다. 수동 CLI 배포는 명시적인 예외이며 같은 SHA로 중복 배포하거나 커밋하지 않은
+파일이 포함될 수 있다. CI에는 Vercel CLI 배포 단계나 Vercel 자격 증명을 추가하지 않는다.
+
+### Production 릴리즈 발행과 정리
+
+`main`에만 있는 `.github/workflows/production-release.yml`의 **Production release**가 `deployment_status`를
+받아 같은 커밋의 `.github/workflows/release.yml`을 호출한다. 공유 워크플로는 수동 **Production release recovery**도
+제공한다. `dev`와 그 작업 브랜치의 `release.yml`에는 배포 상태 트리거가 없으므로 Preview 이벤트로 새 스킵 실행을
+만들지 않는다. 과거 실행 기록은 유지한다. 공유 워크플로와 릴리즈 로직의 변경도 `dev`를 거쳐 승격하며, CI 자동화
+테스트는 진입점이 `dev`에 없고 `main`에 있어야 한다는 규칙을 검사한다.
+
+Vercel에서 GitHub 배포 기록을 켠다(`gitProviderOptions.createDeployments: enabled`). GitHub는 배포 상태 이벤트를
+받고 빌드는 여전히 Vercel Git Integration이 수행한다. Repository dispatch는 끈 상태로 둘 수 있다. 추가 Secret이나
+CLI는 필요하지 않으며 게시 작업만 `contents: write`를 받는다.
+
+워크플로는 GitHub에 저장된 Vercel 봇의 배포와 성공 상태, 팀·프로젝트 대시보드 URL, 배포 SHA가 `main`에
+속하는지 검증한다. 대시보드 경로와 생성된 배포 호스트는 `TEAM` 값 `han41858` 및 정확한 프로젝트 이름
+`commit-trail`과 일치해야 한다. 공개 Production 도메인도 배포 URL로 허용한다. 팀 URL을 바꿀 때는 공유 `TEAM`
+설정을 갱신한다. 배포된 커밋이 아니라 보호된 기본 브랜치 `dev`에서 자동화 코드를 읽고 검증 작업이 확인한 정확한
+자동화 커밋으로 게시한다.
+
+성공한 Production의 **실제 배포 커밋**에 `rel-YYYYMMDDHHmmss` 태그와 GitHub Release를 만든다. 태그에는 확인한
+배포 성공 시각을 **Asia/Seoul**로 적용하고 릴리즈 노트에는 변경 내역·커밋·Production URL·배포 링크를 포함한다.
+Preview나 실패한 배포는 발행하지 않는다. 같은 커밋의 반복 이벤트·재배포는 남아 있는 릴리즈를 재사용하고, 발행 실패
+후 재시도는 기존 태그를 재사용한다. 기존 태그는 옮기지 않으며 다른 커밋과 시간이 충돌하면 비어 있는 다음 초를
+찾는다.
+
+게시와 정리는 저장소 단위 `queue: max`(대기 최대 100개), `cancel-in-progress: false`로 직렬화한다. 지연 이벤트와
+수동 dry run이 대기 중인 게시를 대체하지 않는다. 순서는 작업이 대기하기 시작한 시점 기준이므로 태그 시각도 비교해,
+이전 배포 이벤트가 새 릴리즈를 대체하거나 이미 정리된 릴리즈를 다시 만들지 않도록 한다.
+
+자동 발행한 Production 릴리즈 중 최신 하나만 보존한다. `rel-` 타임스탬프 태그와 본문 자동화 표시를 함께 확인하며,
+이전 Git Stream 이름으로 자동 발행된 릴리즈도 관리 대상으로 본다. 오래된 게시 릴리즈만 삭제하고 수동 릴리즈·초안·
+프리릴리즈와 Git 태그·커밋·배포 기록은 삭제하지 않는다.
+
+- 게시 또는 재사용에 성공하면 이전 목록·이번 실행이 반환받은 릴리즈·다시 조회한 목록을 합친다. 같은 릴리즈 ID는
+  새 목록이 우선하므로 초안·프리릴리즈·수동 릴리즈로 바뀐 항목을 보호한다. 새 목록이 비어 있거나 늦게 갱신돼도 이번
+  실행에서 받은 릴리즈는 즉시 개별 재조회하지 않고 보존 후보에 남긴다.
+- 이전 목록에만 있던 나머지 관리 대상은 삭제 전에 ID로 다시 조회한다. `404` 또는 수동·초안·프리릴리즈로의 변경은
+  후보에서 제외하고, 다른 조회 오류나 ID·태그 불일치는 삭제 전에 정리를 중단한다. 이미 사라진 최신 릴리즈 때문에
+  마지막으로 남은 실제 릴리즈를 삭제하지 않도록 한다.
+- 새 릴리즈 발행에 실패하면 기존 릴리즈를 건드리지 않는다. 정리 실패는 오류로 보고하고, 같은 배포를 재시도하면
+  새 태그나 릴리즈를 더 만들지 않고 정리를 이어간다. 수동 dry run에서는 삭제하지 않는다.
+
+이벤트 누락을 확인하거나 재처리하려면 기본 브랜치 `dev`에서 **Production release recovery**의 **Run workflow**를
+열고 GitHub deployment ID를 `deployment_id`에 입력한다. `dry_run` 기본값은 `true`이며 태그나 릴리즈를 변경하지
+않는다. 검증을 마친 성공 Production 배포를 실제 발행할 때만 이를 끈다. Preview ID는 검증 단계에서 건너뛰며 과거
+배포를 자동으로 소급 발행하지 않는다.
+
+### 배포 검증과 보안 헤더
+
+로컬에서는 개발 절의 테스트·빌드·`npm run preview -- --port 4173`으로 산출물을 확인한다. 실제 Production은
+프로젝트의 공개 도메인을 익명 브라우저 세션이나 Vercel 인증 없는 HTTP 요청으로 열어 HTTP 200 응답과 로그인
+리디렉션이 없음을 확인한다. JS·CSS와 공개 저장소 그래프가 동작하는지도 확인한다. 보호된 개별 배포 URL이나
+인증한 요청의 성공만으로 공개 접근을 확인할 수는 없다.
+
+`han41858/commit-trail`, `angular/angular` 같은 공개 저장소에서 실제 커밋, 브랜치 선택, 오래된 이력 로딩, 방향
+전환, 커밋 링크와 `?repo=owner%2Frepo`의 새로고침을 확인한다. 좁은 화면에서는 탭과 고정 폭 세로 스크롤을,
+넓은 화면에서는 콘텐츠에 맞추되 최대 50%인 그래프 열과 최대 50%인 메시지 표시를 확인한다. 비공개 저장소는 앱에
+조회용 fine-grained PAT를 적용해 확인한 뒤 토큰을 제거하고 이력이 지워지는지 확인한다. 잘못된 저장소와 API
+한도 메시지도 점검한다.
+
+API 요청은 방문자 브라우저에서 나가므로 검증 환경의 `api.github.com` 외부 접속 정책은 Vercel 배포와 별개다.
+단위 테스트와 모의 브라우저 검증은 실제 GitHub API나 비공개 저장소 접근을 확인한 것이 아니다. 실제 접근, 공개
+도메인과 대시보드 설정, 분석 수집과 외부 미리보기는 배포 환경에서 확인한다.
+
+해시가 있는 Vite 자산은 불변 캐시를 사용하고 HTML은 Vercel 기본 캐시 정책을 유지한다. 보안 헤더는 프레임 삽입과
+민감한 기기 권한을 차단하고 MIME 스니핑과 리퍼러 전송을 막는다. CSP는 스크립트와 PWA 셸을 같은 출처로 제한하고
+네트워크 연결은 같은 출처와 GitHub API `api.github.com`에만 허용해 토큰을 임의 외부 출처로 전송하는 경로를
+제한한다. 쿼리 내비게이션에 catch-all rewrite는 필요하지 않다. Vercel 프로젝트의 커밋·PR 댓글 설정과
+`vercel.json`의 `github.silent`로 Vercel GitHub 봇 댓글을 끈다.
 
 ## Automatic updates and metadata
 
@@ -335,13 +530,17 @@ Conditional ETag reads reuse unchanged data. GitHub counts unauthenticated 304 r
 
 The initial empty screen reserves the tagline, description and demo-button space during loading, so the logo stays in place even when the headline wraps. Only `Loading...` is shown in the title slot while loading; the description and demo button are hidden from view and assistive technology, and the button is disabled. The heading announces loading through a polite live region.
 
-## Developer diagnostics
+## 개발자 진단
 
-In development, press **Ctrl + Shift + D** to open the debug panel. On any build, use `/?repo=owner%2Frepository&debug=1` to enable the small debug entry button. Closing the panel keeps measurements running; **Disable debug** stops and clears them.
+개발 서버에서는 **Ctrl + Shift + D**로 진단 패널을 연다. 배포 빌드를 포함해
+`/?repo=owner%2Frepository&debug=1`로 진입 버튼을 활성화할 수 있다. 웹과 설치형 PWA 모두 저장소 입력창에
+`:debug`를 입력하고 Enter 또는 **Explore**를 누르면 URL·저장소·API 요청을 바꾸지 않고 패널을 연다. 패널을
+닫아도 측정은 계속하며 **Disable debug**로 중지하고 기록을 지운다.
 
-In the installed PWA, enter `:debug` in the existing repository field and press Enter or Explore. This also works on the web. It opens diagnostics and restores the current repository field without reloading the page, changing the URL, or issuing API requests. It keeps existing measurements if already enabled; otherwise it starts a new in-memory debug session. No debug button is shown by default, and the command needs to be entered again after a fresh launch or reload unless `?debug=1` is present.
-
-The panel separates HTTP/cache/quota observations, initial/manual/automatic refreshes, DAG layout and Canvas drawing. Each category retains its latest 20 samples in memory. **Copy diagnostics** exports numeric, sanitized JSON; details and refresh summaries also appear in DevTools Console. No extra API calls, external telemetry or persisted diagnostics are added. See [the developer debug specification](developer-debug-mode.md) for measurement boundaries and limitations.
+HTTP·캐시·한도, 초기/수동/자동 갱신, DAG 배치와 Canvas 그리기를 구분해 종류별 최근 20개 표본을 메모리에
+유지한다. **Copy diagnostics**는 민감 정보를 제외한 JSON을 만든다. DevTools Console에서도 집계와 갱신 요약을
+확인할 수 있으며 새 API 요청·외부 전송·영속 저장은 하지 않는다. 재실행 시 활성화 조건·측정 구간·Split view의
+집계 범위와 해석 한계는 [개발자 디버그 모드 명세](developer-debug-mode.md)를 확인한다.
 
 ## Installable web app (PWA)
 
