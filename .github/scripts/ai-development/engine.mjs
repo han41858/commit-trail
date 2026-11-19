@@ -40,6 +40,32 @@ const hasPassingReview = (state) => {
   return latest?.head === state.head && latest.result.status === 'pass';
 };
 
+function reviewCheck(state) {
+  if (!state.pull || state.head === state.base) return null;
+  let decision = 'queued';
+  if (hasPassingReview(state)) decision = 'success';
+  else if (state.status === 'needs_human') decision = 'action_required';
+  else if (state.status === 'failed') decision = 'failure';
+  else if (
+    state.reviewInProgress === state.head ||
+    state.reviews.at(-1)?.head === state.head
+  )
+    decision = 'in_progress';
+  return { head: state.head, decision };
+}
+
+async function syncReviewCheck(github, state, check) {
+  if (!check) return true;
+  try {
+    await github.setReviewCheck(state, check);
+    return true;
+  } catch {
+    // Display failures must not overwrite the saved review or block recovery.
+    console.warn('PR의 AI review 검사 상태를 갱신할 수 없습니다.');
+    return false;
+  }
+}
+
 export const pullMarker = (issue) => `<!-- commit-trail-ai-issue:${issue} -->`;
 export const reviewMarker = (sha) => `<!-- commit-trail-ai-review:${sha} -->`;
 
@@ -165,10 +191,31 @@ export async function runPipeline({
   };
   let recordId = existing?.id;
   let awaitingCI = false;
+  let displayedCheck;
+  let previousCheck = reviewCheck(state);
 
   async function save(status, reason, detail) {
     Object.assign(state, { status, reason, detail, runId, attempt });
     recordId = await github.saveState(issueNumber, state, recordId);
+    const check = reviewCheck(state);
+    if (
+      previousCheck &&
+      check &&
+      previousCheck.head !== check.head &&
+      ['queued', 'in_progress'].includes(previousCheck.decision)
+    )
+      await syncReviewCheck(github, state, {
+        head: previousCheck.head,
+        decision: 'neutral',
+      });
+    previousCheck = check;
+    const key = check && `${check.head}:${check.decision}`;
+    if (
+      key &&
+      key !== displayedCheck &&
+      (await syncReviewCheck(github, state, check))
+    )
+      displayedCheck = key;
   }
 
   async function guard({ recovering = false, staleBase = false } = {}) {
@@ -544,6 +591,7 @@ export async function reconcile(github, run, base) {
       state.status = 'merged';
       state.reason = mergedMessage(state, base);
       await github.saveState(issue, state, record.id);
+      await syncReviewCheck(github, state, reviewCheck(state));
       return;
     }
   }
@@ -554,5 +602,6 @@ export async function reconcile(github, run, base) {
       '워크플로가 종료 상태를 기록하기 전에 중단되었습니다. Actions 로그와 현재 커밋을 확인한 뒤 수동 재개하세요.',
   };
   await github.saveState(issue, stopped, record.id);
+  await syncReviewCheck(github, stopped, reviewCheck(stopped));
   await notifyStop(github, issue, stopped);
 }

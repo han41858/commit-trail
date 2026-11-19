@@ -97,6 +97,7 @@ function fixture({
     events: [],
     notes: new Map(),
     reviews: new Map(),
+    reviewChecks: [],
     readyRequests: [],
     mergeRequests: [],
   };
@@ -211,6 +212,9 @@ function fixture({
     async publishReview(_, entry, reviewer) {
       data.reviews.set(entry.head, { entry, reviewer });
     },
+    async setReviewCheck(_, check) {
+      data.reviewChecks.push(check);
+    },
   };
   const options = {
     github,
@@ -245,6 +249,75 @@ function fixture({
     run: (overrides) => runPipeline({ ...options, ...overrides }),
   };
 }
+
+test('AI review is tracked per commit independently of the required CI result', async () => {
+  const scenarios = [
+    {
+      result: pass,
+      ci: { ok: false, reason: 'CI 승인 필요' },
+      decision: 'success',
+    },
+    { result: { ...pass, status: 'needs_human' }, decision: 'action_required' },
+    { decision: 'failure' },
+  ];
+  for (const { result, ci, decision } of scenarios) {
+    const { data, run } = fixture({ ci });
+    await run({
+      async review() {
+        if (!result) throw new Error('review provider failed');
+        return result;
+      },
+    });
+    assert.deepEqual(
+      data.reviewChecks,
+      ['queued', 'in_progress', decision].map((value) => ({
+        head: heads[0],
+        decision: value,
+      })),
+    );
+    assert.deepEqual(data.mergeRequests, []);
+  }
+});
+
+test('review check updates its own GitHub check and creates a new run when resumed', async () => {
+  const head = heads[0];
+  const calls = [];
+  const github = createGitHub({
+    repository: 'owner/repo',
+    token: 'workflow-token',
+    async request(url, init) {
+      const path = new URL(url).pathname;
+      assert.equal(init.headers.authorization, 'Bearer workflow-token');
+      const body = init.body && JSON.parse(init.body);
+      calls.push({ path, method: init.method, body });
+      if (init.method === 'GET') {
+        return Response.json({
+          check_runs: [
+            {
+              id: 17,
+              app: { slug: 'another-app' },
+              name: 'AI review',
+              external_id: `commit-trail-ai-review:13:${head}`,
+              head_sha: head,
+            },
+          ],
+        });
+      }
+      return Response.json({ id: 29, status: body.status });
+    },
+  });
+  for (const decision of ['queued', 'in_progress', 'action_required', 'queued'])
+    await github.setReviewCheck({ issue: 13 }, { head, decision });
+  assert.deepEqual(
+    calls.map(({ method }) => method),
+    ['GET', 'POST', 'PATCH', 'PATCH', 'POST'],
+  );
+  assert.equal(calls[1].body.head_sha, head);
+  assert.match(calls[2].path, /\/check-runs\/29$/);
+  assert.equal(calls[3].body.status, 'completed');
+  assert.equal(calls[3].body.conclusion, 'action_required');
+  assert.equal(calls[4].body.status, 'queued');
+});
 
 test('default Codex development and Claude review squash merge only after CI', async () => {
   const { data, run } = fixture();
@@ -326,6 +399,14 @@ test('Claude revises the existing PR using Codex feedback; later labels do not r
   assert.equal(state.pull, 99);
   assert.equal(state.head, heads[1]);
   assert.deepEqual(data.mergeRequests, [heads[1]]);
+  assert.deepEqual(data.reviewChecks, [
+    { head: heads[0], decision: 'queued' },
+    { head: heads[0], decision: 'in_progress' },
+    { head: heads[0], decision: 'neutral' },
+    { head: heads[1], decision: 'queued' },
+    { head: heads[1], decision: 'in_progress' },
+    { head: heads[1], decision: 'success' },
+  ]);
   assert.equal(data.commits.length, 2);
   assert.deepEqual(
     data.events.filter((item) => item?.developer),

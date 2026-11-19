@@ -34,6 +34,7 @@ export function createGitHub({
 }) {
   const repo = `https://api.github.com/repos/${repository}`;
   const owner = repository.split('/')[0];
+  const reviewChecks = new Map();
 
   async function verifyCredentials() {
     if (!publishingToken)
@@ -384,6 +385,55 @@ export function createGitHub({
       const marker = `<!-- commit-trail-ai-notice:${key} -->`;
       if (!(await findComment(issue, (body) => body.includes(marker))))
         await addComment(issue, `${message}\n\n${marker}`);
+    },
+    async setReviewCheck(state, { head, decision }) {
+      const name = 'AI review';
+      const externalId = `commit-trail-ai-review:${state.issue}:${head}`;
+      const summary = {
+        queued: '현재 커밋의 교차 리뷰를 기다리고 있습니다.',
+        in_progress: '교차 리뷰 또는 지적 사항 수정이 진행 중입니다.',
+        success: '현재 커밋의 교차 리뷰를 통과했습니다.',
+        failure:
+          '교차 리뷰 자동화가 실패했습니다. 연결된 Issue의 상태를 확인하세요.',
+        action_required:
+          '교차 리뷰를 완료하려면 확인 또는 조치가 필요합니다. PR 댓글과 연결된 Issue를 확인하세요.',
+        neutral: '새 커밋이 올라와 이 커밋의 리뷰를 종료했습니다.',
+      }[decision];
+      if (!shaPattern.test(head) || !summary)
+        throw new Error('Invalid review check');
+      const active = ['queued', 'in_progress'].includes(decision);
+      const payload = {
+        name,
+        external_id: externalId,
+        details_url: `https://github.com/${repository}/issues/${state.issue}`,
+        status: active ? decision : 'completed',
+        ...(active ? {} : { conclusion: decision }),
+        output: { title: name, summary },
+      };
+      let check = reviewChecks.get(externalId);
+      if (!check) {
+        for (let page = 1; ; page++) {
+          const { check_runs: checks } = await api(
+            `/commits/${head}/check-runs?check_name=AI+review&filter=all&per_page=100&page=${page}`,
+          );
+          check = checks.find(
+            (check) =>
+              check.app?.slug === 'github-actions' &&
+              check.head_sha === head &&
+              check.name === name &&
+              check.external_id === externalId,
+          );
+          if (check || checks.length < 100) break;
+        }
+      }
+      const saved =
+        check && !(active && check.status === 'completed')
+          ? await api(`/check-runs/${check.id}`, { method: 'PATCH', payload })
+          : await api('/check-runs', {
+              method: 'POST',
+              payload: { ...payload, head_sha: head },
+            });
+      reviewChecks.set(externalId, { id: saved.id, status: saved.status });
     },
     async publishReview(state, { head, result }, reviewer) {
       const marker = reviewMarker(head);
