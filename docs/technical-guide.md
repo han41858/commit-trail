@@ -205,6 +205,37 @@ Do not assume a newer metadata-only skipped run preserves the required-check ass
 
 PR and post-merge push validation both remain enabled. `dev` protection does not require a PR, and `main` allows a PR whose head is not up to date with its base. A PR's tested merge therefore does not automatically prove that a later push has the same tree. Automation checks also depend on the destination branch. Reusing results would require verified equivalent inputs and a successful validation for the same branch context. This workflow retains full validation for those events.
 
+### AI development and cross-review
+
+`AI development` runs on GitHub-hosted Ubuntu runners after a repository user with write access adds one of the following labels to an open Issue. Create the labels in the repository before first use.
+
+| Label               | Developer        | Reviewer         |
+| ------------------- | ---------------- | ---------------- |
+| `ai:develop`        | OpenAI Codex     | Anthropic Claude |
+| `ai:develop:codex`  | OpenAI Codex     | Anthropic Claude |
+| `ai:develop:claude` | Anthropic Claude | OpenAI Codex     |
+
+Create an Issue with a focused change and explicit acceptance criteria, then apply one label. A collision blocks startup. The first run records the role and a snapshot of the Issue and current `dev`. The developer proposes edits and the workflow validates them before publishing a commit to `ai/issue-<number>-<developer>` and opening one Draft PR against `dev`. The reviewer can read Git snapshots and the diff. The workflow publishes structured findings as PR comments. It sends requested changes back to the original developer and stops after three reviews, a repeated defect, or a request for human judgment.
+
+#### Credentials and required CI
+
+Add the following repository Actions secrets after the workflow reaches `dev`.
+
+- `OPENAI_API_KEY` from the [OpenAI API keys page](https://platform.openai.com/api-keys). The default model is `gpt-5.3-codex` through the Responses API. Override it with the Actions variable `AI_CODEX_MODEL` if needed. Use a Codex model with structured output and function-tool support.
+- `ANTHROPIC_API_KEY` from the [Claude Console](https://console.anthropic.com/settings/keys). The default model is `claude-sonnet-4-6` through the Messages API. Override it with `AI_CLAUDE_MODEL` if needed. Use a Claude model with structured output and tool support.
+
+With the built-in `GITHUB_TOKEN`, enable **Allow GitHub Actions to create and approve pull requests** in the repository's Actions settings so the workflow can open Draft PRs. The workflow only creates Draft PRs and posts comments. GitHub can hold the regular PR CI for manual approval. If that happens, use **Approve workflows to run** on the PR, then use **Run workflow** on `dev` with the original Issue number after CI succeeds. The workflow reuses the review when the SHA is unchanged. [GitHub's workflow-trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow)
+
+For unattended PR CI, the repository owner can opt in to `AI_AUTOMATION_TOKEN`. Use a repository-scoped [fine-grained personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) for `han41858/commit-trail` with **Contents** and **Pull requests** read/write. It publishes the branch, commits and Draft PR so the regular `pull_request` CI can start. GitHub state and review comments still use `GITHUB_TOKEN`. Prefer a short expiration and account access limited to the target repository. An organization can require approval for this token.
+
+The pipeline checks the existing **Test and build** job on the current PR head. A missing run, approval wait or failed check stops without `ready`. Successful review and CI are reported with their exact SHA in the Issue and Draft PR. A later commit does not inherit that result. Branch protection remains in effect. The user controls Draft conversion and the final merge.
+
+#### Isolation and recovery
+
+Provider calls receive the Issue, trusted `AGENTS.md` instructions, and bounded access to Git text snapshots. Models have no shell, GitHub credentials, or provider credentials in their tool context. Development edits are limited to regular text files in `src/`, `docs/`, `public/`, `assets/`, `README.md` and `index.html`. Changes to any `AGENTS.md`, workflow, dependency configuration, or other protected path require manual work. A Docker build installs trusted locked dependencies without package scripts. The edited tree runs the usual format, tests and build in a separate offline container with no credentials. Actions logs report provider token data when available.
+
+The Issue has a state comment with the last recorded commit, PR and Actions run. Add an `ai:stop` label or cancel the Actions run to stop work. A follow-up workflow records an interrupted run if it left an active state. To resume, reopen the Issue and remove `ai:stop` if applicable, then explicitly run `AI development` on `dev` with that Issue number. Recovery preserves the original role and reuses the existing branch and PR. It checks for concurrent edits, closed PRs and a changed `dev` before proceeding. A review with an unknown outcome is escalated rather than silently repeated. Refer to the state comment and PR findings for the required next action.
+
 ### Documentation-only change detection
 
 `.github/scripts/change-impact.mjs` is the shared policy for CI and Vercel. `docs/` is reserved for non-build documentation and its assets; any regular file under that exact directory, including new guides, examples and images, is eligible for skipping. Only the root documents `README.md`, `AGENTS.md` and `LICENSE.md` are listed separately. Extensions do not determine build impact, and similarly named directories such as `docs-build/` are not included.
