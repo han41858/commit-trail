@@ -1,20 +1,25 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   chmodSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { changeImpact, isDocumentation } from '../change-impact.mjs';
 import { NeedsHuman } from './engine.mjs';
 
 const maxBuffer = 8 * 1024 * 1024;
-const maxFileBytes = 128 * 1024;
+const maxFileBytes = 1024 * 1024;
 const regularModes = new Set(['100644', '100755']);
-const protectedNames = /^(?:\.|AGENTS\.md$|node_modules$)/i;
+const protectedNames = /^(?:\.git|node_modules)$/i;
+const environmentFile = /^\.env(?:\.|$)/i;
+const environmentExample = /^\.env\.example$/i;
 const shaPattern = /^[a-f0-9]{40}$/;
 
 function outputPage(text, start, span) {
@@ -30,27 +35,37 @@ function outputPage(text, start, span) {
   return result.join('\n');
 }
 
-function isEditable(path, roots) {
+function isEditable(path) {
   return (
     path.length <= 250 &&
     path
       .split('/')
       .every(
         (part) =>
-          /^[\p{L}\p{N}_.-]+$/u.test(part) && !protectedNames.test(part),
-      ) &&
-    roots.some((root) =>
-      root.endsWith('/') ? path.startsWith(root) : path === root,
-    )
+          /^[\p{L}\p{N}_.-]+$/u.test(part) &&
+          part !== '.' &&
+          part !== '..' &&
+          !protectedNames.test(part) &&
+          (!environmentFile.test(part) || environmentExample.test(part)),
+      )
   );
 }
 
-export function resolveEdits(edits, { files, read, editablePaths }) {
+export class EditConflict extends Error {
+  constructor(path, index, reason) {
+    super(`${path} (${index + 1}번째 편집): ${reason}`);
+    this.path = path;
+    this.index = index;
+    this.reason = reason;
+  }
+}
+
+export function resolveEdits(edits, { files, read }) {
   const updated = new Map();
-  for (const { path, before, after } of edits) {
-    if (!isEditable(path, editablePaths))
+  for (const [index, { path, before, after }] of edits.entries()) {
+    if (!isEditable(path))
       throw new NeedsHuman(
-        '자동 편집 허용 범위 밖의 파일 변경이 필요합니다. 수동으로 파일과 접근 정책을 검토하세요.',
+        '저장소 밖 경로, Git 내부 데이터, 의존성 설치 폴더 또는 비밀 파일을 편집하려 했습니다. 수동 검토가 필요합니다.',
       );
     const mode = files.get(path);
     const ancestors = path.split('/').slice(0, -1);
@@ -72,21 +87,33 @@ export function resolveEdits(edits, { files, read, editablePaths }) {
         : null;
     if (before === null) {
       if (current !== null || after === null)
-        throw new Error(
+        throw new EditConflict(
+          path,
+          index,
           '새 파일 편집이 기존 파일 또는 다른 편집과 충돌했습니다.',
         );
       updated.set(path, after);
     } else if (after === null) {
       if (current !== before)
-        throw new Error(
+        throw new EditConflict(
+          path,
+          index,
           '삭제할 파일 내용이 최신 HEAD와 정확히 일치하지 않습니다.',
         );
       updated.set(path, null);
     } else {
       const first = current?.indexOf(before) ?? -1;
-      if (!before || first < 0 || current.indexOf(before, first + 1) !== -1)
-        throw new Error(
-          '편집 위치의 원문이 없거나 여러 곳에 있습니다. 위치를 식별할 수 있는 원문이 필요합니다.',
+      if (!before || first < 0)
+        throw new EditConflict(
+          path,
+          index,
+          '편집할 원문을 찾을 수 없습니다. 파일의 실제 내용을 다시 확인하세요.',
+        );
+      if (current.indexOf(before, first + 1) !== -1)
+        throw new EditConflict(
+          path,
+          index,
+          '같은 원문이 여러 곳에 있습니다. 앞뒤 문맥을 포함해 한 곳을 지정하세요.',
         );
       updated.set(
         path,
@@ -129,12 +156,22 @@ export function createWorkspace({
   repository,
   token,
   cwd = process.cwd(),
+  spawn = spawnSync,
+  log = console.log,
+  npmCacheDir = process.env.AI_NPM_CACHE_DIR,
 }) {
   const scratch = mkdtempSync(
     join(process.env.RUNNER_TEMP || tmpdir(), 'commit-trail-ai-'),
   );
   const image = `commit-trail-ai:${randomUUID()}`;
-  let cachedBase;
+  let cachedDependencies;
+  let downloadsAvailable = false;
+  try {
+    downloadsAvailable =
+      Boolean(npmCacheDir) && lstatSync(npmCacheDir).isDirectory();
+  } catch {
+    // A missing download cache is an ordinary cold start.
+  }
   const git = (args, options = {}) =>
     execFileSync('git', args, {
       cwd,
@@ -225,42 +262,92 @@ export function createWorkspace({
     };
   }
 
-  function prepareDependencies(base) {
-    if (cachedBase === base) return;
+  function prepareDependencies(source) {
+    const manifests = new Map();
+    try {
+      for (const name of ['package.json', 'package-lock.json']) {
+        const path = join(source, name);
+        if (!lstatSync(path).isFile())
+          throw new Error('Dependency manifests must be regular files.');
+        manifests.set(name, readFileSync(path));
+      }
+    } catch {
+      return {
+        ok: false,
+        step: '의존성 파일 확인',
+        log: '수정 후 package.json과 package-lock.json이 일반 파일로 존재해야 합니다.',
+      };
+    }
+    const digest = createHash('sha256');
+    for (const [name, bytes] of manifests)
+      digest.update(name).update('\0').update(bytes).update('\0');
+    const key = digest.digest('hex');
+    if (cachedDependencies === key) return { ok: true, cache: 'hit' };
     const context = join(scratch, 'dependencies');
     mkdirSync(context, { recursive: true });
-    for (const name of ['package.json', 'package-lock.json'])
-      writeFileSync(join(context, name), git(['show', `${base}:${name}`]));
+    for (const [name, bytes] of manifests)
+      writeFileSync(join(context, name), bytes);
+    const mounts = ['--mount=type=secret,id=npm_ca'];
+    const install = [
+      'if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi;',
+    ];
+    if (downloadsAvailable) {
+      mounts.push(
+        '--mount=type=bind,from=npm_downloads,target=/npm-downloads,ro',
+      );
+      install.push(
+        'mkdir -p /root/.npm/_cacache && cp -a /npm-downloads/. /root/.npm/_cacache/ &&',
+      );
+    }
+    install.push(
+      'npm ci --ignore-scripts --no-audit --no-fund',
+      ...(downloadsAvailable ? ['--prefer-offline'] : []),
+      '&& rm -rf /root/.npm',
+    );
     writeFileSync(
       join(context, 'Dockerfile'),
       [
         'FROM node:24-bookworm',
         'WORKDIR /dependencies',
         'COPY package.json package-lock.json ./',
-        'RUN --mount=type=secret,id=npm_ca if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; npm ci --ignore-scripts --no-audit --no-fund',
+        `RUN ${mounts.join(' ')} ${install.join(' ')}`,
         'USER node',
         '',
       ].join('\n'),
     );
     const build = ['build', '--tag', image];
+    if (downloadsAvailable)
+      build.push('--build-context', `npm_downloads=${npmCacheDir}`);
     if (process.env.NODE_EXTRA_CA_CERTS)
       build.push(
         '--secret',
         `id=npm_ca,src=${process.env.NODE_EXTRA_CA_CERTS}`,
       );
-    const result = spawnSync('docker', [...build, context], {
+    const result = spawn('docker', [...build, context], {
       timeout: 240_000,
       maxBuffer,
     });
-    if (result.status !== 0)
+    if (result.error || result.status === 125)
       throw new Error(
-        '신뢰된 잠금 파일에서 Docker 검증 이미지를 만들지 못했습니다. Actions의 Docker 및 npm 연결을 확인하세요.',
+        'Docker 의존성 설치를 실행하지 못했습니다. 실행 환경과 연결을 확인하세요.',
       );
-    cachedBase = base;
+    if (result.status !== 0)
+      return {
+        ok: false,
+        step: '의존성 설치',
+        log: `수정 후 의존성 설치가 실패했습니다. package.json과 package-lock.json의 일치를 확인하세요.\n${result.stdout ?? ''}\n${result.stderr ?? ''}`.slice(
+          -6500,
+        ),
+      };
+    cachedDependencies = key;
+    return {
+      ok: true,
+      cache: 'miss',
+      downloads: downloadsAvailable ? 'seeded' : 'missing',
+    };
   }
 
   function runChecks(state, changes) {
-    prepareDependencies(state.base);
     const source = mkdtempSync(join(scratch, 'source-'));
     chmodSync(source, 0o755);
     const container = `commit-trail-ai-${randomUUID()}`;
@@ -282,14 +369,67 @@ export function createWorkspace({
           writeFileSync(file, text);
         }
       }
+      const dependencyStart = performance.now();
+      let dependencies;
+      try {
+        dependencies = prepareDependencies(source);
+      } finally {
+        log(
+          JSON.stringify({
+            phase: 'dependencies',
+            cache: dependencies?.cache,
+            downloads: dependencies?.downloads,
+            ok: dependencies?.ok === true,
+            elapsedMs: Math.round(performance.now() - dependencyStart),
+          }),
+        );
+      }
+      if (!dependencies.ok) return dependencies;
+      // Reviews can amend an earlier code edit with a documentation-only patch.
+      // Classify the complete candidate, not just the files changed in this turn.
+      const docsOnly =
+        config.docsOnlyChecks?.length > 0 &&
+        changes.length > 0 &&
+        changes.every(({ path }) => isDocumentation(path)) &&
+        (state.base === state.head ||
+          changeImpact({ base: state.base, head: state.head, cwd }).docsOnly);
+      const checks = docsOnly ? config.docsOnlyChecks : config.checks;
+      log(JSON.stringify({ phase: 'validation_plan', docsOnly }));
+      const checkMarker = `${container}:check:`;
+      const formatMarker = `${container}:formatted:`;
+      const timingMarker = `${container}:timing:`;
+      const timed = (stage, command) => [
+        `printf '%s\\n' '${checkMarker}${stage}'`,
+        `TIMEFORMAT='${timingMarker}${stage}:%R'`,
+        `time ${command}`,
+      ];
+      const paths = changes
+        .filter(({ text }) => text !== null)
+        .map(({ path }) => path);
+      const formatCandidate = `node --input-type=module <<'COMMIT_TRAIL_FORMAT'
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+const paths = ${JSON.stringify(paths)};
+execFileSync(
+  './node_modules/.bin/prettier',
+  ['--write', '--ignore-unknown', ...paths.map((path) => './' + path)],
+  { stdio: 'inherit' },
+);
+const formatted = paths
+  .map((path) => ({ path, text: readFileSync(path, 'utf8') }))
+  .filter(({ path, text }) => text !== readFileSync('/source/' + path, 'utf8'));
+console.log(${JSON.stringify(formatMarker)} + JSON.stringify(formatted));
+COMMIT_TRAIL_FORMAT`;
       const script = [
         'mkdir /tmp/project',
         'cp -a --no-preserve=ownership /source/. /tmp/project/',
         'cd /tmp/project',
         'cp -a --no-preserve=ownership /dependencies/node_modules ./node_modules',
-        ...config.checks,
+        ...(paths.length ? timed('format', formatCandidate) : []),
+        ...checks.flatMap((command, index) => timed(index, command)),
       ].join('\n');
-      const result = spawnSync(
+      const result = spawn(
         'docker',
         [
           'run',
@@ -322,16 +462,78 @@ export function createWorkspace({
         ],
         { timeout: 300_000, encoding: 'utf8', maxBuffer },
       );
+      const stderr = (result.stderr ?? '').split('\n');
+      const stepName = (stage) =>
+        stage === 'format'
+          ? '변경 파일 Prettier 적용'
+          : (checks[Number(stage)] ?? '격리 검사 준비');
+      for (const line of stderr) {
+        if (!line.startsWith(timingMarker)) continue;
+        const match = /^(format|\d+):(\d+(?:\.\d+)?)$/.exec(
+          line.slice(timingMarker.length),
+        );
+        if (match)
+          log(
+            JSON.stringify({
+              phase: 'validation_step',
+              step: stepName(match[1]),
+              elapsedMs: Math.round(Number(match[2]) * 1000),
+            }),
+          );
+      }
       if (result.error || result.status === 125)
         throw new Error(
           '격리 테스트를 끝낼 수 없습니다. Docker 실행 환경과 제한 시간을 확인하세요.',
         );
+      const lines = (result.stdout ?? '').split('\n');
+      if (result.status === 0) {
+        const formatted = new Map(
+          changes.map(({ path, text }) => [path, text]),
+        );
+        if (paths.length) {
+          const reports = lines.filter((line) => line.startsWith(formatMarker));
+          try {
+            if (reports.length !== 1) throw new Error('missing format result');
+            const seen = new Set();
+            for (const { path, text } of JSON.parse(
+              reports[0].slice(formatMarker.length),
+            )) {
+              if (
+                !formatted.has(path) ||
+                formatted.get(path) === null ||
+                seen.has(path) ||
+                typeof text !== 'string' ||
+                text.includes('\0') ||
+                Buffer.byteLength(text) > maxFileBytes
+              )
+                throw new Error('invalid format result');
+              seen.add(path);
+              formatted.set(path, text);
+            }
+          } catch {
+            return {
+              ok: false,
+              step: '포맷 결과 회수',
+              log: '변경한 파일의 포맷 결과를 검증할 수 없습니다.',
+            };
+          }
+        }
+        return {
+          ok: true,
+          changes: [...formatted].map(([path, text]) => ({ path, text })),
+        };
+      }
+      const lastCheck = lines.findLast((line) => line.startsWith(checkMarker));
+      const stage = lastCheck?.slice(checkMarker.length);
       return {
-        ok: result.status === 0,
-        log: `${result.stdout ?? ''}\n${result.stderr ?? ''}`.slice(-6500),
+        ok: false,
+        step: stepName(stage),
+        log: `${lines.filter((line) => !line.startsWith(formatMarker)).join('\n')}\n${stderr.filter((line) => !line.startsWith(timingMarker)).join('\n')}`.slice(
+          -6500,
+        ),
       };
     } finally {
-      spawnSync('docker', ['container', 'rm', '--force', container], {
+      spawn('docker', ['container', 'rm', '--force', container], {
         timeout: 10_000,
         stdio: 'ignore',
       });
@@ -343,8 +545,8 @@ export function createWorkspace({
     snapshot,
     runChecks,
     close() {
-      if (cachedBase)
-        spawnSync('docker', ['image', 'rm', image], {
+      if (cachedDependencies)
+        spawn('docker', ['image', 'rm', image], {
           timeout: 10_000,
           stdio: 'ignore',
         });

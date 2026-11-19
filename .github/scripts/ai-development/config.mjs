@@ -1,23 +1,30 @@
+const formatCheck = 'npm run format:check';
+
 export const config = {
   base: 'dev',
   ciWorkflow: 'ci.yml',
   requiredJob: 'Test and build',
   maxReviews: 3,
   models: {
-    codex: process.env.AI_CODEX_MODEL || 'gpt-5.3-codex',
-    claude: process.env.AI_CLAUDE_MODEL || 'claude-sonnet-4-6',
+    codex: process.env.AI_CODEX_MODEL || 'gpt-6.2-sol',
+    claude: process.env.AI_CLAUDE_MODEL || 'claude-sonnet-5-5',
+  },
+  // Provider call budget for one development or review request.
+  limits: {
+    turns: 30,
+    reviewTurns: 45,
+    outputTokens: 32_000,
+    edits: 80,
+    // Responses are streamed: the idle limit bounds the gap between events, the request limit the whole call.
+    idleTimeout: 300_000,
+    requestTimeout: 1_800_000,
+    codexEffort: 'medium',
   },
   instructions: 'AGENTS.md',
-  editablePaths: [
-    'src/',
-    'docs/',
-    'public/',
-    'assets/',
-    'README.md',
-    'index.html',
-  ],
+  credentialsEnvironment: 'ai-development',
+  docsOnlyChecks: [formatCheck],
   checks: [
-    'npm run format:check',
+    formatCheck,
     'npm test',
     'node --test --test-isolation=none .github/scripts/*.test.mjs',
     'npm run build',

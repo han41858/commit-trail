@@ -10,12 +10,12 @@ on:
         description: 'Number of a previously started AI Issue'
         required: true
         type: number
+      dependency_resume:
+        description: 'Reservation ID for automatic dependency resume'
+        required: false
+        type: string
 
 permissions: {}
-
-concurrency:
-  group: 'AI development for Issue #${{ github.event.issue.number || inputs.issue }}'
-  cancel-in-progress: false
 
 jobs:
   pipeline:
@@ -23,10 +23,17 @@ jobs:
       github.ref == 'refs/heads/dev' &&
       (github.event_name == 'workflow_dispatch' ||
        contains(fromJSON('["ai:develop","ai:develop:codex","ai:develop:claude"]'), github.event.label.name))
+    # One queue for every Issue: a merge to dev cannot invalidate another run in progress.
+    concurrency:
+      group: ai-development-${{ github.repository }}
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    environment: ai-development
+    timeout-minutes: 90
     permissions:
       actions: read
+      checks: write
       contents: write
       issues: write
       pull-requests: write
@@ -37,10 +44,23 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
+      - name: Locate npm download cache
+        id: npm-cache
+        run: |
+          printf 'path=%s\n' "$(npm config get cache)" >> "$GITHUB_OUTPUT"
+          printf 'arch=%s\n' "$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+      # Match setup-node's npm cache key in CI, without saving candidate caches.
+      - name: Restore CI npm downloads
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        continue-on-error: true
+        with:
+          path: ${{ steps.npm-cache.outputs.path }}
+          key: node-cache-${{ runner.os }}-${{ steps.npm-cache.outputs.arch }}-npm-${{ hashFiles('package-lock.json') }}
       - name: Develop and review
         run: node .github/scripts/ai-development/run.mjs
         env:
           GH_TOKEN: ${{ github.token }}
+          AI_NPM_CACHE_DIR: ${{ steps.npm-cache.outputs.path }}/_cacache
           AI_AUTOMATION_TOKEN: ${{ secrets.AI_AUTOMATION_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

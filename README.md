@@ -96,7 +96,7 @@ Public repositories work without a token. For private repositories or higher API
 | Contents      | Read-only | Commits, branches, tags and releases |
 | Pull requests | Read-only | PR-based branch suggestions          |
 
-The token is saved in this browser's localStorage and sent only to `api.github.com`. **Remove token & clear history** removes the saved token and displayed history. See the [technical guide](docs/technical-guide.md#use) for access checks, rate limits and storage behavior.
+The token is saved in this browser's localStorage and sent only to `api.github.com`. **Remove token & clear history** removes the saved token and displayed history. See the [product specification](docs/specification.md#22-공개비공개-저장소) for access checks, rate limits and storage behavior.
 
 ## Development & documentation
 
@@ -108,7 +108,7 @@ npm run dev
 ```
 
 - [Documentation map](docs/README.md) — document roles, implementation references and maintenance rules.
-- [Technical guide](docs/technical-guide.md) — usage, architecture, API behavior, tests, deployment and releases.
+- [Development and operations guide](docs/technical-guide.md) — local development, architecture, CI, AI automation and Vercel deployment.
 - [Product specification](docs/specification.md) · [Refresh and metadata](docs/auto-refresh-and-metadata.md) — implementation specifications.
 - [PWA](docs/pwa.md) · [Developer diagnostics](docs/developer-debug-mode.md) — installation, updates, recovery and local measurements.
 - [Owner selection](docs/owner-repositories.md) — repository lookup, access, filtering and pagination.
