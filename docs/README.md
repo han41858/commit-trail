@@ -6,6 +6,8 @@
 
 PR 제목·본문 또는 대상 브랜치 변경에도 고정 이름의 필수 `Test and build` 검사를 실행한다. 작업 전체를 생략하거나 검사 이름을 동적으로 바꾸지 않으며, 문서만 변경된 경우에는 작업 내부의 무거운 단계만 생략한다. 이벤트와 필수 검사 정책은 [CI 이벤트 처리](technical-guide.md#ci-event-handling)를 따른다.
 
+AI 개발은 저장소 쓰기 권한자가 Issue에 `ai:develop`, `ai:develop:codex` 또는 `ai:develop:claude` 중 하나를 추가하면 시작한다. 반대 모델이 Draft PR을 검토하고, 같은 개발 모델이 필요 시 수정한다. 최종 커밋의 리뷰와 필수 CI가 통과하면 사용자가 Draft PR을 검토하고 머지한다. 모델 Secret, CI 승인 및 수동 재개 설정은 [AI 개발과 교차 리뷰](technical-guide.md#ai-development-and-cross-review)를 참조한다.
+
 ## 문서 역할과 상세 규칙의 위치
 
 | 문서                                                 | 역할                                                     |
