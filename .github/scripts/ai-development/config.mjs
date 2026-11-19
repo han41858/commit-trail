@@ -18,14 +18,7 @@ export const config = {
     codexEffort: 'medium',
   },
   instructions: 'AGENTS.md',
-  editablePaths: [
-    'src/',
-    'docs/',
-    'public/',
-    'assets/',
-    'README.md',
-    'index.html',
-  ],
+  credentialsEnvironment: 'ai-development',
   checks: [
     'npm run format:check',
     'npm test',

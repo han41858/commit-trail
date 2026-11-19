@@ -16,6 +16,48 @@ import {
 import { resolveEdits } from './ai-development/workspace.mjs';
 import { config } from './ai-development/config.mjs';
 
+function createTestGitHub(options) {
+  return createGitHub({
+    ...options,
+    async request(url, init) {
+      const path = url.replace('https://api.github.com/repos/owner/repo', '');
+      if (path === '') return Response.json({ owner: { type: 'User' } });
+      if (path === '/actions/secrets?per_page=1')
+        return Response.json({ total_count: 0, secrets: [] });
+      if (path === '/environments/ai-development')
+        return Response.json({
+          name: 'ai-development',
+          deployment_branch_policy: {
+            protected_branches: false,
+            custom_branch_policies: true,
+          },
+        });
+      if (
+        path ===
+        '/environments/ai-development/deployment-branch-policies?per_page=100'
+      )
+        return Response.json({
+          total_count: 1,
+          branch_policies: [{ name: 'dev', type: 'branch' }],
+        });
+      if (path === '/environments/ai-development/secrets?per_page=100')
+        return Response.json({
+          secrets: [
+            'OPENAI_API_KEY',
+            'ANTHROPIC_API_KEY',
+            'AI_AUTOMATION_TOKEN',
+          ].map((name) => ({ name })),
+        });
+      if (path === '/environments?per_page=100')
+        return Response.json({
+          total_count: 1,
+          environments: [{ name: 'ai-development' }],
+        });
+      return options.request(url, init);
+    },
+  });
+}
+
 const base = 'a'.repeat(40);
 const heads = ['b', 'c', 'd'].map((char) => char.repeat(40));
 const mergeCommit = 'e'.repeat(40);
@@ -252,7 +294,7 @@ test('a developer blocker explains the stop on the Issue without starting review
   assert.doesNotMatch(data.notes.get('13:stop-100-1'), /@example/);
 
   let body;
-  const github = createGitHub({
+  const github = createTestGitHub({
     repository: 'owner/repo',
     token: 'mock',
     async request(_url, options) {
@@ -813,7 +855,7 @@ test('CI requires the configured job to succeed on the specific PR HEAD', async 
 
 test('GitHub adapter requires exact CI identity and uses compare-and-swap for publishing', async () => {
   const seen = [];
-  const github = createGitHub({
+  const github = createTestGitHub({
     repository: 'owner/repo',
     token: 'app-mock',
     publishingToken: 'pat-mock',
@@ -881,7 +923,7 @@ test('GitHub branch refresh publishes with the exact HEAD and returns the merged
   const requests = [];
   let polls = 0;
   let status = 202;
-  const github = createGitHub({
+  const github = createTestGitHub({
     repository: 'owner/repo',
     token: 'workflow-token',
     publishingToken: 'publishing-token',
@@ -917,7 +959,7 @@ test('GitHub branch refresh publishes with the exact HEAD and returns the merged
 
 test('GitHub readiness mutation must confirm the reviewed head is no longer a draft', async () => {
   let responseHead = heads[0];
-  const github = createGitHub({
+  const github = createTestGitHub({
     repository: 'owner/repo',
     token: 'mock',
     async request(url, options) {
@@ -952,7 +994,7 @@ test('GitHub squash merge uses the publishing token and exact reviewed HEAD', as
         : Response.json({ merged: true, sha: mergeCommit });
     },
   };
-  const github = createGitHub({ ...options, publishingToken: 'pat-mock' });
+  const github = createTestGitHub({ ...options, publishingToken: 'pat-mock' });
   const state = {
     issue: 13,
     pull: 99,
@@ -989,23 +1031,29 @@ test('GitHub squash merge uses the publishing token and exact reviewed HEAD', as
   assert.equal(requests.length, 2);
 });
 
-test('developer writes only allowed regular paths and requires a unique exact edit', () => {
+test('developer requires repository paths, regular files and a unique exact edit', () => {
   const context = {
     files: new Map([
       ['src/a.ts', '100644'],
       ['src/link', '120000'],
     ]),
     read: () => 'aaa\naaa\n',
-    editablePaths: ['src/', 'docs/'],
   };
   assert.deepEqual(
     resolveEdits([{ path: 'src/b.ts', before: null, after: 'new' }], context),
     [{ path: 'src/b.ts', text: 'new' }],
   );
   for (const path of [
-    '.github/workflows/ci.yml',
+    '../outside',
+    '/etc/passwd',
+    'src/./a.ts',
     'src/../.github/ci.yml',
-    'docs/AGENTS.md',
+    '.git/config',
+    '.GIT/config',
+    'node_modules/package/index.js',
+    '.env',
+    '.env.production',
+    'config/.env.local',
     'src/link/child',
     'src/link',
   ]) {
@@ -1018,6 +1066,50 @@ test('developer writes only allowed regular paths and requires a unique exact ed
     () =>
       resolveEdits([{ path: 'src/a.ts', before: 'aa', after: 'new' }], context),
     /여러 곳/,
+  );
+});
+
+test('developer can edit automation, configuration, instructions and environment examples', () => {
+  const paths = [
+    '.github/workflows/ai-development-cleanup.yml',
+    '.github/scripts/ai-development.test.mjs',
+    '.github/scripts/ai-development/config.mjs',
+    'package.json',
+    'package-lock.json',
+    'vite.config.ts',
+    '.gitignore',
+    'AGENTS.md',
+    'docs/AGENTS.md',
+    '.env.example',
+  ];
+  const context = {
+    files: new Map(paths.map((path) => [path, '100644'])),
+    read: () => 'original',
+  };
+  assert.deepEqual(
+    resolveEdits(
+      paths.map((path) => ({ path, before: 'original', after: 'updated' })),
+      context,
+    ),
+    paths.map((path) => ({ path, text: 'updated' })),
+  );
+  assert.deepEqual(
+    resolveEdits(
+      [
+        {
+          path: '.github/workflows/ai-pr-ci-followup.yml',
+          before: null,
+          after: 'new workflow',
+        },
+      ],
+      context,
+    ),
+    [
+      {
+        path: '.github/workflows/ai-pr-ci-followup.yml',
+        text: 'new workflow',
+      },
+    ],
   );
 });
 

@@ -25,6 +25,7 @@ jobs:
       queue: max
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    environment: ai-development
     timeout-minutes: 90
     permissions:
       actions: read
