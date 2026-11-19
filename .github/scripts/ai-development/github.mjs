@@ -200,16 +200,31 @@ export function createGitHub({
         },
       });
     },
-    matchesPull(pr, state, base) {
+    matchesPull(pr, state, base, { allowReady = false } = {}) {
       return (
         pr.state === 'open' &&
-        pr.draft === true &&
+        (allowReady || pr.draft === true) &&
         pr.base.ref === base &&
         pr.base.repo.full_name === repository &&
         pr.head.repo?.full_name === repository &&
         pr.head.ref === state.branch &&
         pr.head.sha === state.head
       );
+    },
+    async markReady(pullRequestId, head) {
+      const response = await api('/graphql', {
+        method: 'POST',
+        payload: {
+          query: `mutation MarkReady($input: MarkPullRequestReadyForReviewInput!) {
+            markPullRequestReadyForReview(input: $input) {
+              pullRequest { isDraft headRefOid }
+            }
+          }`,
+          variables: { input: { pullRequestId } },
+        },
+      });
+      const pr = response.data?.markPullRequestReadyForReview?.pullRequest;
+      return pr?.isDraft === false && pr.headRefOid === head;
     },
     async loadState(issue) {
       const comment = await findComment(issue, (body) =>
@@ -311,7 +326,7 @@ export async function waitForCI(
       return {
         ok: false,
         reason:
-          '필수 CI 실행에 승인이 필요합니다. PR에서 워크플로 실행을 승인한 뒤 수동 재개하세요.',
+          '필수 CI 실행에 승인이 필요합니다. PR에서 Approve workflows to run을 누르면 CI 통과 후 자동으로 이어집니다.',
       };
     if (run?.status === 'completed') {
       const jobs = await github.ciJobs(run);
@@ -325,7 +340,7 @@ export async function waitForCI(
         return { ok: true, url: run.html_url };
       return {
         ok: false,
-        reason: `현재 HEAD의 필수 CI가 통과하지 못했습니다. 실패 원인을 확인한 뒤 수동 재개하세요. ${run.html_url}`,
+        reason: `현재 HEAD의 필수 CI가 통과하지 못했습니다. CI가 이 커밋에서 통과하면 자동으로 이어집니다. ${run.html_url}`,
       };
     }
     if (attempt + 1 < attempts) await sleep();
@@ -333,6 +348,6 @@ export async function waitForCI(
   return {
     ok: false,
     reason:
-      '현재 HEAD의 필수 CI 성공을 확인하지 못했습니다. PR에서 실행·승인 상태를 확인한 뒤 수동 재개하세요.',
+      '현재 HEAD의 필수 CI 성공을 확인하지 못했습니다. PR에서 실행·승인 상태를 확인하세요. CI 통과 후 자동으로 이어집니다.',
   };
 }

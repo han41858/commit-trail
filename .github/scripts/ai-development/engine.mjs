@@ -26,6 +26,10 @@ const digest = (value) =>
 const fingerprint = ({ title, body }) => digest([title, body ?? '']);
 const labelNames = (issue) => issue.labels.map(({ name }) => name);
 const otherAgent = (developer) => (developer === 'codex' ? 'claude' : 'codex');
+const hasPassingReview = (state) => {
+  const latest = state.reviews.at(-1);
+  return latest?.head === state.head && latest.result.status === 'pass';
+};
 
 export const pullMarker = (issue) => `<!-- commit-trail-ai-issue:${issue} -->`;
 export const reviewMarker = (sha) => `<!-- commit-trail-ai-review:${sha} -->`;
@@ -58,10 +62,23 @@ export async function runPipeline({
   issueNumber,
   eventLabel,
   resume,
+  ciCompletion,
   runId,
   attempt,
 }) {
   const existing = await github.loadState(issueNumber);
+  if (ciCompletion) {
+    const previous = existing?.state;
+    if (
+      !previous?.awaitingCI ||
+      !['needs_human', 'failed'].includes(previous.status) ||
+      !previous.pull ||
+      previous.head !== ciCompletion.head_sha ||
+      previous.branch !== ciCompletion.head_branch ||
+      !hasPassingReview(previous)
+    )
+      return;
+  }
   if (existing && !resume) return;
   if (!existing && resume)
     throw new NeedsHuman(
@@ -69,7 +86,7 @@ export async function runPipeline({
     );
 
   const issue = await github.issue(issueNumber);
-  if (issue.pull_request) return;
+  if (issue.pull_request || (ciCompletion && issue.state !== 'open')) return;
 
   const labels = labelNames(issue);
   const selected = labels.filter((label) => executionLabels.has(label));
@@ -108,6 +125,7 @@ export async function runPipeline({
     reviews: [],
   };
   let recordId = existing?.id;
+  let awaitingCI = false;
 
   async function save(status, reason, detail) {
     Object.assign(state, { status, reason, detail, runId, attempt });
@@ -157,10 +175,13 @@ export async function runPipeline({
         '같은 이름의 작업 브랜치를 자동 실행이 생성했는지 확인할 수 없습니다. 기존 브랜치를 확인하세요.',
       );
 
+    let pr;
     if (state.pull) {
-      const pr = await github.pull(state.pull);
+      pr = await github.pull(state.pull);
       if (
-        !github.matchesPull(pr, state, config.base) ||
+        !github.matchesPull(pr, state, config.base, {
+          allowReady: hasPassingReview(state),
+        }) ||
         fingerprint(pr) !== state.pullFingerprint
       ) {
         throw new NeedsHuman(
@@ -172,7 +193,37 @@ export async function runPipeline({
       throw new NeedsHuman(
         `${config.base} 브랜치가 작업 시작 후 변경되었습니다. 브랜치 보호 정책에 맞춰 현재 PR을 수동으로 확인하세요.`,
       );
-    return remote;
+    return { remote, pr };
+  }
+
+  async function completeReady(ci) {
+    let { pr } = await guard();
+    if (pr.mergeable === false)
+      throw new NeedsHuman(
+        '현재 PR에 머지 충돌이 있습니다. PR을 수동으로 확인하세요.',
+      );
+
+    let converted = !pr.draft;
+    if (pr.draft) {
+      try {
+        converted = await github.markReady(pr.node_id, state.head);
+      } catch (error) {
+        console.warn(`GitHub Draft 해제에 실패했습니다. ${error.message}`);
+      }
+      ({ pr } = await guard());
+    }
+    const action =
+      pr.draft && !converted
+        ? 'PR에서 Ready for review를 누른 뒤 최종 검토해 주세요.'
+        : 'PR에서 변경을 최종 검토한 뒤 스쿼시 머지할 수 있습니다.';
+    const result = `교차 리뷰와 필수 CI가 커밋 ${state.head}에서 통과했습니다. ${action} 새 커밋에는 별도 검증이 필요합니다.`;
+    await github.notice(
+      state.pull,
+      `${result}\n\n${ci.url}`,
+      `ready-${state.head}`,
+    );
+    delete state.awaitingCI;
+    await save('ready', `${result} ${ci.url}`);
   }
 
   async function ensurePull() {
@@ -206,7 +257,7 @@ export async function runPipeline({
         : 'Issue 요구사항을 구현하고 있습니다.',
     );
     const plan = await develop({ developer, issue, state, feedback, guard });
-    const remote = await guard();
+    const { remote } = await guard();
     if (!plan.changes.length)
       throw new NeedsHuman(
         '개발 에이전트가 적용할 변경을 만들지 못했습니다. Issue와 실행 로그를 확인하세요.',
@@ -245,7 +296,12 @@ export async function runPipeline({
           '시작 전에 같은 이름의 작업 브랜치 또는 PR이 발견되었습니다. 기존 작업을 확인하세요.',
         );
     }
-    await guard({ recovering: true });
+    await guard({ recovering: !ciCompletion });
+    if (ciCompletion) {
+      const ci = await checkCI(state, guard);
+      if (ci.ok) await completeReady(ci);
+      return state;
+    }
     if (state.status === 'ready') return state;
     if (state.reviewInProgress)
       throw new NeedsHuman(
@@ -292,17 +348,11 @@ export async function runPipeline({
         );
       if (result.status === 'pass') {
         const ci = await checkCI(state, guard);
-        if (!ci.ok) throw new NeedsHuman(ci.reason);
-        await guard();
-        await github.notice(
-          state.pull,
-          `교차 리뷰와 필수 CI가 커밋 ${state.head}에서 통과했습니다. 이 Draft PR은 해당 커밋을 사용자 검토할 준비가 되었습니다. 새 커밋에는 별도 검증이 필요합니다.\n\n${ci.url}`,
-          `ready-${state.head}`,
-        );
-        await save(
-          'ready',
-          `이 HEAD의 교차 리뷰와 필수 CI를 통과했습니다. 새 커밋은 별도 검증이 필요합니다. ${ci.url}`,
-        );
+        if (!ci.ok) {
+          awaitingCI = true;
+          throw new NeedsHuman(ci.reason);
+        }
+        await completeReady(ci);
         return state;
       }
       if (state.reviews.length >= config.maxReviews)
@@ -327,6 +377,8 @@ export async function runPipeline({
     }
   } catch (error) {
     const needsHuman = error instanceof NeedsHuman;
+    if (awaitingCI) state.awaitingCI = true;
+    else if (needsHuman) delete state.awaitingCI;
     await save(
       needsHuman ? 'needs_human' : 'failed',
       error.message,

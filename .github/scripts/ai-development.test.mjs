@@ -49,6 +49,7 @@ function fixture({
     events: [],
     notes: new Map(),
     reviews: new Map(),
+    readyRequests: [],
   };
   const github = {
     issue: async () => structuredClone(data.issue),
@@ -88,6 +89,7 @@ function fixture({
       assert.equal(data.pull, null);
       data.pull = {
         number: 99,
+        node_id: 'PR_fixture',
         title: state.title,
         body: pullMarker(state.issue),
         draft: true,
@@ -101,8 +103,16 @@ function fixture({
       return structuredClone(data.pull);
     },
     pull: async () => structuredClone(data.pull),
-    matchesPull: (pr, state) =>
-      pr.state === 'open' && pr.draft && pr.head === state.head,
+    matchesPull: (pr, state, _base, { allowReady = false } = {}) =>
+      pr.state === 'open' && (allowReady || pr.draft) && pr.head === state.head,
+    async markReady(id, head) {
+      assert.equal(data.pull.node_id, id);
+      assert.equal(data.pull.head, head);
+      data.readyRequests.push(head);
+      if (data.blockReady) return false;
+      data.pull.draft = false;
+      return true;
+    },
     async notice(number, message, key) {
       data.notes.set(`${number}:${key}`, message);
     },
@@ -150,7 +160,8 @@ test('default Codex development and Claude review reach ready only after CI', as
   assert.equal(state.status, 'ready');
   assert.equal(state.branch, 'ai/issue-13-codex');
   assert.equal(state.pull, 99);
-  assert.equal(data.pull.draft, true);
+  assert.equal(data.pull.draft, false);
+  assert.deepEqual(data.readyRequests, [heads[0]]);
   assert.match(
     data.commits[0].message.body,
     /Co-authored-by: Codex <noreply@openai\.com>/,
@@ -270,6 +281,77 @@ test('approval wait never becomes ready and resumes CI without repeating the sam
   data.pull.head = heads[1];
   assert.equal((await run({ resume: true, runId: 102 })).status, 'needs_human');
   assert.equal(data.notes.size, 1);
+});
+
+test('CI completion readies the existing PR without a manual run or another review', async () => {
+  const { data, github, run } = fixture({
+    ci: { ok: false, reason: 'CI 승인 필요' },
+  });
+  assert.equal((await run()).status, 'needs_human');
+  assert.equal(data.record.state.awaitingCI, true);
+  assert.equal(data.pull.draft, true);
+  const completion = {
+    github,
+    config,
+    issueNumber: 13,
+    resume: true,
+    ciCompletion: { head_sha: heads[0], head_branch: 'ai/issue-13-codex' },
+    runId: 101,
+    attempt: 1,
+    checkCI: async () => ({ ok: true, url: 'https://github.com/ci' }),
+  };
+  assert.equal(
+    await runPipeline({
+      ...completion,
+      ciCompletion: { ...completion.ciCompletion, head_sha: heads[1] },
+    }),
+    undefined,
+  );
+  assert.equal(data.readyRequests.length, 0);
+  assert.equal((await runPipeline(completion)).status, 'ready');
+  assert.equal(data.record.state.awaitingCI, undefined);
+  assert.equal(data.pull.draft, false);
+  assert.deepEqual(data.readyRequests, [heads[0]]);
+  assert.equal(data.events.filter((item) => item?.reviewer).length, 1);
+  assert.equal(await runPipeline(completion), undefined);
+  assert.equal((await run({ resume: true })).status, 'ready');
+  assert.equal(data.readyRequests.length, 1);
+});
+
+test('a successful CI event cannot ready a stopped Issue or a manually changed PR', async () => {
+  for (const mutate of [
+    (data) => {
+      data.issue.labels.push({ name: 'ai:stop' });
+    },
+    (data) => {
+      data.remote = heads[1];
+      data.pull.head = heads[1];
+    },
+  ]) {
+    const { data, run } = fixture({
+      ci: { ok: false, reason: 'CI 승인 필요' },
+    });
+    await run();
+    mutate(data);
+    const state = await run({
+      resume: true,
+      ciCompletion: { head_sha: heads[0], head_branch: 'ai/issue-13-codex' },
+      checkCI: async () => ({ ok: true }),
+    });
+    assert.equal(state.status, 'needs_human');
+    assert.equal(state.awaitingCI, undefined);
+    assert.equal(data.pull.draft, true);
+    assert.equal(data.readyRequests.length, 0);
+  }
+});
+
+test('a Draft conversion denied by GitHub leaves manual instructions after successful checks', async () => {
+  const { data, run } = fixture();
+  data.blockReady = true;
+  const state = await run();
+  assert.equal(state.status, 'ready');
+  assert.equal(data.pull.draft, true);
+  assert.match(state.reason, /Ready for review/);
 });
 
 test('a closed or manually edited PR and a newer dev stop without overwriting changes', async () => {
@@ -468,6 +550,30 @@ test('GitHub adapter requires exact CI identity and uses compare-and-swap for pu
     3,
   );
   assert.equal(seen[1].options.headers.authorization, 'Bearer app-mock');
+});
+
+test('GitHub readiness mutation must confirm the reviewed head is no longer a draft', async () => {
+  let responseHead = heads[0];
+  const github = createGitHub({
+    repository: 'owner/repo',
+    token: 'mock',
+    async request(url, options) {
+      assert.equal(url, 'https://api.github.com/graphql');
+      const query = JSON.parse(options.body);
+      assert.match(query.query, /markPullRequestReadyForReview/);
+      assert.deepEqual(query.variables.input, { pullRequestId: 'PR_fixture' });
+      return Response.json({
+        data: {
+          markPullRequestReadyForReview: {
+            pullRequest: { isDraft: false, headRefOid: responseHead },
+          },
+        },
+      });
+    },
+  });
+  assert.equal(await github.markReady('PR_fixture', heads[0]), true);
+  responseHead = heads[1];
+  assert.equal(await github.markReady('PR_fixture', heads[0]), false);
 });
 
 test('developer writes only allowed regular paths and requires a unique exact edit', () => {
