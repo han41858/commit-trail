@@ -284,10 +284,12 @@ Environment에는 브랜치 제한이 필요하지 않다. 검사는 개인 소�
 링크·비텍스트·크기 초과 파일은 제외하며 `.env.example`은 허용한다. 잠금 파일을 포함해 UTF-8 파일당 읽기·편집
 한도는 1 MiB다.
 
-공급자 응답은 SSE로 받아 하나의 결과로 조합한다. `.github/scripts/ai-development/config.mjs`의 `limits`는
-요청당 도구 턴 30회, 출력 32,000토큰, 편집 80개, 수신 유휴 5분과 전체 30분을 제한한다. Codex의 추론 설정은
-`medium`이다. 오류·조기 종료·무응답으로 결과를 알 수 없는 스트림은 자동으로 다시 요청하지 않는다. 공급자가
-토큰 사용량을 반환하면 Actions 로그에 기록한다.
+공급자 응답은 SSE로 받아 하나의 결과로 조합한다. `.github/scripts/ai-development/config.mjs`의 `limits`에서
+모델 API 호출은 개발 요청당 `turns` 30회, 리뷰 요청당 `reviewTurns` 45회로 제한한다. `reviewTurns`가 설정되지
+않으면 리뷰에도 `turns`를 적용한다. 출력은 API 호출당 32,000토큰, 편집은 개발 결과당 80개로 제한한다. 스트림의
+수신 유휴 한도는 5분, API 호출 전체 시간 한도는 30분이다. Codex의 추론 설정은 `medium`이다. 오류·조기 종료·
+무응답으로 결과를 알 수 없는 스트림은 자동으로 다시 요청하지 않는다. 공급자가 토큰 사용량을 반환하면 Actions
+로그에 기록한다.
 
 컨트롤러는 수정된 `package.json`과 `package-lock.json`에서 Docker로 `npm ci --ignore-scripts --no-audit --no-fund`를
 실행해 의존성을 설치하고, 두 파일의 내용으로 이미지를 캐시한다. 잠금 파일 불일치나 설치 실패는 수정 시도에
