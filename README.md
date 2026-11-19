@@ -29,7 +29,8 @@
 
 ## Features
 
-- **Follow branches and merges** in an interactive, vertical Git graph. Hover a branch badge, commit or connecting line to follow its branch flow between the starting fork and terminal merge in any screen size or Split view. Known source and destination branch name badges stay highlighted too. Click/tap a branch name or line to retain its highlight and close commit details, or a commit to highlight and open details. Retained paths are independent per Split view column; truncated badge taps also reveal the full name. Hover a merge connector to follow its incoming branch path back to the starting fork and see the selected merge point, excluding later work on that branch. Branches sharing a commit appear as separate, vertically stacked name badges.
+- **Follow branches and merges** in an interactive, vertical Git graph. Hover or select a [branch path](docs/dag-hover-highlight.md) to follow its history, and select a commit for details.
+- **Read the timeline** with month and day separators formatted for your locale.
 - **Stay current** with automatic updates that preserve your place while reading.
 - **Split view** puts 1–32 repositories in one row, with independent graphs and scrolling on a shared refresh schedule.
 - **See the context** with tags, releases and GitHub Actions status beside commits.
@@ -45,7 +46,9 @@
 
 ![Commit Trail Split view showing Commit Trail, AI Native, Angular and VS Code in four columns in a wide viewport](docs/images/split-desktop.png)
 
-Choose **Split view** to select repositories. Drag a header handle to reorder columns; on touch screens, press and hold the handle first. Inspect commits and GitHub Actions in any column, then use **Copy link** in the selection dialog to share the arrangement.
+Choose **Split view** to select repositories. While viewing, open the `>` tab on the left to refresh, **Manage repositories**, or **Return to single view**. Choose **Manage repositories**, edit the list, then **Apply changes**. Repositories that stay in the view keep their scroll position and selection.
+
+Drag a header handle to reorder columns; on touch screens, press and hold it first. Inspect commits and GitHub Actions in any column, or use **Copy link** in the selection dialog to share the arrangement.
 
 <table>
   <tr><th>Portrait</th><th>Landscape</th></tr>
@@ -65,7 +68,7 @@ _Actual browser captures with public GitHub data. Mobile uses viewport emulation
 2. Enter `owner/repo` or a GitHub repository URL and press Enter. Or enter just an owner, such as `han41858`, then choose a repository from the list.
 3. Choose a branch, scroll through history and select a commit for details.
 
-Owner lists appear after you submit the input; typing makes no requests. Repositories are requested in name order (A–Z). Filter loaded names locally; scrolling down at the bottom or pressing **Load more** loads another page and retries eligible failed requests. The button always says **Load more**; loading and errors use the existing indicators and messages. Filtering pauses pagination; clear the filter to continue scrolling. Requests stop once no next page remains. In Split view, check multiple repositories and choose **Add N repositories** to add them together, up to 32 including your existing selection. See the [owner selection guide](docs/owner-repositories.md) for access and pagination details.
+Submit an owner to browse its repositories in A–Z order, then filter the loaded list or use **Load more**. In Split view, check multiple repositories and choose **Add N repositories**. See the [owner selection guide](docs/owner-repositories.md) for access, filtering and pagination details.
 
 Commit Trail remembers the last branch you choose for each repository in this browser. An explicit `branch` in a shared URL takes priority for that visit without changing your saved choice; otherwise it restores your choice, then falls back to `main`, `master`, or the repository default.
 
