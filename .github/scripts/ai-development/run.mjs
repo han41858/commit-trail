@@ -66,6 +66,7 @@ async function develop(
 ) {
   const snapshot = workspace.snapshot(state);
   let failure;
+  const failedSteps = [];
   for (let attempt = 0; attempt < 2; attempt++) {
     await guard();
     const plan = await models.run({
@@ -92,7 +93,9 @@ async function develop(
     const validation = workspace.runChecks(state, changes);
     if (validation.ok)
       return { title: plan.title, summary: plan.summary, changes };
+    failedSteps.push(validation.step);
     failure = {
+      step: validation.step,
       output: validation.log,
       edits: plan.edits.map(({ path, before, after }) => ({
         path,
@@ -102,7 +105,7 @@ async function develop(
     };
   }
   throw new NeedsHuman(
-    '두 번의 시도에서 격리된 포맷·테스트·빌드 검증을 통과하지 못했습니다. 기존 커밋을 확인하고 수동으로 수정하세요.',
+    `두 번의 시도에서 격리 검증을 통과하지 못했습니다. 실패 단계는 ${failedSteps.map((step, i) => `${i + 1}차: ${step}`).join(', ')}입니다.`,
   );
 }
 
