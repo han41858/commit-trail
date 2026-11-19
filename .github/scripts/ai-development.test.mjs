@@ -642,6 +642,33 @@ test('a lost review response does not trigger a second charge for the same HEAD'
   assert.equal(data.reviews.size, 0);
 });
 
+test('manual resume retries a review that exhausted exploration or returned an invalid result', async () => {
+  for (const reason of [
+    '리뷰 상태와 지적 사항이 일치하지 않거나 결과가 너무 깁니다.',
+    'AI의 저장소 탐색 최대 횟수에 도달했습니다. Issue 범위를 좁힌 뒤 수동 재개하세요.',
+  ]) {
+    const { data, run } = fixture();
+    assert.equal(
+      (
+        await run({
+          review: async () => {
+            throw new Error(reason);
+          },
+        })
+      ).status,
+      'failed',
+    );
+    assert.equal(data.record.state.reviewInProgress, heads[0]);
+    assert.equal(await run(), undefined);
+
+    const state = await run({ resume: true, runId: 101 });
+    assert.equal(state.status, 'merged');
+    assert.equal(data.commits.length, 1);
+    assert.equal(data.reviews.size, 1);
+    assert.deepEqual(data.mergeRequests, [heads[0]]);
+  }
+});
+
 test('an explicitly rejected review can resume after authentication is fixed', async () => {
   const { data, run } = fixture({ label: 'ai:develop:codex' });
   assert.equal(
@@ -768,7 +795,8 @@ test('AI follow-up triggers exclude ordinary CI before jobs are queued', () => {
 test('provider requests use the configured turn, output and effort budget', async () => {
   const bodies = [];
   const limits = {
-    turns: 2,
+    turns: 1,
+    reviewTurns: 2,
     outputTokens: 1234,
     edits: 80,
     idleTimeout: 1000,
@@ -828,6 +856,8 @@ test('provider requests use the configured turn, output and effort budget', asyn
   assert.equal(bodies[0].max_output_tokens, 1234);
   assert.equal(bodies[0].reasoning.effort, 'high');
   assert.equal(bodies[2].max_tokens, 1234);
+  assert.match(bodies[0].instructions, /including this one: 2/);
+  assert.match(bodies[3].system, /including this one: 1/);
   assert.equal(config.limits.turns >= 10, true);
 });
 
