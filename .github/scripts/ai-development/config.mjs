@@ -10,8 +10,11 @@ export const config = {
   // Provider call budget for one development or review request.
   limits: {
     turns: 30,
-    outputTokens: 16_000,
-    requestTimeout: 600_000,
+    outputTokens: 32_000,
+    edits: 80,
+    // Responses are streamed: the idle limit bounds the gap between events, the request limit the whole call.
+    idleTimeout: 300_000,
+    requestTimeout: 1_800_000,
     codexEffort: 'medium',
   },
   instructions: 'AGENTS.md',

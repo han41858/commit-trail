@@ -8,7 +8,11 @@ import {
   pullMarker,
 } from './ai-development/engine.mjs';
 import { createGitHub, waitForCI } from './ai-development/github.mjs';
-import { createModels, validateReview } from './ai-development/models.mjs';
+import {
+  createModels,
+  validateDevelopment,
+  validateReview,
+} from './ai-development/models.mjs';
 import { resolveEdits } from './ai-development/workspace.mjs';
 import { config } from './ai-development/config.mjs';
 
@@ -684,6 +688,8 @@ test('provider requests use the configured turn, output and effort budget', asyn
   const limits = {
     turns: 2,
     outputTokens: 1234,
+    edits: 80,
+    idleTimeout: 1000,
     requestTimeout: 1000,
     codexEffort: 'high',
   };
@@ -733,6 +739,10 @@ test('provider requests use the configured turn, output and effort budget', asyn
     );
   }
   assert.equal(bodies.length, 4);
+  assert.equal(
+    bodies.every((body) => body.stream === true),
+    true,
+  );
   assert.equal(bodies[0].max_output_tokens, 1234);
   assert.equal(bodies[0].reasoning.effort, 'high');
   assert.equal(bodies[2].max_tokens, 1234);
@@ -1059,6 +1069,265 @@ for (const agent of ['codex', 'claude']) {
     assert.equal(logs[0].usage.input_tokens, 1);
   });
 }
+
+// Splits the event text at fixed widths so events and multi-byte characters straddle chunks.
+function eventStream(events, { width = 7, end = true } = {}) {
+  const bytes = new TextEncoder().encode(
+    events
+      .map(
+        (event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+      )
+      .join(''),
+  );
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (let offset = 0; offset < bytes.length; offset += width)
+          controller.enqueue(bytes.slice(offset, offset + width));
+        if (end) controller.close();
+      },
+    }),
+    { headers: { 'content-type': 'text/event-stream' } },
+  );
+}
+
+const streamLimits = {
+  turns: 3,
+  outputTokens: 1000,
+  edits: 80,
+  idleTimeout: 1000,
+  requestTimeout: 5000,
+  codexEffort: 'medium',
+};
+
+function streamingModels(respond, limits = streamLimits) {
+  const logs = [];
+  const models = createModels({
+    keys: { codex: 'openai-mock', claude: 'anthropic-mock' },
+    modelNames: config.models,
+    limits,
+    log: (line) => logs.push(JSON.parse(line)),
+    request: async (_url, options) => respond(JSON.parse(options.body)),
+  });
+  const run = (agent, inspect = () => 'diff') =>
+    models.run({
+      agent,
+      mode: 'review',
+      instructions: 'review',
+      context: 'issue',
+      inspect,
+    });
+  return { run, logs };
+}
+
+test('Claude streams are rebuilt into tool calls, text, stop reason and cumulative usage', async () => {
+  const review = { ...pass, summary: '통과 — 한글 요약' };
+  const text = JSON.stringify(review);
+  const turns = [
+    [
+      {
+        type: 'message_start',
+        message: {
+          role: 'assistant',
+          content: [],
+          stop_reason: null,
+          usage: { input_tokens: 11, output_tokens: 1 },
+        },
+      },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: '확인합니다' },
+      },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'ping' },
+      {
+        type: 'content_block_start',
+        index: 1,
+        content_block: {
+          type: 'tool_use',
+          id: 'toolu_1',
+          name: 'read_diff',
+          input: {},
+        },
+      },
+      {
+        type: 'content_block_delta',
+        index: 1,
+        delta: { type: 'input_json_delta', partial_json: '{"li' },
+      },
+      {
+        type: 'content_block_delta',
+        index: 1,
+        delta: { type: 'input_json_delta', partial_json: 'ne": 1}' },
+      },
+      { type: 'content_block_stop', index: 1 },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'tool_use', stop_sequence: null },
+        usage: { output_tokens: 42 },
+      },
+      { type: 'message_stop' },
+    ],
+    [
+      {
+        type: 'message_start',
+        message: {
+          role: 'assistant',
+          content: [],
+          usage: { input_tokens: 20, output_tokens: 1 },
+        },
+      },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: text.slice(0, 9) },
+      },
+      { type: 'unknown_future_event' },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: text.slice(9) },
+      },
+      { type: 'content_block_stop', index: 0 },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { output_tokens: 30 },
+      },
+      { type: 'message_stop' },
+    ],
+  ];
+  const bodies = [];
+  const tools = [];
+  const { run, logs } = streamingModels((body) => {
+    bodies.push(body);
+    return eventStream(turns[bodies.length - 1]);
+  });
+  assert.deepEqual(
+    await run('claude', (name, input) => {
+      tools.push({ name, input });
+      return 'diff';
+    }),
+    review,
+  );
+  assert.deepEqual(tools, [{ name: 'read_diff', input: { line: 1 } }]);
+  // The assistant turn is replayed with the reassembled blocks, as a non-streaming reply would be.
+  assert.deepEqual(bodies[1].messages[1].content, [
+    { type: 'text', text: '확인합니다' },
+    { type: 'tool_use', id: 'toolu_1', name: 'read_diff', input: { line: 1 } },
+  ]);
+  assert.equal(bodies[1].messages[2].content[0].tool_use_id, 'toolu_1');
+  assert.deepEqual(logs[0].usage, { input_tokens: 11, output_tokens: 42 });
+  assert.equal(bodies[0].stream, true);
+});
+
+test('Codex streams return the response carried by the terminal event', async () => {
+  const completed = (output) => [
+    { type: 'response.created', response: { status: 'in_progress' } },
+    { type: 'response.output_text.delta', delta: 'ignored' },
+    {
+      type: 'response.completed',
+      response: {
+        status: 'completed',
+        usage: { input_tokens: 5, output_tokens: 6, total_tokens: 11 },
+        output,
+      },
+    },
+  ];
+  const turns = [
+    completed([
+      {
+        type: 'function_call',
+        name: 'read_diff',
+        arguments: '{"line":1}',
+        call_id: 'call_1',
+      },
+    ]),
+    completed([
+      {
+        type: 'message',
+        content: [{ type: 'output_text', text: JSON.stringify(pass) }],
+      },
+    ]),
+  ];
+  let turn = 0;
+  const { run, logs } = streamingModels(() => eventStream(turns[turn++]));
+  assert.deepEqual(await run('codex'), pass);
+  assert.equal(logs[1].usage.total_tokens, 11);
+
+  const incomplete = streamingModels(() =>
+    eventStream([
+      {
+        type: 'response.incomplete',
+        response: { status: 'incomplete', output: [] },
+      },
+    ]),
+  );
+  await assert.rejects(incomplete.run('codex'), /완료되지 않았습니다/);
+});
+
+test('a stream error, an early end or a silent stream is an unknown outcome and is not retried', async () => {
+  const cases = [
+    [
+      'claude',
+      () =>
+        eventStream([{ type: 'error', error: { type: 'overloaded_error' } }]),
+    ],
+    [
+      'claude',
+      () => eventStream([{ type: 'message_start', message: { content: [] } }]),
+    ],
+    ['codex', () => eventStream([{ type: 'error', message: 'failed' }])],
+    ['codex', () => eventStream([{ type: 'response.created', response: {} }])],
+  ];
+  for (const [agent, respond] of cases) {
+    let requests = 0;
+    const { run } = streamingModels(() => {
+      requests++;
+      return respond();
+    });
+    await assert.rejects(run(agent), (error) => {
+      assert.match(error.message, /응답을 확인할 수 없습니다/);
+      assert.equal(error.requestRejected, undefined);
+      return true;
+    });
+    assert.equal(requests, 1);
+  }
+  // No bytes for longer than the idle limit ends the wait even though the stream stays open.
+  const silent = streamingModels(
+    () => eventStream([{ type: 'ping' }], { end: false }),
+    { ...streamLimits, idleTimeout: 30 },
+  );
+  const started = Date.now();
+  await assert.rejects(silent.run('claude'), /응답을 확인할 수 없습니다/);
+  assert.equal(Date.now() - started < 2000, true);
+});
+
+test('development results accept up to the configured number of edits', () => {
+  const plan = (count) => ({
+    status: 'completed',
+    title: '🐛 계산: 빈 값 수정',
+    summary: '기본값 처리',
+    edits: Array.from({ length: count }, (_, index) => ({
+      path: `src/file-${index}.ts`,
+      before: null,
+      after: 'x',
+    })),
+  });
+  assert.equal(validateDevelopment(plan(config.limits.edits)).edits.length, 80);
+  assert.throws(() => validateDevelopment(plan(config.limits.edits + 1)));
+});
 
 test('provider rate limits retry at most once and HTTP authorization errors do not retry', async () => {
   for (const [http, expected] of [
