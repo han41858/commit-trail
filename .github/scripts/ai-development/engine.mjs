@@ -15,6 +15,14 @@ export const activeStates = new Set([
   'merging',
 ]);
 
+// These failures mean verification rejected a returned result or exploration
+// ended normally. Transport failures may still have a billable review in flight.
+const retryableReviewFailures = new Set([
+  '리뷰 상태와 지적 사항이 일치하지 않거나 결과가 너무 깁니다.',
+  '리뷰 지적에 유효한 파일·줄·결함·영향·근거·수정 방향이 필요합니다.',
+  'AI의 저장소 탐색 최대 횟수에 도달했습니다. Issue 범위를 좁힌 뒤 수동 재개하세요.',
+]);
+
 export class NeedsHuman extends Error {
   constructor(message, detail) {
     super(message);
@@ -414,10 +422,22 @@ export async function runPipeline({
       return state;
     }
     if (state.status === 'ready') return state;
-    if (state.reviewInProgress)
-      throw new NeedsHuman(
-        '직전 리뷰가 결과를 기록하기 전에 중단되었습니다. 동일 커밋에 자동 리뷰를 다시 청구하지 않으므로 PR을 직접 검토하세요.',
+    if (state.reviewInProgress) {
+      if (
+        !resume ||
+        state.status !== 'failed' ||
+        state.reviewInProgress !== state.head ||
+        !retryableReviewFailures.has(state.reason)
+      )
+        throw new NeedsHuman(
+          '직전 리뷰가 결과를 기록하기 전에 중단되었습니다. 동일 커밋에 자동 리뷰를 다시 청구하지 않으므로 PR을 직접 검토하세요.',
+        );
+      delete state.reviewInProgress;
+      await save(
+        'reviewing',
+        '수동 재개 요청에 따라 실패한 교차 리뷰를 다시 진행합니다.',
       );
+    }
     if (state.head !== state.base) await ensurePull();
     await refreshBase();
     if (state.head === state.base) {
