@@ -95,6 +95,27 @@ test('the real package-lock can be read, paged and edited above the former 128 K
   }
 });
 
+test('isolated validation reports the last started check separately from its output', () => {
+  const context = fixture((_command, args) => {
+    if (args[0] !== 'run') return { status: 0 };
+    const name = args[args.indexOf('--name') + 1];
+    assert.match(args.at(-1), new RegExp(`${name}:check:0`));
+    return {
+      status: 1,
+      stdout: `${name}:check:0\nprivate candidate output\n`,
+      stderr: '',
+    };
+  });
+  try {
+    const validation = context.workspace.runChecks(context.state, []);
+    assert.equal(validation.ok, false);
+    assert.equal(validation.step, 'node --version');
+    assert.match(validation.log, /private candidate output/);
+  } finally {
+    context.close();
+  }
+});
+
 test('dependencies use the edited manifests and invalidate the cache when either changes', () => {
   const builds = [];
   let runs = 0;

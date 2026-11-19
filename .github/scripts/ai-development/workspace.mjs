@@ -243,6 +243,7 @@ export function createWorkspace({
     } catch {
       return {
         ok: false,
+        step: '의존성 파일 확인',
         log: '수정 후 package.json과 package-lock.json이 일반 파일로 존재해야 합니다.',
       };
     }
@@ -283,6 +284,7 @@ export function createWorkspace({
     if (result.status !== 0)
       return {
         ok: false,
+        step: '의존성 설치',
         log: `수정 후 의존성 설치가 실패했습니다. package.json과 package-lock.json의 일치를 확인하세요.\n${result.stdout ?? ''}\n${result.stderr ?? ''}`.slice(
           -6500,
         ),
@@ -315,12 +317,16 @@ export function createWorkspace({
       }
       const dependencies = prepareDependencies(source);
       if (!dependencies.ok) return dependencies;
+      const checkMarker = `${container}:check:`;
       const script = [
         'mkdir /tmp/project',
         'cp -a --no-preserve=ownership /source/. /tmp/project/',
         'cd /tmp/project',
         'cp -a --no-preserve=ownership /dependencies/node_modules ./node_modules',
-        ...config.checks,
+        ...config.checks.flatMap((command, index) => [
+          `printf '%s\\n' '${checkMarker}${index}'`,
+          command,
+        ]),
       ].join('\n');
       const result = spawn(
         'docker',
@@ -359,8 +365,17 @@ export function createWorkspace({
         throw new Error(
           '격리 테스트를 끝낼 수 없습니다. Docker 실행 환경과 제한 시간을 확인하세요.',
         );
+      const lastCheck = result.stdout
+        ?.split('\n')
+        .findLast((line) => line.startsWith(checkMarker));
+      const index = lastCheck
+        ? Number(lastCheck.slice(checkMarker.length))
+        : -1;
       return {
         ok: result.status === 0,
+        ...(result.status !== 0 && {
+          step: config.checks[index] ?? '격리 검사 준비',
+        }),
         log: `${result.stdout ?? ''}\n${result.stderr ?? ''}`.slice(-6500),
       };
     } finally {
