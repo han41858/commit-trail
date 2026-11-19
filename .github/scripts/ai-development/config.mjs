@@ -1,3 +1,5 @@
+const formatCheck = 'npm run format:check';
+
 export const config = {
   base: 'dev',
   ciWorkflow: 'ci.yml',
@@ -20,8 +22,9 @@ export const config = {
   },
   instructions: 'AGENTS.md',
   credentialsEnvironment: 'ai-development',
+  docsOnlyChecks: [formatCheck],
   checks: [
-    'npm run format:check',
+    formatCheck,
     'npm test',
     'node --test --test-isolation=none .github/scripts/*.test.mjs',
     'npm run build',

@@ -27,7 +27,7 @@ jobs:
         with:
           ref: refs/heads/dev
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9e38 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
       - run: node .github/scripts/ai-development/run.mjs --wake-dependents

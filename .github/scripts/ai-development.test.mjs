@@ -63,6 +63,17 @@ const base = 'a'.repeat(40);
 const heads = ['b', 'c', 'd'].map((char) => char.repeat(40));
 const mergeCommit = 'e'.repeat(40);
 const pass = { status: 'pass', findings: [], summary: '통과' };
+
+test('dependency follow-up uses the same setup-node pin as the development workflow', () => {
+  const pin = (filename) =>
+    readFileSync(
+      new URL(`../workflows/${filename}`, import.meta.url),
+      'utf8',
+    ).match(/uses: actions\/setup-node@([a-f0-9]{40})\b/)?.[1];
+  const expected = pin('ai-development.yml');
+  assert(expected);
+  assert.equal(pin('ai-development-dependencies.yml'), expected);
+});
 const changes = (defect = '잘못된 값', line = 3) => ({
   status: 'changes_requested',
   summary: '수정 필요',
@@ -1632,6 +1643,7 @@ for (const agent of ['codex', 'claude']) {
       'diff',
     );
     assert.equal(logs[0].usage.input_tokens, 1);
+    assert(Number.isFinite(logs[0].elapsedMs));
   });
 }
 
