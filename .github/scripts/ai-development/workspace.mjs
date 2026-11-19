@@ -158,12 +158,20 @@ export function createWorkspace({
   cwd = process.cwd(),
   spawn = spawnSync,
   log = console.log,
+  npmCacheDir = process.env.AI_NPM_CACHE_DIR,
 }) {
   const scratch = mkdtempSync(
     join(process.env.RUNNER_TEMP || tmpdir(), 'commit-trail-ai-'),
   );
   const image = `commit-trail-ai:${randomUUID()}`;
   let cachedDependencies;
+  let downloadsAvailable = false;
+  try {
+    downloadsAvailable =
+      Boolean(npmCacheDir) && lstatSync(npmCacheDir).isDirectory();
+  } catch {
+    // A missing download cache is an ordinary cold start.
+  }
   const git = (args, options = {}) =>
     execFileSync('git', args, {
       cwd,
@@ -279,18 +287,37 @@ export function createWorkspace({
     mkdirSync(context, { recursive: true });
     for (const [name, bytes] of manifests)
       writeFileSync(join(context, name), bytes);
+    const mounts = ['--mount=type=secret,id=npm_ca'];
+    const install = [
+      'if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi;',
+    ];
+    if (downloadsAvailable) {
+      mounts.push(
+        '--mount=type=bind,from=npm_downloads,target=/npm-downloads,ro',
+      );
+      install.push(
+        'mkdir -p /root/.npm/_cacache && cp -a /npm-downloads/. /root/.npm/_cacache/ &&',
+      );
+    }
+    install.push(
+      'npm ci --ignore-scripts --no-audit --no-fund',
+      ...(downloadsAvailable ? ['--prefer-offline'] : []),
+      '&& rm -rf /root/.npm',
+    );
     writeFileSync(
       join(context, 'Dockerfile'),
       [
         'FROM node:24-bookworm',
         'WORKDIR /dependencies',
         'COPY package.json package-lock.json ./',
-        'RUN --mount=type=secret,id=npm_ca if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; npm ci --ignore-scripts --no-audit --no-fund',
+        `RUN ${mounts.join(' ')} ${install.join(' ')}`,
         'USER node',
         '',
       ].join('\n'),
     );
     const build = ['build', '--tag', image];
+    if (downloadsAvailable)
+      build.push('--build-context', `npm_downloads=${npmCacheDir}`);
     if (process.env.NODE_EXTRA_CA_CERTS)
       build.push(
         '--secret',
@@ -313,7 +340,11 @@ export function createWorkspace({
         ),
       };
     cachedDependencies = key;
-    return { ok: true, cache: 'miss' };
+    return {
+      ok: true,
+      cache: 'miss',
+      downloads: downloadsAvailable ? 'seeded' : 'missing',
+    };
   }
 
   function runChecks(state, changes) {
@@ -347,6 +378,7 @@ export function createWorkspace({
           JSON.stringify({
             phase: 'dependencies',
             cache: dependencies?.cache,
+            downloads: dependencies?.downloads,
             ok: dependencies?.ok === true,
             elapsedMs: Math.round(performance.now() - dependencyStart),
           }),

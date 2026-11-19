@@ -44,10 +44,23 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
+      - name: Locate npm download cache
+        id: npm-cache
+        run: |
+          printf 'path=%s\n' "$(npm config get cache)" >> "$GITHUB_OUTPUT"
+          printf 'arch=%s\n' "$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+      # Match setup-node's npm cache key in CI, without saving candidate caches.
+      - name: Restore CI npm downloads
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        continue-on-error: true
+        with:
+          path: ${{ steps.npm-cache.outputs.path }}
+          key: node-cache-${{ runner.os }}-${{ steps.npm-cache.outputs.arch }}-npm-${{ hashFiles('package-lock.json') }}
       - name: Develop and review
         run: node .github/scripts/ai-development/run.mjs
         env:
           GH_TOKEN: ${{ github.token }}
+          AI_NPM_CACHE_DIR: ${{ steps.npm-cache.outputs.path }}/_cacache
           AI_AUTOMATION_TOKEN: ${{ secrets.AI_AUTOMATION_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

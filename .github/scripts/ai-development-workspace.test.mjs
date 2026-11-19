@@ -10,7 +10,7 @@ import { createWorkspace, resolveEdits } from './ai-development/workspace.mjs';
 function fixture(
   spawn,
   lock = '{"lockfileVersion":3,"packages":{}}',
-  { log = () => {}, ...config } = {},
+  { log = () => {}, npmCacheDir, ...config } = {},
 ) {
   const cwd = mkdtempSync(join(tmpdir(), 'ai-workspace-test-'));
   const git = (...args) =>
@@ -47,6 +47,7 @@ function fixture(
     token: 'unused',
     spawn,
     log,
+    npmCacheDir,
   });
   return {
     workspace,
@@ -358,6 +359,43 @@ test('validation returns formatted bytes only for existing candidate paths', () 
     assert.equal(context.workspace.runChecks(context.state, changes).ok, false);
   } finally {
     context.close();
+  }
+});
+
+test('download cache seeds npm ci without mounting it into candidate checks', () => {
+  const npmCacheDir = mkdtempSync(join(tmpdir(), 'npm-download-test-'));
+  const context = fixture(
+    (_command, args) => {
+      if (args[0] === 'build') {
+        assert.equal(
+          args[args.indexOf('--build-context') + 1],
+          `npm_downloads=${npmCacheDir}`,
+        );
+        const dockerfile = readFileSync(
+          join(args.at(-1), 'Dockerfile'),
+          'utf8',
+        );
+        assert.match(
+          dockerfile,
+          /from=npm_downloads,target=\/npm-downloads,ro/,
+        );
+        assert.match(
+          dockerfile,
+          /npm ci --ignore-scripts --no-audit --no-fund --prefer-offline/,
+        );
+      } else if (args[0] === 'run') {
+        assert(!args.some((arg) => arg.includes(npmCacheDir)));
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    },
+    undefined,
+    { npmCacheDir },
+  );
+  try {
+    assert.equal(context.workspace.runChecks(context.state, []).ok, true);
+  } finally {
+    context.close();
+    rmSync(npmCacheDir, { recursive: true, force: true });
   }
 });
 
