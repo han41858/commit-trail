@@ -200,10 +200,11 @@ export function createGitHub({
         },
       });
     },
-    matchesPull(pr, state, base, { allowReady = false } = {}) {
+    matchesPull(pr, state, base, { allowReady = false, merged = false } = {}) {
       return (
-        pr.state === 'open' &&
-        (allowReady || pr.draft === true) &&
+        (merged
+          ? pr.merged === true && shaPattern.test(pr.merge_commit_sha || '')
+          : pr.state === 'open' && (allowReady || pr.draft === true)) &&
         pr.base.ref === base &&
         pr.base.repo.full_name === repository &&
         pr.head.repo?.full_name === repository &&
@@ -225,6 +226,46 @@ export function createGitHub({
       });
       const pr = response.data?.markPullRequestReadyForReview?.pullRequest;
       return pr?.isDraft === false && pr.headRefOid === head;
+    },
+    async squashMerge(state, base) {
+      if (base !== 'dev')
+        throw new NeedsHuman('자동 스쿼시 머지는 dev 대상 PR에만 적용됩니다.');
+      if (!publishingToken)
+        throw new NeedsHuman(
+          '자동 머지에는 기존 dev 푸시 CI를 시작할 AI_AUTOMATION_TOKEN이 필요합니다. 토큰을 설정하거나 PR을 수동으로 머지하세요.',
+        );
+      const { name, email } = agents[state.developer];
+      const message = [
+        plain(state.summary),
+        state.revisionSummary && plain(state.revisionSummary),
+        `Closes #${state.issue}`,
+        `Co-authored-by: ${name} <${email}>`,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      const result = await api(`/pulls/${state.pull}/merge`, {
+        method: 'PUT',
+        publish: true,
+        payload: {
+          sha: state.head,
+          merge_method: 'squash',
+          commit_title: `${state.title} (#${state.pull})`,
+          commit_message: message,
+        },
+      }).catch((error) => {
+        if (error.status === 409)
+          throw new NeedsHuman(
+            '머지 요청 직전에 PR의 HEAD가 변경되었습니다. PR을 다시 검토하세요.',
+          );
+        if ([403, 405, 422].includes(error.status))
+          throw new NeedsHuman(
+            `GitHub가 자동 스쿼시 머지를 거부했습니다 (HTTP ${error.status}). PR의 필수 검사, 머지 조건과 토큰 권한을 확인하세요.`,
+          );
+        throw error;
+      });
+      if (result.merged !== true || !shaPattern.test(result.sha || ''))
+        throw new Error('GitHub 스쿼시 머지 결과를 확인할 수 없습니다.');
+      return result.sha;
     },
     async loadState(issue) {
       const comment = await findComment(issue, (body) =>

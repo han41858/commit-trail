@@ -13,6 +13,7 @@ import { config } from './ai-development/config.mjs';
 
 const base = 'a'.repeat(40);
 const heads = ['b', 'c', 'd'].map((char) => char.repeat(40));
+const mergeCommit = 'e'.repeat(40);
 const pass = { status: 'pass', findings: [], summary: '통과' };
 const changes = (defect = '잘못된 값', line = 3) => ({
   status: 'changes_requested',
@@ -50,6 +51,7 @@ function fixture({
     notes: new Map(),
     reviews: new Map(),
     readyRequests: [],
+    mergeRequests: [],
   };
   const github = {
     issue: async () => structuredClone(data.issue),
@@ -94,6 +96,7 @@ function fixture({
         body: pullMarker(state.issue),
         draft: true,
         state: 'open',
+        base: 'dev',
         head: state.head,
       };
       if (data.losePullResponse) {
@@ -103,8 +106,17 @@ function fixture({
       return structuredClone(data.pull);
     },
     pull: async () => structuredClone(data.pull),
-    matchesPull: (pr, state, _base, { allowReady = false } = {}) =>
-      pr.state === 'open' && (allowReady || pr.draft) && pr.head === state.head,
+    matchesPull: (
+      pr,
+      state,
+      baseRef,
+      { allowReady = false, merged = false } = {},
+    ) =>
+      (merged
+        ? pr.merged === true
+        : pr.state === 'open' && (allowReady || pr.draft)) &&
+      pr.base === baseRef &&
+      pr.head === state.head,
     async markReady(id, head) {
       assert.equal(data.pull.node_id, id);
       assert.equal(data.pull.head, head);
@@ -112,6 +124,23 @@ function fixture({
       if (data.blockReady) return false;
       data.pull.draft = false;
       return true;
+    },
+    async squashMerge(state, baseRef) {
+      assert.equal(baseRef, 'dev');
+      assert.equal(state.pull, data.pull.number);
+      assert.equal(state.head, data.pull.head);
+      assert.equal(data.pull.draft, false);
+      data.mergeRequests.push(state.head);
+      Object.assign(data.pull, {
+        state: 'closed',
+        merged: true,
+        merge_commit_sha: mergeCommit,
+      });
+      data.issue.state = 'closed';
+      data.base = mergeCommit;
+      data.remote = null;
+      if (data.loseMergeResponse) throw new Error('머지 응답 확인 불가');
+      return mergeCommit;
     },
     async notice(number, message, key) {
       data.notes.set(`${number}:${key}`, message);
@@ -154,14 +183,16 @@ function fixture({
   };
 }
 
-test('default Codex development and Claude review reach ready only after CI', async () => {
+test('default Codex development and Claude review squash merge only after CI', async () => {
   const { data, run } = fixture();
   const state = await run();
-  assert.equal(state.status, 'ready');
+  assert.equal(state.status, 'merged');
+  assert.equal(state.mergeCommit, mergeCommit);
   assert.equal(state.branch, 'ai/issue-13-codex');
   assert.equal(state.pull, 99);
   assert.equal(data.pull.draft, false);
   assert.deepEqual(data.readyRequests, [heads[0]]);
+  assert.deepEqual(data.mergeRequests, [heads[0]]);
   assert.match(
     data.commits[0].message.body,
     /Co-authored-by: Codex <noreply@openai\.com>/,
@@ -223,9 +254,10 @@ test('Claude revises the existing PR using Codex feedback; later labels do not r
       return options.review(args);
     },
   });
-  assert.equal(state.status, 'ready');
+  assert.equal(state.status, 'merged');
   assert.equal(state.pull, 99);
   assert.equal(state.head, heads[1]);
+  assert.deepEqual(data.mergeRequests, [heads[1]]);
   assert.equal(data.commits.length, 2);
   assert.deepEqual(
     data.events.filter((item) => item?.developer),
@@ -266,24 +298,24 @@ test('conflicting labels block startup with a deduplicated notice; unlabeled and
   await assert.rejects(run({ resume: true }), /최초 실행은 실행 라벨/);
 });
 
-test('approval wait never becomes ready and resumes CI without repeating the same review', async () => {
+test('approval wait pauses merging and resumes CI without repeating the same review', async () => {
   const { data, run } = fixture({ ci: { ok: false, reason: 'CI 승인 필요' } });
   assert.equal((await run()).status, 'needs_human');
   assert.equal(data.notes.size, 0);
+  assert.equal(data.mergeRequests.length, 0);
   const state = await run({
     resume: true,
     runId: 101,
     checkCI: async () => ({ ok: true, url: 'https://github.com/ci' }),
   });
-  assert.equal(state.status, 'ready');
+  assert.equal(state.status, 'merged');
   assert.equal(data.events.filter((item) => item?.reviewer).length, 1);
-  data.remote = heads[1];
-  data.pull.head = heads[1];
-  assert.equal((await run({ resume: true, runId: 102 })).status, 'needs_human');
+  assert.equal((await run({ resume: true, runId: 102 })).status, 'merged');
+  assert.deepEqual(data.mergeRequests, [heads[0]]);
   assert.equal(data.notes.size, 1);
 });
 
-test('CI completion readies the existing PR without a manual run or another review', async () => {
+test('CI completion merges the verified PR without a manual run or another review', async () => {
   const { data, github, run } = fixture({
     ci: { ok: false, reason: 'CI 승인 필요' },
   });
@@ -308,17 +340,18 @@ test('CI completion readies the existing PR without a manual run or another revi
     undefined,
   );
   assert.equal(data.readyRequests.length, 0);
-  assert.equal((await runPipeline(completion)).status, 'ready');
+  assert.equal((await runPipeline(completion)).status, 'merged');
   assert.equal(data.record.state.awaitingCI, undefined);
   assert.equal(data.pull.draft, false);
   assert.deepEqual(data.readyRequests, [heads[0]]);
   assert.equal(data.events.filter((item) => item?.reviewer).length, 1);
   assert.equal(await runPipeline(completion), undefined);
-  assert.equal((await run({ resume: true })).status, 'ready');
+  assert.equal((await run({ resume: true })).status, 'merged');
+  assert.deepEqual(data.mergeRequests, [heads[0]]);
   assert.equal(data.readyRequests.length, 1);
 });
 
-test('a successful CI event cannot ready a stopped Issue or a manually changed PR', async () => {
+test('a successful CI event cannot merge a stopped or manually changed PR', async () => {
   for (const mutate of [
     (data) => {
       data.issue.labels.push({ name: 'ai:stop' });
@@ -326,6 +359,9 @@ test('a successful CI event cannot ready a stopped Issue or a manually changed P
     (data) => {
       data.remote = heads[1];
       data.pull.head = heads[1];
+    },
+    (data) => {
+      data.pull.base = 'main';
     },
   ]) {
     const { data, run } = fixture({
@@ -342,6 +378,7 @@ test('a successful CI event cannot ready a stopped Issue or a manually changed P
     assert.equal(state.awaitingCI, undefined);
     assert.equal(data.pull.draft, true);
     assert.equal(data.readyRequests.length, 0);
+    assert.equal(data.mergeRequests.length, 0);
   }
 });
 
@@ -349,9 +386,35 @@ test('a Draft conversion denied by GitHub leaves manual instructions after succe
   const { data, run } = fixture();
   data.blockReady = true;
   const state = await run();
-  assert.equal(state.status, 'ready');
+  assert.equal(state.status, 'needs_human');
   assert.equal(data.pull.draft, true);
   assert.match(state.reason, /Ready for review/);
+  assert.equal(data.mergeRequests.length, 0);
+});
+
+test('a lost merge response is reconciled without attempting a second merge', async () => {
+  const { data, github, run } = fixture();
+  data.loseMergeResponse = true;
+  assert.equal((await run()).status, 'merged');
+  assert.equal(data.record.state.mergeCommit, mergeCommit);
+  assert.equal(data.issue.state, 'closed');
+
+  data.record.state.status = 'merging';
+  delete data.record.state.mergeCommit;
+  await reconcile(
+    github,
+    {
+      display_title: 'AI development for Issue #13',
+      id: 100,
+      run_attempt: 1,
+      conclusion: 'cancelled',
+    },
+    config.base,
+  );
+  assert.equal(data.record.state.status, 'merged');
+  assert.equal(data.record.state.mergeCommit, mergeCommit);
+  assert.equal((await run({ resume: true })).status, 'merged');
+  assert.deepEqual(data.mergeRequests, [heads[0]]);
 });
 
 test('a closed or manually edited PR and a newer dev stop without overwriting changes', async () => {
@@ -384,7 +447,7 @@ test('a lost commit or PR response is recovered on explicit resume without doubl
     const { data, run } = fixture();
     data[flag] = true;
     assert.equal((await run()).status, 'failed');
-    assert.equal((await run({ resume: true, runId: 101 })).status, 'ready');
+    assert.equal((await run({ resume: true, runId: 101 })).status, 'merged');
     assert.equal(data.commits.length, 1);
     assert.equal(data.events.filter((item) => item?.developer).length, 1);
     assert.equal(data.pull.number, 99);
@@ -429,7 +492,7 @@ test('an explicitly rejected review can resume after authentication is fixed', a
     'failed',
   );
   assert.equal(data.record.state.reviewInProgress, undefined);
-  assert.equal((await run({ resume: true, runId: 101 })).status, 'ready');
+  assert.equal((await run({ resume: true, runId: 101 })).status, 'merged');
   assert.equal(data.commits.length, 1);
   assert.equal(data.reviews.size, 1);
 });
@@ -462,9 +525,9 @@ test('cleanup only updates the exact interrupted attempt, and ai:stop halts work
     run_attempt: 2,
     conclusion: 'cancelled',
   };
-  await reconcile(github, event);
+  await reconcile(github, event, config.base);
   assert.equal(data.record.state.status, 'reviewing');
-  await reconcile(github, { ...event, run_attempt: 1 });
+  await reconcile(github, { ...event, run_attempt: 1 }, config.base);
   assert.equal(data.record.state.status, 'needs_human');
 });
 
@@ -574,6 +637,56 @@ test('GitHub readiness mutation must confirm the reviewed head is no longer a dr
   assert.equal(await github.markReady('PR_fixture', heads[0]), true);
   responseHead = heads[1];
   assert.equal(await github.markReady('PR_fixture', heads[0]), false);
+});
+
+test('GitHub squash merge uses the publishing token and exact reviewed HEAD', async () => {
+  const requests = [];
+  let conflict = false;
+  const options = {
+    repository: 'owner/repo',
+    token: 'app-mock',
+    async request(url, options) {
+      requests.push({ url, options });
+      return conflict
+        ? new Response('', { status: 409 })
+        : Response.json({ merged: true, sha: mergeCommit });
+    },
+  };
+  const github = createGitHub({ ...options, publishingToken: 'pat-mock' });
+  const state = {
+    issue: 13,
+    pull: 99,
+    head: heads[0],
+    developer: 'codex',
+    title: '🐛 계산: 빈 값 수정',
+    summary: '기본값 처리',
+    revisionSummary: '경계값 보완',
+  };
+  await assert.rejects(github.squashMerge(state, 'main'), NeedsHuman);
+  await assert.rejects(
+    createGitHub(options).squashMerge(state, 'dev'),
+    /AI_AUTOMATION_TOKEN/,
+  );
+  assert.equal(requests.length, 0);
+
+  assert.equal(await github.squashMerge(state, 'dev'), mergeCommit);
+  const [request] = requests;
+  assert.equal(
+    request.url,
+    'https://api.github.com/repos/owner/repo/pulls/99/merge',
+  );
+  assert.equal(request.options.method, 'PUT');
+  assert.equal(request.options.headers.authorization, 'Bearer pat-mock');
+  assert.deepEqual(JSON.parse(request.options.body), {
+    sha: heads[0],
+    merge_method: 'squash',
+    commit_title: '🐛 계산: 빈 값 수정 (#99)',
+    commit_message:
+      '기본값 처리\n\n경계값 보완\n\nCloses #13\n\nCo-authored-by: Codex <noreply@openai.com>',
+  });
+  conflict = true;
+  await assert.rejects(github.squashMerge(state, 'dev'), /HEAD가 변경/);
+  assert.equal(requests.length, 2);
 });
 
 test('developer writes only allowed regular paths and requires a unique exact edit', () => {
