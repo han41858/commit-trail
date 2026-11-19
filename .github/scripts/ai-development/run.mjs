@@ -135,7 +135,7 @@ async function main() {
       event.workflow_run.status === 'completed' &&
       event.workflow_run.conclusion !== 'success'
     ) {
-      await reconcile(github, event.workflow_run);
+      await reconcile(github, event.workflow_run, config.base);
     }
     return;
   }

@@ -12,6 +12,7 @@ export const activeStates = new Set([
   'developing',
   'reviewing',
   'revising',
+  'merging',
 ]);
 
 export class NeedsHuman extends Error {
@@ -50,6 +51,19 @@ function commitMessage(plan, developer, operation) {
     headline: plan.title,
     body: `AI-Operation: ${operation}\n\nCo-authored-by: ${name} <${email}>`,
   };
+}
+
+async function confirmedMerge(github, state, base) {
+  const pr = await github.pull(state.pull);
+  if (
+    github.matchesPull(pr, state, base, { merged: true }) &&
+    fingerprint(pr) === state.pullFingerprint
+  )
+    return pr.merge_commit_sha;
+}
+
+function mergedMessage(state, base) {
+  return `PR #${state.pull}이 ${base}에 머지되었습니다. 머지 커밋 ${state.mergeCommit}.`;
 }
 
 export async function runPipeline({
@@ -196,7 +210,13 @@ export async function runPipeline({
     return { remote, pr };
   }
 
-  async function completeReady(ci) {
+  async function recordMerge(sha) {
+    state.mergeCommit = sha;
+    delete state.awaitingCI;
+    await save('merged', mergedMessage(state, config.base));
+  }
+
+  async function completeMerge(ci) {
     let { pr } = await guard();
     if (pr.mergeable === false)
       throw new NeedsHuman(
@@ -212,18 +232,33 @@ export async function runPipeline({
       }
       ({ pr } = await guard());
     }
-    const action =
-      pr.draft && !converted
-        ? 'PR에서 Ready for review를 누른 뒤 최종 검토해 주세요.'
-        : 'PR에서 변경을 최종 검토한 뒤 스쿼시 머지할 수 있습니다.';
-    const result = `교차 리뷰와 필수 CI가 커밋 ${state.head}에서 통과했습니다. ${action} 새 커밋에는 별도 검증이 필요합니다.`;
     await github.notice(
       state.pull,
-      `${result}\n\n${ci.url}`,
+      `교차 리뷰와 필수 CI가 커밋 ${state.head}에서 통과했습니다. 새 커밋에는 별도 검증이 필요합니다.\n\n${ci.url}`,
       `ready-${state.head}`,
     );
+    if (pr.draft && !converted)
+      throw new NeedsHuman(
+        '교차 리뷰와 필수 CI를 통과했습니다. PR의 Draft 해제를 확인하지 못했습니다. PR에서 Ready for review를 누른 뒤 확인하세요.',
+      );
     delete state.awaitingCI;
-    await save('ready', `${result} ${ci.url}`);
+    state.mergeAttempted = true;
+    await save(
+      'merging',
+      `같은 HEAD의 교차 리뷰와 필수 CI를 통과했습니다. ${config.base} 스쿼시 머지를 요청합니다. ${ci.url}`,
+    );
+    ({ pr } = await guard());
+    if (pr.draft)
+      throw new NeedsHuman('PR이 Draft 상태입니다. PR 상태를 확인하세요.');
+
+    let sha;
+    try {
+      sha = await github.squashMerge(state, config.base);
+    } catch (error) {
+      sha = await confirmedMerge(github, state, config.base);
+      if (!sha) throw error;
+    }
+    await recordMerge(sha);
   }
 
   async function ensurePull() {
@@ -264,6 +299,7 @@ export async function runPipeline({
       );
     state.title ??= plan.title;
     state.summary ??= plan.summary;
+    if (feedback) state.revisionSummary = plan.summary;
     state.pendingCommit = randomUUID();
     await save(phase, '검증된 변경의 커밋 결과를 기록하고 있습니다.');
     if (!remote) {
@@ -290,6 +326,14 @@ export async function runPipeline({
   if (!existing)
     await save('queued', 'Issue와 작업 브랜치를 확인하고 있습니다.');
   try {
+    if (state.status === 'merged') return state;
+    if (state.mergeAttempted) {
+      const sha = await confirmedMerge(github, state, config.base);
+      if (sha) {
+        await recordMerge(sha);
+        return state;
+      }
+    }
     if (!existing) {
       if ((await github.ref(branch)) || (await github.findPull(branch)).length)
         throw new NeedsHuman(
@@ -299,7 +343,7 @@ export async function runPipeline({
     await guard({ recovering: !ciCompletion });
     if (ciCompletion) {
       const ci = await checkCI(state, guard);
-      if (ci.ok) await completeReady(ci);
+      if (ci.ok) await completeMerge(ci);
       return state;
     }
     if (state.status === 'ready') return state;
@@ -352,7 +396,7 @@ export async function runPipeline({
           awaitingCI = true;
           throw new NeedsHuman(ci.reason);
         }
-        await completeReady(ci);
+        await completeMerge(ci);
         return state;
       }
       if (state.reviews.length >= config.maxReviews)
@@ -388,7 +432,7 @@ export async function runPipeline({
   }
 }
 
-export async function reconcile(github, run) {
+export async function reconcile(github, run, base) {
   const match = /^AI development for Issue #([1-9]\d*)$/.exec(
     run.display_title,
   );
@@ -402,6 +446,17 @@ export async function reconcile(github, run) {
     record.state.attempt !== run.run_attempt
   )
     return;
+  const state = record.state;
+  if (state.mergeAttempted) {
+    const sha = await confirmedMerge(github, state, base);
+    if (sha) {
+      state.mergeCommit = sha;
+      state.status = 'merged';
+      state.reason = mergedMessage(state, base);
+      await github.saveState(issue, state, record.id);
+      return;
+    }
+  }
   await github.saveState(
     issue,
     {
