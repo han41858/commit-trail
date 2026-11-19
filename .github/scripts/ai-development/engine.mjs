@@ -14,7 +14,12 @@ export const activeStates = new Set([
   'revising',
 ]);
 
-export class NeedsHuman extends Error {}
+export class NeedsHuman extends Error {
+  constructor(message, detail) {
+    super(message);
+    this.detail = detail;
+  }
+}
 
 const digest = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -104,8 +109,8 @@ export async function runPipeline({
   };
   let recordId = existing?.id;
 
-  async function save(status, reason) {
-    Object.assign(state, { status, reason, runId, attempt });
+  async function save(status, reason, detail) {
+    Object.assign(state, { status, reason, detail, runId, attempt });
     recordId = await github.saveState(issueNumber, state, recordId);
   }
 
@@ -321,9 +326,11 @@ export async function runPipeline({
       await implement(result);
     }
   } catch (error) {
+    const needsHuman = error instanceof NeedsHuman;
     await save(
-      error instanceof NeedsHuman ? 'needs_human' : 'failed',
+      needsHuman ? 'needs_human' : 'failed',
       error.message,
+      needsHuman ? error.detail : undefined,
     );
     return state;
   }

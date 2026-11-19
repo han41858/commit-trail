@@ -217,6 +217,8 @@ PR and post-merge push validation both remain enabled. `dev` protection does not
 
 Create an Issue with a focused change and explicit acceptance criteria, then apply one label. A collision blocks startup. The first run records the role and a snapshot of the Issue and current `dev`. The developer proposes edits and the workflow validates them before publishing a commit to `ai/issue-<number>-<developer>` and opening one Draft PR against `dev`. The reviewer can read Git snapshots and the diff. The workflow publishes structured findings as PR comments. It sends requested changes back to the original developer and stops after three reviews, a repeated defect, or a request for human judgment.
 
+For a first run, name a small code or documentation change and say how to verify it. A request for role-by-role comments alone gives the reviewer no Draft PR to inspect. If the developer asks for human judgment, the Issue state includes the reason supplied by the developer. Start a new Issue with a concrete edit if the original Issue only requested comments.
+
 #### Credentials and required CI
 
 Add the following repository Actions secrets after the workflow reaches `dev`.

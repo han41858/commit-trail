@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  NeedsHuman,
   runPipeline,
   reconcile,
   pullMarker,
@@ -166,6 +167,37 @@ test('default Codex development and Claude review reach ready only after CI', as
   await run({ runId: 115 });
   assert.equal(data.commits.length, 1);
   assert.equal(data.reviews.size, 1);
+});
+
+test('a developer blocker explains the stop on the Issue without starting review', async () => {
+  const { data, run } = fixture();
+  const detail =
+    '댓글 요청에는 검토할 변경이 없습니다. @example\n<!-- model text -->';
+  const state = await run({
+    async develop() {
+      throw new NeedsHuman('사용자 판단이 필요합니다.', detail);
+    },
+  });
+  assert.equal(state.status, 'needs_human');
+  assert.equal(data.record.state.detail, detail);
+  assert.equal(data.pull, null);
+  assert.equal(data.reviews.size, 0);
+
+  let body;
+  const github = createGitHub({
+    repository: 'owner/repo',
+    token: 'mock',
+    async request(_url, options) {
+      ({ body } = JSON.parse(options.body));
+      return Response.json({ id: 1 });
+    },
+  });
+  await github.saveState(13, state);
+  assert.match(
+    body,
+    /개발 에이전트가 보고한 사유 · 댓글 요청에는 검토할 변경이 없습니다/,
+  );
+  assert.doesNotMatch(body, /@example|<!-- model text -->/);
 });
 
 test('Claude revises the existing PR using Codex feedback; later labels do not replace the roles', async () => {
