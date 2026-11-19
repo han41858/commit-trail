@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 // docs/ is reserved for non-build documentation and its assets.
 // Build-consumed documents/templates belong outside it, regardless of extension.
 const rootDocumentation = new Set(['AGENTS.md', 'README.md', 'LICENSE.md']);
-const isDocumentation = (path) =>
+export const isDocumentation = (path) =>
   path.startsWith('docs/') || rootDocumentation.has(path);
 const commitSHA = /^[0-9a-f]{40}$/i;
 

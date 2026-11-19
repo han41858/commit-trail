@@ -7,7 +7,11 @@ import test from 'node:test';
 import { develop } from './ai-development/run.mjs';
 import { createWorkspace, resolveEdits } from './ai-development/workspace.mjs';
 
-function fixture(spawn, lock = '{"lockfileVersion":3,"packages":{}}') {
+function fixture(
+  spawn,
+  lock = '{"lockfileVersion":3,"packages":{}}',
+  { log = () => {}, ...config } = {},
+) {
   const cwd = mkdtempSync(join(tmpdir(), 'ai-workspace-test-'));
   const git = (...args) =>
     execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -37,14 +41,32 @@ function fixture(spawn, lock = '{"lockfileVersion":3,"packages":{}}') {
       instructions: 'AGENTS.md',
       base: 'dev',
       checks: ['node --version'],
+      ...config,
     },
     repository: 'owner/repo',
     token: 'unused',
     spawn,
+    log,
   });
   return {
     workspace,
     state,
+    commitFile(name, text) {
+      writeFileSync(join(cwd, name), text);
+      git('add', name);
+      git(
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-qm',
+        'Candidate',
+      );
+      return git('rev-parse', 'HEAD');
+    },
     close() {
       workspace.close();
       rmSync(cwd, { recursive: true, force: true });
@@ -97,21 +119,91 @@ test('the real package-lock can be read, paged and edited above the former 128 K
 });
 
 test('isolated validation reports the last started check separately from its output', () => {
-  const context = fixture((_command, args) => {
-    if (args[0] !== 'run') return { status: 0 };
-    const name = args[args.indexOf('--name') + 1];
-    assert.match(args.at(-1), new RegExp(`${name}:check:0`));
-    return {
-      status: 1,
-      stdout: `${name}:check:0\nprivate candidate output\n`,
-      stderr: '',
-    };
-  });
+  const logs = [];
+  const context = fixture(
+    (_command, args) => {
+      if (args[0] !== 'run') return { status: 0 };
+      const name = args[args.indexOf('--name') + 1];
+      assert.match(args.at(-1), new RegExp(`${name}:check:0`));
+      return {
+        status: 1,
+        stdout: `${name}:check:0\nprivate candidate output\n`,
+        stderr: `${name}:timing:0:0.125\n`,
+      };
+    },
+    undefined,
+    { log: (line) => logs.push(JSON.parse(line)) },
+  );
   try {
     const validation = context.workspace.runChecks(context.state, []);
     assert.equal(validation.ok, false);
     assert.equal(validation.step, 'node --version');
     assert.match(validation.log, /private candidate output/);
+    assert.doesNotMatch(validation.log, /:timing:/);
+    assert.equal(logs[0].phase, 'dependencies');
+    assert.deepEqual(logs.at(-1), {
+      phase: 'validation_step',
+      step: 'node --version',
+      elapsedMs: 125,
+    });
+  } finally {
+    context.close();
+  }
+});
+
+test('only a verified documentation candidate skips the full checks', () => {
+  const plans = [];
+  const context = fixture(
+    (_command, args) => {
+      if (args[0] !== 'run') return { status: 0 };
+      plans.push(args.at(-1));
+      const name = args[args.indexOf('--name') + 1];
+      return { status: 0, stdout: `${name}:formatted:[]\n` };
+    },
+    undefined,
+    {
+      docsOnlyChecks: ['npm run format:check'],
+      checks: ['npm run format:check', 'npm test', 'npm run build'],
+    },
+  );
+  try {
+    const docs = [{ path: 'docs/note.md', text: '# note\n' }];
+    const { base } = context.state;
+    assert.equal(context.workspace.runChecks(context.state, docs).ok, true);
+    const priorDocs = context.commitFile('README.md', '# README\n');
+    assert.equal(
+      context.workspace.runChecks({ base, head: priorDocs }, docs).ok,
+      true,
+    );
+    const priorCode = context.commitFile('code.js', 'const code = 0;\n');
+    assert.equal(
+      context.workspace.runChecks({ base, head: priorCode }, docs).ok,
+      true,
+    );
+    assert.equal(
+      context.workspace.runChecks(context.state, [
+        ...docs,
+        {
+          path: 'code.js',
+          text: 'const code = 1;\n',
+        },
+      ]).ok,
+      true,
+    );
+    assert.equal(
+      context.workspace.runChecks(
+        { base: 'f'.repeat(40), head: priorDocs },
+        docs,
+      ).ok,
+      true,
+    );
+    assert.deepEqual(
+      plans.map((script) => script.includes('time npm test')),
+      [false, false, true, true, true],
+    );
+    assert(
+      plans.every((script) => script.includes('time npm run format:check')),
+    );
   } finally {
     context.close();
   }

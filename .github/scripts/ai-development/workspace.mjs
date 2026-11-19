@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { changeImpact, isDocumentation } from '../change-impact.mjs';
 import { NeedsHuman } from './engine.mjs';
 
 const maxBuffer = 8 * 1024 * 1024;
@@ -156,6 +157,7 @@ export function createWorkspace({
   token,
   cwd = process.cwd(),
   spawn = spawnSync,
+  log = console.log,
 }) {
   const scratch = mkdtempSync(
     join(process.env.RUNNER_TEMP || tmpdir(), 'commit-trail-ai-'),
@@ -272,7 +274,7 @@ export function createWorkspace({
     for (const [name, bytes] of manifests)
       digest.update(name).update('\0').update(bytes).update('\0');
     const key = digest.digest('hex');
-    if (cachedDependencies === key) return { ok: true };
+    if (cachedDependencies === key) return { ok: true, cache: 'hit' };
     const context = join(scratch, 'dependencies');
     mkdirSync(context, { recursive: true });
     for (const [name, bytes] of manifests)
@@ -311,7 +313,7 @@ export function createWorkspace({
         ),
       };
     cachedDependencies = key;
-    return { ok: true };
+    return { ok: true, cache: 'miss' };
   }
 
   function runChecks(state, changes) {
@@ -336,10 +338,39 @@ export function createWorkspace({
           writeFileSync(file, text);
         }
       }
-      const dependencies = prepareDependencies(source);
+      const dependencyStart = performance.now();
+      let dependencies;
+      try {
+        dependencies = prepareDependencies(source);
+      } finally {
+        log(
+          JSON.stringify({
+            phase: 'dependencies',
+            cache: dependencies?.cache,
+            ok: dependencies?.ok === true,
+            elapsedMs: Math.round(performance.now() - dependencyStart),
+          }),
+        );
+      }
       if (!dependencies.ok) return dependencies;
+      // Reviews can amend an earlier code edit with a documentation-only patch.
+      // Classify the complete candidate, not just the files changed in this turn.
+      const docsOnly =
+        config.docsOnlyChecks?.length > 0 &&
+        changes.length > 0 &&
+        changes.every(({ path }) => isDocumentation(path)) &&
+        (state.base === state.head ||
+          changeImpact({ base: state.base, head: state.head, cwd }).docsOnly);
+      const checks = docsOnly ? config.docsOnlyChecks : config.checks;
+      log(JSON.stringify({ phase: 'validation_plan', docsOnly }));
       const checkMarker = `${container}:check:`;
       const formatMarker = `${container}:formatted:`;
+      const timingMarker = `${container}:timing:`;
+      const timed = (stage, command) => [
+        `printf '%s\\n' '${checkMarker}${stage}'`,
+        `TIMEFORMAT='${timingMarker}${stage}:%R'`,
+        `time ${command}`,
+      ];
       const paths = changes
         .filter(({ text }) => text !== null)
         .map(({ path }) => path);
@@ -363,13 +394,8 @@ COMMIT_TRAIL_FORMAT`;
         'cp -a --no-preserve=ownership /source/. /tmp/project/',
         'cd /tmp/project',
         'cp -a --no-preserve=ownership /dependencies/node_modules ./node_modules',
-        ...(paths.length
-          ? [`printf '%s\\n' '${checkMarker}format'`, formatCandidate]
-          : []),
-        ...config.checks.flatMap((command, index) => [
-          `printf '%s\\n' '${checkMarker}${index}'`,
-          command,
-        ]),
+        ...(paths.length ? timed('format', formatCandidate) : []),
+        ...checks.flatMap((command, index) => timed(index, command)),
       ].join('\n');
       const result = spawn(
         'docker',
@@ -404,6 +430,25 @@ COMMIT_TRAIL_FORMAT`;
         ],
         { timeout: 300_000, encoding: 'utf8', maxBuffer },
       );
+      const stderr = (result.stderr ?? '').split('\n');
+      const stepName = (stage) =>
+        stage === 'format'
+          ? '변경 파일 Prettier 적용'
+          : (checks[Number(stage)] ?? '격리 검사 준비');
+      for (const line of stderr) {
+        if (!line.startsWith(timingMarker)) continue;
+        const match = /^(format|\d+):(\d+(?:\.\d+)?)$/.exec(
+          line.slice(timingMarker.length),
+        );
+        if (match)
+          log(
+            JSON.stringify({
+              phase: 'validation_step',
+              step: stepName(match[1]),
+              elapsedMs: Math.round(Number(match[2]) * 1000),
+            }),
+          );
+      }
       if (result.error || result.status === 125)
         throw new Error(
           '격리 테스트를 끝낼 수 없습니다. Docker 실행 환경과 제한 시간을 확인하세요.',
@@ -450,11 +495,8 @@ COMMIT_TRAIL_FORMAT`;
       const stage = lastCheck?.slice(checkMarker.length);
       return {
         ok: false,
-        step:
-          stage === 'format'
-            ? '변경 파일 Prettier 적용'
-            : (config.checks[Number(stage)] ?? '격리 검사 준비'),
-        log: `${lines.filter((line) => !line.startsWith(formatMarker)).join('\n')}\n${result.stderr ?? ''}`.slice(
+        step: stepName(stage),
+        log: `${lines.filter((line) => !line.startsWith(formatMarker)).join('\n')}\n${stderr.filter((line) => !line.startsWith(timingMarker)).join('\n')}`.slice(
           -6500,
         ),
       };

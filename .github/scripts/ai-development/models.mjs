@@ -423,6 +423,7 @@ export function createModels({
           ? `${instructions}\nYou have up to ${turnLimit} API requests to complete this review. Return the final structured result before exhausting the budget.`
           : instructions;
       for (let turn = 1; turn <= turnLimit; turn++) {
+        const started = performance.now();
         const turnInstructions =
           mode === 'review'
             ? `${instructions}\nReview requests remaining, including this one: ${turnLimit - turn + 1}. Return the final structured result before exhausting the budget.`
@@ -473,13 +474,34 @@ export function createModels({
               },
           mode,
           turn,
-        );
+        ).catch((error) => {
+          log(
+            JSON.stringify({
+              agent,
+              mode,
+              model,
+              turn,
+              ok: false,
+              elapsedMs: Math.round(performance.now() - started),
+            }),
+          );
+          throw error;
+        });
         const usage = Object.fromEntries(
           Object.entries(data.usage ?? {}).filter(
             ([, count]) => typeof count === 'number',
           ),
         );
-        log(JSON.stringify({ agent, mode, model, turn, usage }));
+        log(
+          JSON.stringify({
+            agent,
+            mode,
+            model,
+            turn,
+            usage,
+            elapsedMs: Math.round(performance.now() - started),
+          }),
+        );
         if (isCodex) {
           const output = data.output ?? [];
           if (data.status !== 'completed')
