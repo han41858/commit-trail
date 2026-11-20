@@ -426,7 +426,6 @@ export function createModels({
 Return the final structured result now. If evidence is insufficient, return needs_human with the specific blocker.`
           : `${instructions}
 API requests remaining, including this one: ${turnLimit - turn + 1}. Return the final structured result once you have enough evidence.`;
-        const availableTools = finalTurn ? {} : tools;
         const data = await call(
           agent,
           isCodex
@@ -446,7 +445,8 @@ API requests remaining, including this one: ${turnLimit - turn + 1}. Return the 
                     strict: true,
                   },
                 },
-                tools: Object.entries(availableTools).map(
+                ...(finalTurn ? { tool_choice: 'none' } : {}),
+                tools: Object.entries(tools).map(
                   ([name, { description, input }]) => ({
                     type: 'function',
                     name,
@@ -462,7 +462,8 @@ API requests remaining, including this one: ${turnLimit - turn + 1}. Return the 
                 messages: input,
                 max_tokens: limits.outputTokens,
                 output_config: { format: { type: 'json_schema', schema } },
-                tools: Object.entries(availableTools).map(
+                ...(finalTurn ? { tool_choice: { type: 'none' } } : {}),
+                tools: Object.entries(tools).map(
                   ([name, { description, input }]) => ({
                     name,
                     description,
@@ -505,8 +506,11 @@ API requests remaining, including this one: ${turnLimit - turn + 1}. Return the 
           data.incomplete_details?.reason === 'max_output_tokens' ||
           data.stop_reason === 'max_tokens'
         )
-          throw new Error(
-            `${agents[agent].name} 응답이 출력 토큰 한도에 도달했습니다.`,
+          throw Object.assign(
+            new Error(
+              `${agents[agent].name} 응답이 출력 토큰 한도에 도달했습니다.`,
+            ),
+            { outputLimitReached: true },
           );
         if (isCodex) {
           const output = data.output ?? [];

@@ -1282,7 +1282,7 @@ test('provider requests use the configured turn, output and effort budget', asyn
   assert.match(bodies[3].system, /final structured result now/);
   assert.deepEqual(
     bodies.map(({ tools }) => tools.length),
-    [3, 0, 3, 0],
+    [3, 3, 3, 3],
   );
   assert.equal(config.limits.turns >= 10, true);
 });
@@ -2041,6 +2041,10 @@ test('a merged PR whose issue could not be closed retries only issue closure', a
   data.failClose = true;
   assert.equal((await run()).status, 'needs_human');
   assert.equal(data.mergeRequests.length, 1);
+  assert.match(
+    data.notes.get('13:stop-100-1'),
+    /Issue 종료를 확인하지 못했습니다/,
+  );
   data.failClose = false;
   assert.equal((await run({ resume: true, runId: 101 })).status, 'merged');
   assert.equal(data.issue.state_reason, 'completed');

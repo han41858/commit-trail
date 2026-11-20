@@ -124,14 +124,17 @@ function mergedMessage(state, base) {
 
 async function finishMerge(github, state, base, save) {
   delete state.awaitingCI;
+  delete state.ciFailed;
   const message = mergedMessage(state, base);
   try {
     await github.closeIssue(state.issue);
-  } catch {
+  } catch (error) {
+    console.warn(`Issue 종료 실패. ${error.message}`);
     await save(
       'needs_human',
       `${message} Issue 종료를 확인하지 못했습니다. 같은 Issue를 수동 재개하면 종료를 다시 시도합니다.`,
     );
+    await notifyStop(github, state.issue, state);
     return;
   }
   await save('merged', message);
@@ -265,6 +268,7 @@ export async function runPipeline({
     const previous = existing?.state;
     if (
       !previous?.awaitingCI ||
+      (previous.ciFailed && ciCompletion.conclusion === 'failure') ||
       !['needs_human', 'failed'].includes(previous.status) ||
       !previous.pull ||
       previous.head !== ciCompletion.head_sha ||
@@ -434,6 +438,7 @@ export async function runPipeline({
     state.branchCreated = true;
     delete state.pendingRefresh;
     delete state.awaitingCI;
+    delete state.ciFailed;
   }
 
   // Runs only between development and review steps, never while a snapshot of the old HEAD is in use.
@@ -501,6 +506,7 @@ export async function runPipeline({
       );
     await requireMergedDependencies(github, issueNumber, config.base);
     delete state.awaitingCI;
+    delete state.ciFailed;
     state.mergeAttempted = true;
     await save(
       'merging',
@@ -659,7 +665,11 @@ export async function runPipeline({
         try {
           result = await review({ reviewer, issue, state });
         } catch (error) {
-          if (error.requestRejected === true) delete state.reviewInProgress;
+          if (
+            error.requestRejected === true ||
+            error.outputLimitReached === true
+          )
+            delete state.reviewInProgress;
           throw error;
         }
         entry = { head: state.head, result };
