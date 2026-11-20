@@ -53,7 +53,7 @@
 - 프로젝트 이름은 **Commit Trail**이며 GitHub 저장소는 **https://github.com/han41858/commit-trail**입니다. 저장소는 로컬 폴더명 대신 Git 원격 주소로 확인합니다.
 
 - 기능·버그 수정·문서·설정 변경은 최신 `dev`에서 분기하고, `dev` 대상 PR로 검증·병합한 뒤 배포합니다. `main` 기반 작업 브랜치나 `main` 전체를 `dev`에 병합하지 않습니다.
-- `AI development`가 만든 `dev` 대상 PR은 현재 HEAD의 교차 AI 리뷰와 필수 `Test and build`가 모두 통과하면 자동으로 스쿼시 머지합니다.
+- `AI development`가 만든 `dev` 대상 PR은 현재 HEAD의 교차 AI 리뷰와 필수 `Test and build`가 모두 통과하면 자동으로 스쿼시 머지하고 이슈 종료를 확인합니다. 종료가 실패하면 같은 이슈를 수동 재개해 다시 확인할 수 있습니다.
 - `main` 대상 PR의 소스는 같은 저장소의 `dev`만 허용합니다. 기능·복구·릴리즈 브랜치를 `main`에 직접 병합하지 않습니다. CI의 필수 `Test and build` 검사에서도 이 경로를 확인합니다.
 - `dev`의 최종 병합이 끝난 뒤 `dev` → `main` PR을 만들고 merge commit으로 승격합니다. 승격에 squash/rebase를 사용하지 않으며, 반영 후 해당 `dev` 최종 커밋이 `main`의 조상인지 확인합니다.
 - 기존 `main` 전용 `production-release.yml` 차이는 유지합니다. 이 파일을 이유로 `dev`를 우회하는 별도 승격 경로를 만들지 않습니다. 공유 릴리즈 로직의 변경도 `dev`를 거쳐 반영합니다.

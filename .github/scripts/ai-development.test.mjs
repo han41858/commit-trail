@@ -188,6 +188,10 @@ function fixture({
       data.pull.draft = false;
       return true;
     },
+    async closeIssue() {
+      if (data.failClose) throw new Error('Issue close failed');
+      Object.assign(data.issue, { state: 'closed', state_reason: 'completed' });
+    },
     async squashMerge(state, baseRef) {
       assert.equal(baseRef, 'dev');
       assert.equal(state.pull, data.pull.number);
@@ -1191,7 +1195,10 @@ test('AI follow-up triggers exclude ordinary CI before jobs are queued', () => {
     /workflow_run:\n\s+workflows: \[CI\]\n\s+branches: \['ai\/issue-\*'\]\n\s+types: \[completed\]/,
   );
   assert.match(followup, /workflow_run\.event == 'pull_request'/);
-  assert.match(followup, /workflow_run\.conclusion == 'success'/);
+  assert.match(
+    followup,
+    /contains\(fromJSON\('\["success","failure"\]'\), github\.event\.workflow_run\.conclusion\)/,
+  );
   assert.match(
     followup,
     /workflow_run\.head_repository\.full_name == github\.repository/,
@@ -1270,8 +1277,13 @@ test('provider requests use the configured turn, output and effort budget', asyn
   assert.equal(bodies[0].reasoning.effort, 'high');
   assert.equal(bodies[2].max_tokens, 1234);
   assert.match(bodies[0].instructions, /including this one: 2/);
-  assert.match(bodies[2].system, /up to 2 API requests/);
-  assert.equal(bodies[3].system, bodies[2].system);
+  assert.match(bodies[2].system, /including this one: 2/);
+  assert.match(bodies[1].instructions, /final structured result now/);
+  assert.match(bodies[3].system, /final structured result now/);
+  assert.deepEqual(
+    bodies.map(({ tools }) => tools.length),
+    [3, 3, 3, 3],
+  );
   assert.equal(config.limits.turns >= 10, true);
 });
 
@@ -1816,16 +1828,14 @@ test('Claude continuation preserves signed blocks and always sends a valid tool-
     { type: 'tool_use', id: 'toolu_1', name: 'read_diff', input: { line: 1 } },
     { type: 'tool_use', id: 'toolu_2', name: 'read_diff', input: { line: 2 } },
   ];
-  let system;
   const { run } = streamingModels((body) => {
     if (body.messages.length === 1) {
-      system = body.system;
       return Response.json({
         stop_reason: 'tool_use',
         content: [signed, redacted, { type: 'text', text: '' }, ...calls],
       });
     }
-    assert.equal(body.system, system);
+    assert.match(body.system, /^review/);
     assert.deepEqual(body.messages.slice(1), [
       { role: 'assistant', content: [signed, redacted, ...calls] },
       {
@@ -2024,4 +2034,19 @@ test('provider rate limits retry at most once and HTTP authorization errors do n
     );
     assert.equal(attempts, expected);
   }
+});
+
+test('a merged PR whose issue could not be closed retries only issue closure', async () => {
+  const { data, run } = fixture();
+  data.failClose = true;
+  assert.equal((await run()).status, 'needs_human');
+  assert.equal(data.mergeRequests.length, 1);
+  assert.match(
+    data.notes.get('13:stop-100-1'),
+    /Issue 종료를 확인하지 못했습니다/,
+  );
+  data.failClose = false;
+  assert.equal((await run({ resume: true, runId: 101 })).status, 'merged');
+  assert.equal(data.issue.state_reason, 'completed');
+  assert.equal(data.mergeRequests.length, 1);
 });

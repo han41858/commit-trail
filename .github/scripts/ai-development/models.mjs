@@ -418,16 +418,14 @@ export function createModels({
       const model = modelNames[agent];
       const turnLimit =
         mode === 'review' ? (limits.reviewTurns ?? limits.turns) : limits.turns;
-      const claudeSystem =
-        mode === 'review'
-          ? `${instructions}\nYou have up to ${turnLimit} API requests to complete this review. Return the final structured result before exhausting the budget.`
-          : instructions;
       for (let turn = 1; turn <= turnLimit; turn++) {
         const started = performance.now();
-        const turnInstructions =
-          mode === 'review'
-            ? `${instructions}\nReview requests remaining, including this one: ${turnLimit - turn + 1}. Return the final structured result before exhausting the budget.`
-            : instructions;
+        const finalTurn = turn === turnLimit;
+        const turnInstructions = finalTurn
+          ? `${instructions}
+Return the final structured result now. If evidence is insufficient, return needs_human with the specific blocker.`
+          : `${instructions}
+API requests remaining, including this one: ${turnLimit - turn + 1}. Return the final structured result once you have enough evidence.`;
         const data = await call(
           agent,
           isCodex
@@ -447,6 +445,7 @@ export function createModels({
                     strict: true,
                   },
                 },
+                ...(finalTurn ? { tool_choice: 'none' } : {}),
                 tools: Object.entries(tools).map(
                   ([name, { description, input }]) => ({
                     type: 'function',
@@ -459,10 +458,11 @@ export function createModels({
               }
             : {
                 model,
-                system: claudeSystem,
+                system: turnInstructions,
                 messages: input,
                 max_tokens: limits.outputTokens,
                 output_config: { format: { type: 'json_schema', schema } },
+                ...(finalTurn ? { tool_choice: { type: 'none' } } : {}),
                 tools: Object.entries(tools).map(
                   ([name, { description, input }]) => ({
                     name,
@@ -502,6 +502,16 @@ export function createModels({
             elapsedMs: Math.round(performance.now() - started),
           }),
         );
+        if (
+          data.incomplete_details?.reason === 'max_output_tokens' ||
+          data.stop_reason === 'max_tokens'
+        )
+          throw Object.assign(
+            new Error(
+              `${agents[agent].name} 응답이 출력 토큰 한도에 도달했습니다.`,
+            ),
+            { outputLimitReached: true },
+          );
         if (isCodex) {
           const output = data.output ?? [];
           if (data.status !== 'completed')
