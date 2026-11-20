@@ -65,7 +65,7 @@
   --handle-width: min(24px, calc(var(--usable-width) / 3));
   --name-start: calc(var(--tab-space) + var(--handle-width) + 2 * var(--edge));
   position: relative;
-  display: grid;
+  display: flex;
   align-items: center;
   min-width: 0;
   margin: 0;
@@ -84,23 +84,19 @@
 .monitor-repository:first-child {
   --tab-space: min(28px, 100%);
 }
-.monitor-repository-name {
-  display: flex;
-  min-width: 0;
-}
 /* Equal spacers center the link until the leading clearance needs more room. */
-.monitor-repository-name::before,
-.monitor-repository-name::after {
-  content: '';
+.monitor-repository::before,
+.monitor-repository-spacer {
   flex: 1 0 0px;
 }
-.monitor-repository-name::before {
+.monitor-repository::before {
+  content: '';
   min-width: var(--name-start);
 }
-.monitor-repository-name::after {
+.monitor-repository-spacer {
   min-width: var(--edge);
 }
-.monitor-repository-name a {
+.monitor-repository-name {
   display: block;
   flex: none;
   /* Prefer a centered fit, but allow room for an ellipsis in narrow columns. */
@@ -117,10 +113,10 @@
   text-underline-offset: 3px;
 }
 .monitor-reorder-handle {
-  position: absolute;
-  top: 50%;
-  left: calc(var(--tab-space) + var(--edge));
-  transform: translateY(-50%);
+  /* Place the handle in the leading spacer without shifting the link. */
+  flex: none;
+  margin-left: calc(-1 * (var(--handle-width) + var(--edge)));
+  margin-right: var(--edge);
   display: grid;
   place-items: center;
   width: var(--handle-width);
