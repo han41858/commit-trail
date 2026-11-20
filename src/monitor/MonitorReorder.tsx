@@ -255,14 +255,16 @@ export const MonitorReorder = memo(function MonitorReorder({
                 )}
               </svg>
             </button>
-            <a
-              href={`https://github.com/${entry.repository}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={entry.repository}
-            >
-              {entry.repository}
-            </a>
+            <div className="monitor-repository-name">
+              <a
+                href={`https://github.com/${entry.repository}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={entry.repository}
+              >
+                {entry.repository}
+              </a>
+            </div>
           </h2>
         ))}
       </div>
