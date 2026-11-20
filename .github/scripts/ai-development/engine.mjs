@@ -122,6 +122,32 @@ function mergedMessage(state, base) {
   return `PR #${state.pull}이 ${base}에 머지되었습니다. 머지 커밋 ${state.mergeCommit}.`;
 }
 
+async function finishMerge(github, state, base, save) {
+  delete state.awaitingCI;
+  const message = mergedMessage(state, base);
+  try {
+    await github.closeIssue(state.issue);
+  } catch {
+    await save(
+      'needs_human',
+      `${message} Issue 종료를 확인하지 못했습니다. 같은 Issue를 수동 재개하면 종료를 다시 시도합니다.`,
+    );
+    return;
+  }
+  await save('merged', message);
+}
+
+export function pipelineExitCode(state) {
+  if (state?.status === 'failed') return 1;
+  if (
+    state?.status === 'needs_human' &&
+    !state.waitingForDependencies &&
+    (!state.awaitingCI || state.ciFailed)
+  )
+    return 1;
+  return 0;
+}
+
 class DependencyWait extends NeedsHuman {}
 
 function canWake(issue, state) {
@@ -443,8 +469,7 @@ export async function runPipeline({
 
   async function recordMerge(sha) {
     state.mergeCommit = sha;
-    delete state.awaitingCI;
-    await save('merged', mergedMessage(state, config.base));
+    await finishMerge(github, state, config.base, save);
   }
 
   async function completeMerge(ci) {
@@ -585,6 +610,10 @@ export async function runPipeline({
     if (ciCompletion) {
       const ci = await checkCI(state, guard);
       if (ci.ok) await completeMerge(ci);
+      else if (ci.failed) {
+        state.ciFailed = true;
+        await save('needs_human', ci.reason);
+      }
       return state;
     }
     if (state.status === 'ready') return state;
@@ -649,6 +678,7 @@ export async function runPipeline({
         const ci = await checkCI(state, guard);
         if (!ci.ok) {
           awaitingCI = true;
+          state.ciFailed = !!ci.failed;
           throw new NeedsHuman(ci.reason);
         }
         await completeMerge(ci);
@@ -710,9 +740,10 @@ export async function reconcile(github, run, base) {
     const sha = await confirmedMerge(github, state, base);
     if (sha) {
       state.mergeCommit = sha;
-      state.status = 'merged';
-      state.reason = mergedMessage(state, base);
-      await github.saveState(issue, state, record.id);
+      await finishMerge(github, state, base, async (status, reason) => {
+        Object.assign(state, { status, reason });
+        await github.saveState(issue, state, record.id);
+      });
       await syncReviewCheck(github, state, reviewCheck(state));
       return;
     }

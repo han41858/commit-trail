@@ -6,6 +6,7 @@ import { createWorkspace, EditConflict, resolveEdits } from './workspace.mjs';
 import {
   NeedsHuman,
   executionLabels,
+  pipelineExitCode,
   reconcile,
   runPipeline,
   wakeDependents,
@@ -219,7 +220,7 @@ async function main() {
       checkCI: (current, guard) =>
         waitForCI(github, config, current, guard, { attempts: 1 }),
     });
-    if (state?.status === 'failed') throw new Error(state.reason);
+    process.exitCode = pipelineExitCode(state);
     return;
   }
 
@@ -287,7 +288,7 @@ async function main() {
         reason: state.reason,
       }),
     );
-    if (state.status === 'failed') process.exitCode = 1;
+    process.exitCode = pipelineExitCode(state);
   } finally {
     workspace.close();
   }

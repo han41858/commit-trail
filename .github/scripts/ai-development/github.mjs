@@ -190,6 +190,18 @@ export function createGitHub({
     },
     blockedBy: (issue) => issueDependencies(issue, 'blocked_by'),
     blocking: (issue) => issueDependencies(issue, 'blocking'),
+    async closeIssue(number) {
+      const issue = await api(`/issues/${number}`);
+      if (issue.state === 'closed' && issue.state_reason === 'completed')
+        return;
+      const closed = await api(`/issues/${number}`, {
+        method: 'PATCH',
+        payload: { state: 'closed', state_reason: 'completed' },
+      });
+      if (closed.state !== 'closed' || closed.state_reason !== 'completed')
+        throw new Error('Issue 종료 상태를 확인할 수 없습니다.');
+    },
+
     async hasMergedClosingPull(issue, base) {
       for await (const nodes of graphPages(
         `query ClosingPulls($owner: String!, $repo: String!, $issue: Int!, $after: String) {
@@ -681,6 +693,7 @@ export async function waitForCI(
         return { ok: true, url: run.html_url };
       return {
         ok: false,
+        failed: true,
         reason: `현재 HEAD의 필수 CI가 통과하지 못했습니다. CI가 이 커밋에서 통과하면 자동으로 이어집니다. ${run.html_url}`,
       };
     }
