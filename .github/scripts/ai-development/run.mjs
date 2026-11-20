@@ -205,7 +205,7 @@ async function main() {
       run.event !== 'pull_request' ||
       run.head_repository?.full_name !== repository ||
       run.status !== 'completed' ||
-      run.conclusion !== 'success' ||
+      !['success', 'failure'].includes(run.conclusion) ||
       !Number.isSafeInteger(issueNumber)
     )
       return;

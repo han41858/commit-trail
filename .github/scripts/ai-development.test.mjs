@@ -1195,7 +1195,10 @@ test('AI follow-up triggers exclude ordinary CI before jobs are queued', () => {
     /workflow_run:\n\s+workflows: \[CI\]\n\s+branches: \['ai\/issue-\*'\]\n\s+types: \[completed\]/,
   );
   assert.match(followup, /workflow_run\.event == 'pull_request'/);
-  assert.match(followup, /workflow_run\.conclusion == 'success'/);
+  assert.match(
+    followup,
+    /contains\(fromJSON\('\["success","failure"\]'\), github\.event\.workflow_run\.conclusion\)/,
+  );
   assert.match(
     followup,
     /workflow_run\.head_repository\.full_name == github\.repository/,
