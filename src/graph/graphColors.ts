@@ -37,14 +37,9 @@ export function graphColors(
     defaultBranch,
   );
   const neighbors = pathNeighbors(canonical.ordered, canonical.lanes, paths);
-  const names = new Map<string, string>();
-  for (const ref of [...branches].sort((a, b) => compare(a.name, b.name))) {
-    const owner = paths.branches.get(ref.name);
-    // A ref in the middle of a path is an alias, not a new path or color seed.
-    if (owner === ref.commit.sha && !names.has(owner))
-      names.set(owner, ref.name);
-  }
   const assignments = new Map<string, number>();
+  // Child-before-parent order leaves each path's oldest owned loaded commit.
+  // Use it for both priority and color so extending the tip does not reseed it.
   const starts = new Map<string, string>();
   for (const commit of canonical.ordered)
     starts.set(paths.nodes.get(commit.sha)!, commit.sha);
@@ -56,7 +51,9 @@ export function graphColors(
   );
   for (const owner of priority) {
     const preferred =
-      owner === paths.reference ? 0 : preferredColor(names.get(owner) ?? owner);
+      owner === paths.reference
+        ? 0
+        : preferredColor(starts.get(owner) ?? owner);
     const candidates =
       preferred === 0
         ? [0]

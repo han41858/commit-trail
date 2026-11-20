@@ -6,7 +6,7 @@ import {
   resolveGraphHover,
   type GraphHoverTarget,
 } from './graphHover';
-import { branchTracks } from './branchLabels';
+import { branchTracks, visibleBranchLabels } from './branchLabels';
 import { layout, type Branch, type Commit } from '../shared/model';
 
 function commit(sha: string, minute: number, ...parents: string[]): Commit {
@@ -243,6 +243,45 @@ test('a synchronization merge preserves the known repository default as a separa
     focus({ kind: 'branch', id: 'feature' }, value).nodes,
     new Set(['feature-sync', 'f2', 'f1', 'a3']),
   );
+});
+
+test('Agentopia-style branch badges remain on one first-parent highlight path', () => {
+  const commits = [
+    commit('a5', 70, 'a4'),
+    commit('a4', 60, 'a3'),
+    commit('a3', 50, 'a2'),
+    commit('a2', 40, 'a1'),
+    commit('a1', 30, 'fork'),
+    commit('m', 20, 'fork'),
+    commit('fork', 10, 'root'),
+    commit('root', 0),
+  ];
+  const markers = [
+    ref('dev', 'a1'),
+    ref('feat/world-landscape', 'a2'),
+    ref('feat/rpg-monsters', 'a3'),
+    ref('feat/rpg-activity', 'a4'),
+    ref('feat/pr-facilities', 'a5'),
+  ];
+  const value = graph(commits, [ref('main', 'm'), ...markers]);
+  const labels = visibleBranchLabels(value.tracks, -20, 280);
+  assert.deepEqual(
+    labels.flatMap((label) => label.names).sort(),
+    ['main', ...markers.map(({ name }) => name)].sort(),
+  );
+  const flow = focus({ kind: 'commit', id: 'a2' }, value);
+  assert.deepEqual(flow.nodes, new Set(['a5', 'a4', 'a3', 'a2', 'a1', 'fork']));
+  assert.deepEqual(
+    flow.edges,
+    new Set(['a5:a4', 'a4:a3', 'a3:a2', 'a2:a1', 'a1:fork']),
+  );
+  for (const { name } of markers) {
+    assert.equal(value.colors.paths.branches.get(name), 'a5');
+    const selected = focus({ kind: 'branch', id: name }, value);
+    assert.deepEqual(selected.nodes, flow.nodes);
+    assert.deepEqual(selected.edges, flow.edges);
+    assert.deepEqual(selected.branches, new Set(['main', name]));
+  }
 });
 
 test('a ref inside an unnamed merged path stays an alias of the actual path head', () => {
