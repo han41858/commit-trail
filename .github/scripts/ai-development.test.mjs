@@ -117,6 +117,8 @@ function fixture({
   };
   const github = {
     issue: async () => structuredClone(data.issue),
+    previewRequested: async () => false,
+    previewCheck: async () => data.previewCheck,
     blockedBy: async () => [],
     hasMergedClosingPull: async () => false,
     hasActiveDevelopment: async () => false,
@@ -802,6 +804,48 @@ test('dependency merge lookup trusts only a verified same-repo merge and dispatc
       inputs: { issue: '13', dependency_resume: 'reservation' },
     },
   });
+});
+
+test('a preview-labeled Issue requires both a successful preview and a human confirmation for the current head', async () => {
+  const { data, run } = fixture();
+  data.issue.labels.push({ name: 'preview' });
+  assert.equal((await run()).status, 'awaiting_preview');
+  assert.equal(data.pull.draft, true);
+  assert.equal(
+    (await run({ resume: true, previewApprovedHead: heads[0] })).status,
+    'awaiting_preview',
+  );
+  data.previewCheck = { conclusion: 'success' };
+  data.record.state.status = 'needs_human';
+  data.record.state.reason = 'Different blocker';
+  await assert.rejects(
+    run({ resume: true, previewApprovedHead: heads[1] }),
+    /SHA가 현재 PR HEAD/,
+  );
+  assert.equal(data.record.state.status, 'needs_human');
+  assert.equal(data.record.state.reason, 'Different blocker');
+  assert.equal((await run({ resume: true })).status, 'awaiting_preview');
+  assert.equal(
+    (await run({ resume: true, previewApprovedHead: heads[0] })).status,
+    'merged',
+  );
+  assert.deepEqual(data.mergeRequests, [heads[0]]);
+});
+
+test('a base refresh drops the preview confirmation and requires approval for the new head', async () => {
+  const { data, run } = fixture({ results: [pass, pass] });
+  data.issue.labels.push({ name: 'preview' });
+  await run();
+  data.previewCheck = { conclusion: 'success' };
+  data.base = 'f'.repeat(40);
+  const state = await run({ resume: true, previewApprovedHead: heads[0] });
+  assert.equal(state.status, 'awaiting_preview');
+  assert.equal(state.head, heads[1]);
+  assert.deepEqual(data.mergeRequests, []);
+  assert.equal(
+    (await run({ resume: true, previewApprovedHead: heads[1] })).status,
+    'merged',
+  );
 });
 
 test('approval wait pauses merging and resumes CI without repeating the same review', async () => {

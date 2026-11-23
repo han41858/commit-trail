@@ -22,6 +22,10 @@ on:
         description: 'Verified full branch HEAD after an uncertain publication'
         required: false
         type: string
+      preview_approved_head:
+        description: 'Full PR HEAD SHA of the Preview you personally verified'
+        required: false
+        type: string
 
 permissions: {}
 

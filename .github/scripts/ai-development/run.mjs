@@ -246,8 +246,20 @@ async function main() {
   const dependencyResume = resume ? event.inputs?.dependency_resume : undefined;
   const baseRecovery = resume ? event.inputs?.base_recovery : undefined;
   const confirmedHead = resume ? event.inputs?.confirmed_head : undefined;
+  const previewApprovedHead = resume
+    ? event.inputs?.preview_approved_head
+    : undefined;
   if (dependencyResume && baseRecovery) return;
   const reservation = dependencyResume || baseRecovery;
+  if (
+    previewApprovedHead &&
+    (reservation ||
+      confirmedHead ||
+      !/^[a-f0-9]{40}$/.test(previewApprovedHead))
+  )
+    throw new Error(
+      '프리뷰 확인에는 다른 예약 없이 수동 재개와 확인한 PR의 전체 HEAD SHA가 필요합니다.',
+    );
   if (confirmedHead && (reservation || !/^[a-f0-9]{40}$/.test(confirmedHead)))
     throw new Error(
       '게시 결과 확인에는 수동 재개와 확인한 작업 브랜치의 전체 HEAD SHA가 필요합니다.',
@@ -281,6 +293,7 @@ async function main() {
       dependencyResume,
       baseRecovery,
       confirmedHead,
+      previewApprovedHead,
       eventLabel: event.label?.name,
       runId: Number(env.GITHUB_RUN_ID),
       attempt: Number(env.GITHUB_RUN_ATTEMPT),

@@ -187,17 +187,37 @@ GitHub API 한도에 좌우된다.
 ### Git 연동
 
 Vercel 프로젝트 `commit-trail`을 `han41858/commit-trail`과 연결하고 Production Branch는 **main**, GitHub 기본
-브랜치는 **dev**로 유지한다. `vercel.json`의 `git.deploymentEnabled: true`는 Git 자동 배포를 활성화한다.
+브랜치는 **dev**로 유지한다. `vercel.json`의 `git.deploymentEnabled`는 `main`과 `dev`만 Git 자동 배포 대상으로 둔다.
 Vercel Preview도 켜 둔다(`previewDeploymentsDisabled: false`). `gitProviderOptions.createDeployments`는
 GitHub 배포 기록을 제어하며 Vercel 빌드 스위치와는 다르다.
 
-기능·수정·문서·설정 작업은 최신 `dev`에서 분기하고 `dev` 대상 PR로 먼저 반영한다. `feature/*`, 기존 `feat/*`
-및 `dev`는 Preview 대상이며 `main`에 승격 PR을 머지하면 Production 빌드를 시작한다. 확인된 빌드 비대상
-문서만 변경한 경우에는 아래의 문서 전용 규칙으로 빌드를 취소한다.
+기능·수정·문서·설정 작업은 최신 `dev`에서 분기하고 `dev` 대상 PR로 먼저 반영한다. `dev`는 통합 Preview,
+`main`은 Production을 배포한다. 확인된 빌드 비대상 문서만 변경한 경우에는 아래 규칙으로 자동 빌드를 취소한다.
 
-GitHub Actions는 검증을, Vercel Git Integration은 배포를 담당한다. Preview는 CI와 병렬로 빌드할 수 있다.
+자동 배포는 Vercel Git Integration이 처리한다. 요청형 PR 프리뷰는 필수 CI를 통과한 뒤 배포한다.
 `main` PR의 필수 검사는 머지를 제어할 뿐, 머지 후 검사까지 Production 도메인 반영을 보류하려면 별도의
 Vercel Deployment Checks가 필요하다.
+
+### 요청형 PR 프리뷰
+
+화면 배치, 그래프 렌더링, PWA처럼 머지 전에 실제 브라우저에서 확인할 변경은 Issue에 `preview` 라벨을 붙인다.
+AI 작업은 실행 라벨보다 먼저 붙인다. PR은 GitHub가 닫힐 이슈로 인식하는 방식으로 연결한다(예: `Closes #123`).
+문서·CI·자동화 변경은 기본적으로 라벨 없이 검증한다.
+
+**Vercel Preview**는 같은 저장소에서 `dev`를 대상으로 열려 있는 PR의 **Test and build**가 통과하면, 연결된 열린
+Issue의 라벨과 현재 HEAD를 확인하고 해당 SHA만 프리뷰로 요청한다. 같은 PR·SHA의 기존 배포를 재사용한다.
+라벨을 CI 이후에 붙였거나 프리뷰 상태 확인을 다시 하려면, Actions에서 **Vercel Preview → Run workflow**의
+`dev`와 PR 번호를 선택한다. 요청 결과가 불확실하면 워크플로가 Vercel에서 같은 프로젝트·SHA의 예약을 찾는다.
+배포가 없거나 기존 빌드가 실패한 경우 Vercel에서 확인한 뒤 수동 실행의 `retry`를 선택한다. 이미 배포를 만들었다면
+같은 SHA의 배포 ID를 `deployment`에 입력한다. 완료된 프리뷰는 PR 댓글과 검사에서 확인할 수 있다.
+
+PR의 **Vercel Preview** 검사에서 **Details**를 열어 확인한다. AI PR은 성공한 프리뷰를 확인한 사람이 Actions의
+**AI development → Run workflow**에서 `dev`, Issue 번호, `preview_approved_head`에 확인한 전체 SHA를 입력해
+자동 머지를 재개한다. 커밋이 바뀌면 프리뷰와 확인을 다시 거친다.
+
+활성화 전에 GitHub의 `vercel-preview` Environment를 만들고 배포 허용 브랜치를 `dev`로 제한한다. 이
+Environment에 `VERCEL_TOKEN` Secret과 `VERCEL_TEAM_ID`, `VERCEL_PROJECT_ID` 변수를 설정한다. 토큰은 해당
+프로젝트의 Preview용 Vercel API 요청에 쓰며 후보 PR 코드는 토큰을 가진 GitHub 작업에서 실행하지 않는다.
 
 ### CI 이벤트 처리
 
@@ -405,8 +425,8 @@ Vercel 대시보드와 Git 배포에서 검증하며, 이 규칙은 CLI 배포 �
    브랜치를 `dev`로 합치지 않고 별도 릴리즈 브랜치로 우회하지 않는다. [AGENTS.md](../AGENTS.md)의 프로젝트
    전용 브랜치 규칙을 따른다.
 
-일반 배포 경로는 Git 연동이다. 수동 CLI 배포는 명시적인 예외이며 같은 SHA로 중복 배포하거나 커밋하지 않은
-파일이 포함될 수 있다. CI에는 Vercel CLI 배포 단계나 Vercel 자격 증명을 추가하지 않는다.
+Production은 Git 연동으로 배포한다. 수동 CLI 배포는 명시적인 예외이며 같은 SHA로 중복 배포하거나 커밋하지 않은
+파일이 포함될 수 있다. PR 프리뷰의 Vercel 자격 증명은 전용 워크플로에서만 사용한다.
 
 ### Production 릴리즈 발행과 정리
 

@@ -320,6 +320,74 @@ export function createGitHub({
       }
       return [...issues];
     },
+    async previewRequested(pull) {
+      for await (const nodes of graphPages(
+        `query PreviewIssues($owner: String!, $repo: String!, $pull: Int!, $after: String) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $pull) {
+              closingIssuesReferences(first: 50, after: $after) {
+                nodes { state repository { nameWithOwner } labels(first: 100) { nodes { name } pageInfo { hasNextPage } } }
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+          }
+        }`,
+        { pull },
+        (repo) => repo?.pullRequest?.closingIssuesReferences,
+      )) {
+        for (const issue of nodes) {
+          if (
+            issue.state !== 'OPEN' ||
+            issue.repository?.nameWithOwner?.toLowerCase() !==
+              repository.toLowerCase()
+          )
+            continue;
+          if (!issue.labels || issue.labels.pageInfo?.hasNextPage)
+            throw new Error('연결된 Issue의 라벨을 모두 확인할 수 없습니다.');
+          const labels = issue.labels.nodes.map(({ name }) => name);
+          if (labels.includes('preview') && !labels.includes('ai:stop'))
+            return true;
+        }
+      }
+      return false;
+    },
+    async previewCheck({ pull, head }) {
+      for (let page = 1; ; page++) {
+        const { check_runs: checks } = await api(
+          `/commits/${head}/check-runs?check_name=Vercel+Preview&filter=all&per_page=100&page=${page}`,
+        );
+        const check = checks.find(
+          (entry) =>
+            entry.app?.slug === 'github-actions' &&
+            entry.head_sha === head &&
+            entry.external_id === `commit-trail-vercel-preview:${pull}:${head}`,
+        );
+        if (check || checks.length < 100) return check;
+      }
+    },
+    setPreviewCheck(
+      { pull, head },
+      { id, deployment, url, conclusion, summary },
+    ) {
+      const payload = {
+        name: 'Vercel Preview',
+        external_id: `commit-trail-vercel-preview:${pull}:${head}`,
+        status: conclusion ? 'completed' : 'in_progress',
+        ...(conclusion ? { conclusion } : {}),
+        ...(url ? { details_url: url } : {}),
+        output: {
+          title: 'Vercel Preview',
+          summary,
+          text: deployment ?? 'reserved',
+        },
+      };
+      return id
+        ? api(`/check-runs/${id}`, { method: 'PATCH', payload })
+        : api('/check-runs', {
+            method: 'POST',
+            payload: { ...payload, head_sha: head },
+          });
+    },
     dispatchDependencyResume(issue, ref, dependencyResume) {
       return api('/actions/workflows/ai-development.yml/dispatches', {
         method: 'POST',

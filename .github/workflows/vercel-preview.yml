@@ -1,0 +1,89 @@
+name: Vercel Preview
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches-ignore: [dev, main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pull:
+        description: 'Pull request number linked to an Issue with the preview label'
+        required: true
+        type: number
+      deployment:
+        description: 'Existing Vercel deployment ID after a failed or uncertain request'
+        required: false
+        type: string
+      retry:
+        description: 'Retry a failed or confirmed missing Preview on the same HEAD'
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  identify:
+    if: >-
+      github.ref == 'refs/heads/dev' &&
+      (github.event_name == 'workflow_dispatch' ||
+        (github.event.workflow_run.path == '.github/workflows/ci.yml' &&
+         github.event.workflow_run.event == 'pull_request' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.head_repository.full_name == github.repository &&
+         github.event.workflow_run.head_branch != 'dev' &&
+         github.event.workflow_run.head_branch != 'main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      head: ${{ steps.identify.outputs.head }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: refs/heads/dev
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - id: identify
+        run: node .github/scripts/vercel-preview.mjs --identify
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  preview:
+    needs: identify
+    if: needs.identify.outputs.head != ''
+    concurrency:
+      group: vercel-preview-${{ github.repository }}
+      queue: max
+      cancel-in-progress: false
+    environment: vercel-preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      issues: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: refs/heads/dev
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Deploy the verified PR HEAD
+        run: node .github/scripts/vercel-preview.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW_HEAD: ${{ needs.identify.outputs.head }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
