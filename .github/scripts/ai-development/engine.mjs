@@ -153,6 +153,7 @@ export function pipelineExitCode(state) {
 }
 
 class DependencyWait extends NeedsHuman {}
+class PreviewWait extends NeedsHuman {}
 class BaseChanged extends Error {}
 
 function canWake(issue, state) {
@@ -264,6 +265,7 @@ export async function runPipeline({
   dependencyResume,
   baseRecovery,
   confirmedHead,
+  previewApprovedHead,
   runId,
   attempt,
 }) {
@@ -484,7 +486,7 @@ export async function runPipeline({
     if (!currentBase)
       throw new Error(`기본 브랜치 ${config.base}를 조회할 수 없습니다.`);
     if (!staleBase && currentBase !== state.base) throw new BaseChanged();
-    return { remote, pr, currentBase };
+    return { remote, pr, currentBase, issue: currentIssue };
   }
 
   function applyRefresh({ head, base }) {
@@ -496,6 +498,7 @@ export async function runPipeline({
     delete state.awaitingCI;
     delete state.ciFailed;
     delete state.mergeAttempted;
+    delete state.previewApprovedHead;
   }
 
   function requireRecoveryBudget(counter, limit) {
@@ -567,8 +570,34 @@ export async function runPipeline({
     await finishMerge(github, state, config.base, save);
   }
 
+  async function requirePreview(currentIssue) {
+    if (
+      !labelNames(currentIssue).includes('preview') &&
+      !(await github.previewRequested(state.pull))
+    )
+      return;
+    const check = await github.previewCheck(state);
+    if (check?.conclusion !== 'success')
+      throw new PreviewWait(
+        '현재 HEAD의 Vercel Preview 검사가 성공하기를 기다립니다. PR의 검사 상태를 확인하세요.',
+      );
+    if (
+      resume &&
+      !ciCompletion &&
+      !dependencyResume &&
+      !baseRecovery &&
+      previewApprovedHead === state.head
+    )
+      state.previewApprovedHead = state.head;
+    if (state.previewApprovedHead !== state.head)
+      throw new PreviewWait(
+        `PR Checks에서 프리뷰를 확인한 뒤 AI development를 수동 실행하고 preview_approved_head에 ${state.head}를 입력하세요.`,
+      );
+  }
+
   async function completeMerge(ci) {
-    let { pr } = await guard();
+    let { pr, issue: currentIssue } = await guard();
+    await requirePreview(currentIssue);
     if (pr.mergeable === false)
       throw new NeedsHuman(
         '현재 PR에 머지 충돌이 있습니다. PR을 수동으로 확인하세요.',
@@ -609,9 +638,13 @@ export async function runPipeline({
 
     let sha;
     try {
-      sha = await github.squashMerge(state, config.base, guard);
+      sha = await github.squashMerge(state, config.base, async () => {
+        const { issue: liveIssue } = await guard();
+        await requirePreview(liveIssue);
+      });
     } catch (error) {
-      if (error instanceof BaseChanged) throw error;
+      if (error instanceof BaseChanged || error instanceof PreviewWait)
+        throw error;
       sha = await confirmedMerge(github, state, config.base);
       if (!sha) {
         if (error.writeRejected) await guard();
@@ -733,6 +766,10 @@ export async function runPipeline({
         );
     }
     await guard({ recovering: !ciCompletion, staleBase: true });
+    if (previewApprovedHead && previewApprovedHead !== state.head)
+      throw new PreviewWait(
+        '확인한 프리뷰의 SHA가 현재 PR HEAD와 다릅니다. 현재 커밋의 프리뷰를 확인하세요.',
+      );
     if (!ciCompletion && state.baseRecovery) {
       delete state.baseRecovery;
       await save('queued', '기준 브랜치 자동 복구를 시작합니다.');
@@ -901,6 +938,13 @@ export async function runPipeline({
       }
     }
   } catch (error) {
+    if (error instanceof PreviewWait) {
+      delete state.awaitingCI;
+      delete state.ciFailed;
+      delete state.mergeAttempted;
+      await save('awaiting_preview', error.message);
+      return state;
+    }
     const needsHuman = error instanceof NeedsHuman;
     if (error instanceof DependencyWait) state.waitingForDependencies = true;
     else delete state.waitingForDependencies;
