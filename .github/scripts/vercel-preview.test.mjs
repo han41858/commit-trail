@@ -18,6 +18,7 @@ function fixture() {
     requested: true,
     requiredJob: 'success',
     check: null,
+    notices: new Map(),
     calls: [],
   };
   const github = {
@@ -28,11 +29,13 @@ function fixture() {
       { name: 'Test and build', conclusion: data.requiredJob },
     ],
     previewCheck: async () => data.check,
+    notice: async (_, body, key) => data.notices.set(key, body),
     setPreviewCheck: async (_, { deployment, conclusion, url }) => {
       data.check = {
         id: 14,
+        status: conclusion ? 'completed' : 'in_progress',
         conclusion,
-        url,
+        details_url: url,
         output: { text: deployment ?? 'reserved' },
       };
       return data.check;
@@ -42,9 +45,10 @@ function fixture() {
     verifyConfiguration() {},
     async create(source) {
       data.calls.push(source);
-      assert.equal(data.check.output.text, 'reserved');
+      assert.match(data.check.output.text, /^reserved:/);
       return 'dpl_test';
     },
+    find: async () => undefined,
     get: async () => ({
       readyState: 'READY',
       url: 'https://preview.vercel.app',
@@ -84,7 +88,8 @@ test('deploys only the labeled PR head after required CI and deduplicates its su
     { repoId: repo.id, ref: pull.head.ref, sha: head },
   ]);
   assert.equal(data.check.conclusion, 'success');
-  assert.equal(data.check.url, 'https://preview.vercel.app');
+  assert.equal(data.check.details_url, 'https://preview.vercel.app');
+  assert.equal(data.notices.size, 1);
 });
 
 test('a lost response cannot duplicate a deployment and can be recovered by ID', async () => {
@@ -93,8 +98,8 @@ test('a lost response cannot duplicate a deployment and can be recovered by ID',
     throw new Error('connection lost');
   };
   await assert.rejects(run(), /connection lost/);
-  await assert.rejects(run(), /불확실/);
-  assert.equal(data.check.output.text, 'reserved');
+  await assert.rejects(run(), /찾지 못했습니다/);
+  assert.match(data.check.output.text, /^reserved:/);
   await run({ suppliedDeployment: 'dpl_test' });
   assert.equal(data.check.conclusion, 'success');
 });
@@ -110,6 +115,40 @@ test('a rejected request can be retried after correcting the configuration', asy
   vercel.create = create;
   await run();
   assert.equal(data.check.conclusion, 'success');
+});
+
+test('an uncertain response reuses its reservation and requires explicit retry if no deployment exists', async () => {
+  const { data, run, vercel } = fixture();
+  const create = vercel.create;
+  vercel.create = async () => {
+    throw new Error('HTTP 503');
+  };
+  await assert.rejects(run(), /503/);
+  const reservation = data.check.output.text.split(':')[1];
+  vercel.find = async (state, request) => {
+    assert.equal(state.head, head);
+    assert.equal(request, reservation);
+  };
+  await assert.rejects(run(), /찾지 못했습니다/);
+  vercel.create = create;
+  await run({ retry: true });
+  assert.equal(data.check.conclusion, 'success');
+  assert.equal(data.calls.length, 1);
+});
+
+test('a terminal build can be retried or replaced by a verified deployment', async () => {
+  for (const suppliedDeployment of [undefined, 'dpl_replacement']) {
+    const { data, run, vercel } = fixture();
+    const get = vercel.get;
+    vercel.get = async () => ({ readyState: 'ERROR' });
+    await assert.rejects(run(), /배포에 실패/);
+    await assert.rejects(run(), /수동 실행/);
+    vercel.get = get;
+    await run({ retry: !suppliedDeployment, suppliedDeployment });
+    assert.equal(data.check.conclusion, 'success');
+    assert.equal(data.check.output.text, suppliedDeployment ?? 'dpl_test');
+    assert.equal(data.calls.length, suppliedDeployment ? 1 : 2);
+  }
 });
 
 test('Vercel uses the exact source SHA and accepts only a matching Preview result', async () => {

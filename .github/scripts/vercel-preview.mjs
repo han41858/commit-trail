@@ -1,10 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 import { config } from './ai-development/config.mjs';
 import { createGitHub, waitForCI } from './ai-development/github.mjs';
 
 const shaPattern = /^[a-f0-9]{40}$/;
 const deploymentPattern = /^dpl_[A-Za-z0-9]+$/;
+const reservationPattern = /^reserved:([a-f0-9-]{36})$/;
 
 function workPull(pr, repository) {
   return (
@@ -24,6 +26,7 @@ export async function deployPreview({
   pull,
   ciRun,
   suppliedDeployment,
+  retry = false,
   sleep = () => wait(5000),
   attempts = 60,
 }) {
@@ -57,31 +60,59 @@ export async function deployPreview({
     attempts: 1,
   });
   if (!ci.ok) return;
+  async function notifyReady(url) {
+    await github.notice(
+      state.pull,
+      `커밋 ${state.head}의 [Vercel 프리뷰](${url})가 준비됐습니다. AI PR은 확인 후 AI development의 preview_approved_head에 이 SHA를 입력해 주세요.`,
+      `vercel-preview-${state.head}`,
+    );
+  }
+
   let check = await github.previewCheck(state);
-  if (check?.conclusion === 'success') return;
+  if (check?.conclusion === 'success') {
+    if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(check.details_url || ''))
+      await notifyReady(check.details_url);
+    return;
+  }
+  vercel.verifyConfiguration();
   const recorded = check?.output?.text;
+  const failed = check?.conclusion === 'failure';
+  if (failed && !retry && !suppliedDeployment)
+    throw new Error(
+      '기존 Vercel 프리뷰가 실패했습니다. 원인을 확인한 뒤 수동 실행에서 retry를 선택하세요.',
+    );
   if (
     suppliedDeployment &&
     (!deploymentPattern.test(suppliedDeployment) ||
       (deploymentPattern.test(recorded || '') &&
-        suppliedDeployment !== recorded))
-  ) {
+        suppliedDeployment !== recorded &&
+        !failed))
+  )
     throw new Error('현재 PR에 기록된 프리뷰 배포 ID를 확인하세요.');
-  }
 
+  // Verify an adopted deployment before replacing a durable record.
+  if (suppliedDeployment) await vercel.get(suppliedDeployment, state.head);
   let deployment =
     suppliedDeployment ||
-    (deploymentPattern.test(recorded || '') ? recorded : undefined);
-  if (!deployment && check && recorded !== 'not-started') {
-    throw new Error(
-      '직전 프리뷰 요청 결과가 불확실합니다. Vercel에서 같은 SHA의 배포 ID를 확인해 수동 실행에 입력하세요.',
+    (deploymentPattern.test(recorded || '') && !(failed && retry)
+      ? recorded
+      : undefined);
+  if (!deployment && check && !failed && recorded !== 'not-started') {
+    deployment = await vercel.find(
+      state,
+      recorded?.match(reservationPattern)?.[1],
     );
+    if (!deployment && !retry)
+      throw new Error(
+        '이전 프리뷰 요청의 배포를 찾지 못했습니다. Vercel을 확인한 뒤 수동 실행에서 retry를 선택하세요.',
+      );
   }
-  vercel.verifyConfiguration();
   if (!(await eligible())) return;
-  if (!check || !deployment) {
+  const reservation = randomUUID();
+  if (!check || !deployment || check.status === 'completed') {
     check = await github.setPreviewCheck(state, {
-      id: check?.id,
+      id: check?.status === 'completed' ? undefined : check?.id,
+      deployment: deployment ?? `reserved:${reservation}`,
       summary: '현재 HEAD의 프리뷰 배포를 예약했습니다.',
     });
   }
@@ -97,11 +128,14 @@ export async function deployPreview({
       return;
     }
     try {
-      deployment = await vercel.create({
-        repoId: pull.head.repo.id,
-        ref: state.branch,
-        sha: state.head,
-      });
+      deployment = await vercel.create(
+        {
+          repoId: pull.head.repo.id,
+          ref: state.branch,
+          sha: state.head,
+        },
+        { pull: state.pull, reservation },
+      );
     } catch (error) {
       if (error.rejected)
         await github.setPreviewCheck(state, {
@@ -130,6 +164,7 @@ export async function deployPreview({
         conclusion: 'success',
         summary: 'Details에서 이 커밋의 Vercel 프리뷰를 열 수 있습니다.',
       });
+      await notifyReady(result.url);
       return;
     }
     if (['CANCELED', 'ERROR'].includes(result.readyState)) {
@@ -157,8 +192,10 @@ export function createVercel({ token, project, team, request = fetch }) {
       );
   }
 
-  async function api(path, payload) {
-    const url = new URL(`https://api.vercel.com/v13/deployments${path}`);
+  async function api(path, payload, query = {}) {
+    const url = new URL(path, 'https://api.vercel.com');
+    for (const [key, value] of Object.entries(query))
+      url.searchParams.set(key, value);
     url.searchParams.set('teamId', team);
     const response = await request(url, {
       method: payload ? 'POST' : 'GET',
@@ -179,16 +216,55 @@ export function createVercel({ token, project, team, request = fetch }) {
 
   return {
     verifyConfiguration,
-    async create(source) {
-      const result = await api('', {
+    async create(source, { pull, reservation } = {}) {
+      const result = await api('/v13/deployments', {
         name: 'commit-trail',
         project,
         gitSource: { type: 'github', ...source },
+        ...(pull
+          ? {
+              meta: {
+                commitTrailPreviewPull: String(pull),
+                commitTrailPreviewRequest: reservation,
+              },
+            }
+          : {}),
       });
       return result.id;
     },
+    async find({ pull, head, branch }, reservation) {
+      const { deployments, pagination } = await api(
+        '/v7/deployments',
+        undefined,
+        {
+          projectId: project,
+          sha: head,
+          branch,
+          limit: 100,
+        },
+      );
+      if (!Array.isArray(deployments) || !pagination)
+        throw new Error('Vercel 배포 목록을 확인할 수 없습니다.');
+      const matching = deployments.filter(
+        (deployment) =>
+          deployment.projectId === project &&
+          deployment.target === null &&
+          deployment.meta?.commitTrailPreviewPull === String(pull) &&
+          (!reservation ||
+            deployment.meta.commitTrailPreviewRequest === reservation) &&
+          deploymentPattern.test(deployment.uid),
+      );
+      if (
+        matching.length > 1 ||
+        (matching.length === 0 && pagination.next != null)
+      )
+        throw new Error(
+          '기존 프리뷰를 하나로 확인할 수 없습니다. 배포 ID를 입력하세요.',
+        );
+      return matching[0]?.uid;
+    },
     async get(id, head) {
-      const result = await api(`/${id}`);
+      const result = await api(`/v13/deployments/${id}`);
       const sha = result.gitSource?.sha || result.meta?.githubCommitSha;
       if (
         result.id !== id ||
@@ -222,6 +298,7 @@ async function main() {
   const run = event.workflow_run;
   let pull;
   let suppliedDeployment;
+  let retry = false;
   if (env.GITHUB_EVENT_NAME === 'workflow_run') {
     if (
       run?.path !== `.github/workflows/${config.ciWorkflow}` ||
@@ -253,14 +330,23 @@ async function main() {
       return;
     pull = await github.pull(number);
     suppliedDeployment = event.inputs?.deployment;
+    retry = event.inputs?.retry === 'true';
   } else return;
 
+  if (!workPull(pull, repository)) return;
+  if (process.argv.includes('--identify')) {
+    if (!(await github.previewRequested(pull.number))) return;
+    appendFileSync(env.GITHUB_OUTPUT, `head=${pull.head.sha}\n`);
+    return;
+  }
+  if (pull.head.sha !== env.PREVIEW_HEAD) return;
   await deployPreview({
     github,
     repository,
     pull,
     ciRun: run,
     suppliedDeployment,
+    retry,
     vercel: createVercel({
       token: env.VERCEL_TOKEN,
       project: env.VERCEL_PROJECT_ID,

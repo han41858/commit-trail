@@ -300,6 +300,11 @@ export async function runPipeline({
       '이 Issue에 재개할 기존 실행이 없습니다. 최초 실행은 실행 라벨로 시작하세요.',
     );
 
+  if (previewApprovedHead && previewApprovedHead !== existing?.state.head)
+    throw new NeedsHuman(
+      '확인한 프리뷰의 SHA가 현재 PR HEAD와 다릅니다. 현재 커밋의 프리뷰를 확인하세요.',
+    );
+
   const issue = await github.issue(issueNumber);
   if (issue.pull_request || (ciCompletion && issue.state !== 'open')) return;
   if (
@@ -766,10 +771,6 @@ export async function runPipeline({
         );
     }
     await guard({ recovering: !ciCompletion, staleBase: true });
-    if (previewApprovedHead && previewApprovedHead !== state.head)
-      throw new PreviewWait(
-        '확인한 프리뷰의 SHA가 현재 PR HEAD와 다릅니다. 현재 커밋의 프리뷰를 확인하세요.',
-      );
     if (!ciCompletion && state.baseRecovery) {
       delete state.baseRecovery;
       await save('queued', '기준 브랜치 자동 복구를 시작합니다.');

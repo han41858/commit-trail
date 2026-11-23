@@ -207,8 +207,9 @@ AI 작업은 실행 라벨보다 먼저 붙인다. PR은 GitHub가 닫힐 이슈
 **Vercel Preview**는 같은 저장소에서 `dev`를 대상으로 열려 있는 PR의 **Test and build**가 통과하면, 연결된 열린
 Issue의 라벨과 현재 HEAD를 확인하고 해당 SHA만 프리뷰로 요청한다. 같은 PR·SHA의 기존 배포를 재사용한다.
 라벨을 CI 이후에 붙였거나 프리뷰 상태 확인을 다시 하려면, Actions에서 **Vercel Preview → Run workflow**의
-`dev`와 PR 번호를 선택한다. 요청 결과를 알 수 없으면 Vercel에서 같은 SHA의 배포를 찾고 해당 배포 ID를
-`deployment`에 넣는다. 같은 SHA에 새 요청을 자동으로 반복하지 않는다.
+`dev`와 PR 번호를 선택한다. 요청 결과가 불확실하면 워크플로가 Vercel에서 같은 프로젝트·SHA의 예약을 찾는다.
+배포가 없거나 기존 빌드가 실패한 경우 Vercel에서 확인한 뒤 수동 실행의 `retry`를 선택한다. 이미 배포를 만들었다면
+같은 SHA의 배포 ID를 `deployment`에 입력한다. 완료된 프리뷰는 PR 댓글과 검사에서 확인할 수 있다.
 
 PR의 **Vercel Preview** 검사에서 **Details**를 열어 확인한다. AI PR은 성공한 프리뷰를 확인한 사람이 Actions의
 **AI development → Run workflow**에서 `dev`, Issue 번호, `preview_approved_head`에 확인한 전체 SHA를 입력해

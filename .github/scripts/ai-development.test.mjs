@@ -816,10 +816,14 @@ test('a preview-labeled Issue requires both a successful preview and a human con
     'awaiting_preview',
   );
   data.previewCheck = { conclusion: 'success' };
-  assert.equal(
-    (await run({ resume: true, previewApprovedHead: heads[1] })).status,
-    'awaiting_preview',
+  data.record.state.status = 'needs_human';
+  data.record.state.reason = 'Different blocker';
+  await assert.rejects(
+    run({ resume: true, previewApprovedHead: heads[1] }),
+    /SHA가 현재 PR HEAD/,
   );
+  assert.equal(data.record.state.status, 'needs_human');
+  assert.equal(data.record.state.reason, 'Different blocker');
   assert.equal((await run({ resume: true })).status, 'awaiting_preview');
   assert.equal(
     (await run({ resume: true, previewApprovedHead: heads[0] })).status,
