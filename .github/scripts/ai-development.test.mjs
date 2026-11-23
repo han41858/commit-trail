@@ -60,7 +60,9 @@ function createTestGitHub(options) {
 }
 
 const base = 'a'.repeat(40);
-const heads = ['b', 'c', 'd'].map((char) => char.repeat(40));
+const heads = ['b', 'c', 'd', '1', '2', '3', '4', '5'].map((char) =>
+  char.repeat(40),
+);
 const mergeCommit = 'e'.repeat(40);
 const pass = { status: 'pass', findings: [], summary: '통과' };
 
@@ -127,11 +129,13 @@ function fixture({
     ref: async (branch) =>
       branch === 'dev' ? (data.base ?? base) : data.remote,
     findPull: async () => (data.pull ? [structuredClone(data.pull)] : []),
-    async createBranch(_, sha) {
+    async createBranch(_, sha, beforeWrite) {
+      await beforeWrite();
       assert.equal(data.remote, null);
       data.remote = sha;
     },
-    async commit(_, parent, files, message) {
+    async commit(_, parent, files, message, beforeWrite) {
+      await beforeWrite();
       assert.equal(parent, data.remote);
       const sha = heads[data.commits.length];
       data.remote = sha;
@@ -150,7 +154,9 @@ function fixture({
           commit.parent === parent &&
           commit.message.body.includes(op),
       ),
-    createPull: async (state) => {
+    matchesCreatedPull: (pr, state) => pr.body === pullMarker(state.issue),
+    createPull: async (state, _, beforeWrite) => {
+      await beforeWrite();
       assert.equal(data.pull, null);
       data.pull = {
         number: 99,
@@ -192,7 +198,8 @@ function fixture({
       if (data.failClose) throw new Error('Issue close failed');
       Object.assign(data.issue, { state: 'closed', state_reason: 'completed' });
     },
-    async squashMerge(state, baseRef) {
+    async squashMerge(state, baseRef, beforeWrite) {
+      await beforeWrite();
       assert.equal(baseRef, 'dev');
       assert.equal(state.pull, data.pull.number);
       assert.equal(state.head, data.pull.head);
@@ -209,7 +216,18 @@ function fixture({
       if (data.loseMergeResponse) throw new Error('머지 응답 확인 불가');
       return mergeCommit;
     },
-    async updateBranch(state) {
+    baseAdvanced: async () => true,
+    async advanceEmptyBranch(state, current, beforeWrite) {
+      await beforeWrite();
+      assert.equal(data.remote, state.head);
+      assert.equal(data.pull, null);
+      data.remote = current;
+    },
+    dispatchBaseRecovery: async (issue, ref, id) => {
+      data.events.push({ recovery: id, issue, ref });
+    },
+    async updateBranch(state, beforeWrite) {
+      await beforeWrite();
       assert.equal(state.head, data.pull.head);
       const sha = heads[data.commits.length];
       data.commits.push({ sha, parent: state.head, mergedBase: data.base });
@@ -221,9 +239,12 @@ function fixture({
       }
       return { head: sha, base: data.base };
     },
-    refreshedBase: async (sha, previous) =>
+    mergedRefreshBase: async ({ head: previous, pendingRefresh }, sha) =>
       data.commits.find(
-        (commit) => commit.sha === sha && commit.parent === previous,
+        (commit) =>
+          commit.sha === sha &&
+          commit.parent === previous &&
+          commit.mergedBase === pendingRefresh,
       )?.mergedBase ?? null,
     async notice(number, message, key) {
       data.notes.set(`${number}:${key}`, message);
@@ -907,7 +928,7 @@ test('a lost merge response is reconciled without attempting a second merge', as
   assert.deepEqual(data.mergeRequests, [heads[0]]);
 });
 
-test('a closed or manually edited PR and a newer dev stop without overwriting changes', async () => {
+test('a closed or manually edited PR stops without overwriting changes', async () => {
   for (const change of [
     (data) => {
       data.pull.state = 'closed';
@@ -916,7 +937,7 @@ test('a closed or manually edited PR and a newer dev stop without overwriting ch
       data.pull.title = 'Manual edit';
     },
     (data) => {
-      data.base = heads[2];
+      data.pull.draft = false;
     },
   ]) {
     const { data, run, options } = fixture({ results: [changes()] });
@@ -932,7 +953,7 @@ test('a closed or manually edited PR and a newer dev stop without overwriting ch
   }
 });
 
-test('an Issue parked for CI survives a later merge to dev by refreshing on resume', async () => {
+test('CI completion reserves one recovery and rechecks only the new HEAD', async () => {
   const newerDev = 'f'.repeat(40);
   const { data, github, run } = fixture({
     results: [pass, pass],
@@ -953,14 +974,23 @@ test('an Issue parked for CI survives a later merge to dev by refreshing on resu
     attempt: 1,
     checkCI: async () => ({ ok: true, url: 'https://github.com/ci' }),
   });
-  assert.equal(completion.status, 'needs_human');
-  assert.match(completion.reason, /다시 실행하면 최신 dev를 반영/);
+  assert.equal(completion.status, 'recovering_base');
+  assert.equal(completion.awaitingCI, undefined);
+  assert.deepEqual(
+    data.events.filter((item) => item?.recovery),
+    [{ issue: 13, ref: 'dev', recovery: completion.baseRecovery }],
+  );
+  const duplicate = {
+    resume: true,
+    ciCompletion: { head_sha: heads[0], head_branch: 'ai/issue-13-codex' },
+  };
+  assert.equal(await run(duplicate), undefined);
   assert.equal(data.mergeRequests.length, 0);
   assert.equal(data.commits.length, 1);
 
-  // An explicit resume merges dev into the branch, then reviews and checks the new HEAD.
+  const recovery = { resume: true, baseRecovery: completion.baseRecovery };
   const state = await run({
-    resume: true,
+    ...recovery,
     runId: 102,
     checkCI: async (current, guard) => {
       await guard();
@@ -969,6 +999,8 @@ test('an Issue parked for CI survives a later merge to dev by refreshing on resu
     },
   });
   assert.equal(state.status, 'merged');
+  assert.equal(await run(recovery), undefined);
+  assert.equal(await run(duplicate), undefined);
   assert.equal(state.base, newerDev);
   assert.deepEqual(data.commits[1], {
     sha: heads[1],
@@ -1002,7 +1034,176 @@ test('a dev change before anything is published restarts from the new dev', asyn
   assert.equal(data.commits.length, 1);
 });
 
-test('a lost branch refresh response is recovered without a second merge of dev', async () => {
+test('a stale development plan is discarded before the first publication', async () => {
+  const newerDev = 'f'.repeat(40);
+  const { data, options, run } = fixture();
+  const bases = [];
+  const state = await run({
+    async develop(args) {
+      bases.push(args.state.base);
+      const plan = await options.develop(args);
+      if (args.state.base === base) {
+        data.base = newerDev;
+        plan.changes[0].text = 'stale candidate';
+      }
+      return plan;
+    },
+  });
+  assert.equal(state.status, 'merged');
+  assert.deepEqual(bases, [base, newerDev]);
+  assert.equal(state.unpublishedRestarts, 1);
+  assert.equal(data.commits.length, 1);
+  assert.equal(data.commits[0].parent, newerDev);
+  assert.equal(data.commits[0].files[0].text, 'updated');
+});
+
+test('a published empty branch fast-forwards before developing again', async () => {
+  const { data, github, run } = fixture();
+  const createBranch = github.createBranch;
+  const newerDev = 'f'.repeat(40);
+  github.createBranch = async (...args) => {
+    await createBranch(...args);
+    data.base = newerDev;
+  };
+  const state = await run();
+  assert.equal(state.status, 'merged');
+  assert.equal(state.baseRefreshes, 1);
+  assert.equal(state.unpublishedRestarts, undefined);
+  assert.equal(data.commits.length, 1);
+  assert.equal(data.commits[0].parent, newerDev);
+  assert.equal(data.events.filter((item) => item?.developer).length, 2);
+});
+
+test('a dev change after committing or just before creating the PR preserves the commit', async () => {
+  for (const stage of ['commit', 'findPull']) {
+    const { data, github, run } = fixture();
+    const execute = github[stage];
+    const newerDev = 'f'.repeat(40);
+    github[stage] = async (...args) => {
+      const result = await execute(...args);
+      if (data.commits.length === 1) data.base = newerDev;
+      return result;
+    };
+    const state = await run();
+    assert.equal(state.status, 'merged');
+    assert.equal(state.baseRefreshes, 1);
+    assert.equal(data.commits.length, 2);
+    assert.equal(data.commits[1].mergedBase, newerDev);
+    assert.deepEqual([...data.reviews.keys()], [heads[1]]);
+    assert.deepEqual(data.mergeRequests, [heads[1]]);
+    assert.equal(data.events.filter((item) => item?.developer).length, 1);
+  }
+});
+
+test('a base change during the final merge request triggers fresh checks', async () => {
+  const { data, github, run } = fixture({ results: [pass, pass] });
+  const merge = github.squashMerge;
+  const newerDev = 'f'.repeat(40);
+  github.squashMerge = (...args) => {
+    data.base = newerDev;
+    return merge(...args);
+  };
+  assert.equal((await run()).status, 'merged');
+  assert.deepEqual([...data.reviews.keys()], [heads[0], heads[1]]);
+  assert.deepEqual(data.mergeRequests, [heads[1]]);
+  assert.deepEqual(data.readyRequests, [heads[0]]);
+});
+
+test('both recovery budgets persist across manual resume', async () => {
+  const newer = ['f', '6', '7'].map((char) => char.repeat(40));
+  const unpublished = fixture();
+  let developmentCalls = 0;
+  const develop = async (args) => {
+    unpublished.data.base = newer[developmentCalls++];
+    return unpublished.options.develop(args);
+  };
+  const early = await unpublished.run({ develop });
+  assert.equal(early.status, 'needs_human');
+  assert.equal(early.unpublishedRestarts, 1);
+  assert.equal(unpublished.data.remote, null);
+  assert.equal(
+    (await unpublished.run({ resume: true, develop })).status,
+    'needs_human',
+  );
+  assert.equal(developmentCalls, 2);
+
+  const published = fixture({ results: [pass, pass, pass] });
+  let ciCalls = 0;
+  const late = await published.run({
+    checkCI: async () => {
+      published.data.base = newer[ciCalls++];
+      return { ok: true };
+    },
+  });
+  assert.equal(late.status, 'needs_human');
+  assert.equal(late.baseRefreshes, 2);
+  assert.equal((await published.run({ resume: true })).status, 'needs_human');
+  assert.deepEqual(published.data.mergeRequests, []);
+  assert.equal(published.data.commits.length, 3);
+});
+
+test('a failed CI can schedule recovery and a stopped or manually resumed Issue consumes it at most once', async () => {
+  for (const stop of [false, true]) {
+    const { data, run } = fixture({ results: [pass, pass] });
+    const failure = {
+      resume: true,
+      ciCompletion: {
+        head_sha: heads[0],
+        head_branch: 'ai/issue-13-codex',
+        conclusion: 'failure',
+      },
+      checkCI: async () => ({ ok: false, failed: true, reason: 'CI failed' }),
+    };
+    await run({ checkCI: failure.checkCI });
+    assert.equal(data.record.state.ciFailed, true);
+    data.base = 'f'.repeat(40);
+    const reserved = await run(failure);
+    assert.equal(reserved.status, 'recovering_base');
+    assert.equal(await run(failure), undefined);
+    const automatic = { resume: true, baseRecovery: reserved.baseRecovery };
+    if (stop) {
+      data.issue.labels.push({ name: 'ai:stop' });
+      assert.equal((await run(automatic)).status, 'needs_human');
+      assert.equal(data.commits.length, 1);
+    } else {
+      assert.equal((await run({ resume: true })).status, 'merged');
+      assert.equal(data.commits.length, 2);
+    }
+    assert.equal(await run(automatic), undefined);
+    assert.equal(data.events.filter((item) => item?.recovery).length, 1);
+  }
+});
+
+test('an unconfirmed commit or PR is retried only after verifying the unchanged HEAD', async () => {
+  for (const method of ['commit', 'createPull']) {
+    const { data, github, run } = fixture();
+    let calls = 0;
+    const original = github[method];
+    github[method] = async (...args) => {
+      if (++calls === 1) throw new Error('response lost');
+      return original(...args);
+    };
+    assert.equal((await run()).status, 'failed');
+    data.base = 'f'.repeat(40);
+    const resumed = await run({ resume: true });
+    assert.equal(resumed.status, 'needs_human');
+    assert.match(resumed.reason, /결과를 확인할 수 없습니다/);
+    assert.equal(calls, 1);
+    assert.equal(data.reviews.size, 0);
+    const wrongHead = await run({ resume: true, confirmedHead: heads[5] });
+    assert.equal(wrongHead.status, 'needs_human');
+    assert.equal(calls, 1);
+    const confirmed = await run({
+      resume: true,
+      confirmedHead: data.remote,
+      checkCI: async () => ({ ok: true }),
+    });
+    assert.equal(confirmed.status, 'merged');
+    assert.equal(calls, 2);
+  }
+});
+
+test('a lost branch refresh response requires confirmation and never repeats the write', async () => {
   const newerDev = 'f'.repeat(40);
   const { data, run } = fixture({
     results: [pass, pass],
@@ -1012,12 +1213,20 @@ test('a lost branch refresh response is recovered without a second merge of dev'
   data.base = newerDev;
   data.loseRefreshResponse = true;
   assert.equal((await run({ resume: true, runId: 101 })).status, 'failed');
-  assert.equal(data.record.state.pendingRefresh, true);
-  const ci = async () => ({ ok: true, url: 'https://github.com/ci' });
-  const state = await run({ resume: true, runId: 102, checkCI: ci });
-  assert.equal(state.status, 'merged');
-  assert.equal(state.base, newerDev);
-  assert.equal(state.pendingRefresh, undefined);
+  assert.equal(data.record.state.pendingRefresh, newerDev);
+  const state = await run({ resume: true, runId: 102 });
+  assert.equal(state.status, 'needs_human');
+  assert.equal(state.baseRefreshes, 1);
+  assert.equal(data.commits.length, 2);
+  assert.deepEqual(data.mergeRequests, []);
+  const resumed = await run({
+    resume: true,
+    confirmedHead: data.remote,
+    checkCI: async () => ({ ok: true }),
+  });
+  assert.equal(resumed.status, 'merged');
+  assert.equal(resumed.pendingRefresh, undefined);
+  assert.equal(resumed.baseRefreshes, 1);
   assert.equal(data.commits.length, 2);
   assert.deepEqual(data.mergeRequests, [heads[1]]);
 });
@@ -1032,6 +1241,50 @@ test('a lost commit or PR response is recovered on explicit resume without doubl
     assert.equal(data.events.filter((item) => item?.developer).length, 1);
     assert.equal(data.pull.number, 99);
   }
+});
+
+test('cleanup stops only the matching reserved recovery that failed before startup', async () => {
+  const { data, github, run } = fixture({
+    results: [pass, pass],
+    ci: { ok: false, reason: 'CI approval needed' },
+  });
+  await run();
+  data.base = 'f'.repeat(40);
+  const { baseRecovery: reservation } = await run({
+    resume: true,
+    ciCompletion: { head_sha: heads[0], head_branch: 'ai/issue-13-codex' },
+    runId: 101,
+  });
+  const reservedRun = {
+    display_title: `AI development for Issue #13 · base recovery ${reservation}`,
+    actor: { login: 'github-actions[bot]' },
+    id: 102,
+    run_attempt: 1,
+    conclusion: 'cancelled',
+  };
+  await reconcile(
+    github,
+    { ...reservedRun, actor: { login: 'contributor' } },
+    'dev',
+  );
+  assert.equal(data.record.state.baseRecovery, reservation);
+  await reconcile(github, reservedRun, 'dev');
+  assert.equal(data.record.state.status, 'needs_human');
+  assert.equal(data.record.state.baseRecovery, undefined);
+  assert.match(
+    data.notes.get('13:stop-102-1'),
+    /복구가 시작 상태를 기록하기 전에/,
+  );
+  assert.equal(
+    await run({ resume: true, baseRecovery: reservation }),
+    undefined,
+  );
+  assert.equal(
+    (await run({ resume: true, checkCI: async () => ({ ok: true }) })).status,
+    'merged',
+  );
+  await reconcile(github, reservedRun, 'dev');
+  assert.equal(data.record.state.status, 'merged');
 });
 
 test('a conflicting branch cannot be claimed even after explicit resume', async () => {
@@ -1408,7 +1661,10 @@ test('GitHub branch refresh publishes with the exact HEAD and returns the merged
     expected_head_sha: previous,
   });
   // A commit that is not a merge of the recorded HEAD is never treated as a refresh.
-  assert.equal(await github.refreshedBase(merged, dev), null);
+  assert.equal(
+    await github.mergedRefreshBase({ ...state, head: dev }, merged, 'dev'),
+    null,
+  );
   status = 422;
   await assert.rejects(github.updateBranch(state), NeedsHuman);
 });

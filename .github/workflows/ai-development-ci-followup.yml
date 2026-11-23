@@ -41,7 +41,7 @@ jobs:
     environment: ai-development
     timeout-minutes: 5
     permissions:
-      actions: read
+      actions: write
       checks: write
       contents: read
       issues: write

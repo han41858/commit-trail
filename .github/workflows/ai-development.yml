@@ -1,5 +1,5 @@
 name: AI development
-run-name: 'AI development for Issue #${{ github.event.issue.number || inputs.issue }}'
+run-name: "AI development for Issue #${{ github.event.issue.number || inputs.issue }}${{ inputs.base_recovery && format(' · base recovery {0}', inputs.base_recovery) || '' }}"
 
 on:
   issues:
@@ -14,6 +14,14 @@ on:
         description: 'Reservation ID for automatic dependency resume'
         required: false
         type: string
+      base_recovery:
+        description: 'Reservation ID for automatic base recovery'
+        required: false
+        type: string
+      confirmed_head:
+        description: 'Verified full branch HEAD after an uncertain publication'
+        required: false
+        type: string
 
 permissions: {}
 
@@ -23,7 +31,7 @@ jobs:
       github.ref == 'refs/heads/dev' &&
       (github.event_name == 'workflow_dispatch' ||
        contains(fromJSON('["ai:develop","ai:develop:codex","ai:develop:claude"]'), github.event.label.name))
-    # One queue for every Issue: a merge to dev cannot invalidate another run in progress.
+    # Serialize state changes with CI follow-up and dependency resume.
     concurrency:
       group: ai-development-${{ github.repository }}
       queue: max

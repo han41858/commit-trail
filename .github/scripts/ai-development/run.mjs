@@ -134,16 +134,18 @@ export async function develop(
   );
 }
 
-async function review(models, workspace, { reviewer, issue, state }) {
+async function review(models, workspace, { reviewer, issue, state, guard }) {
   const snapshot = workspace.snapshot(state);
+  const context = issueContext(issue, state, {
+    diffFirstPage: snapshot.inspect('read_diff', { line: 1 }),
+    priorReview: state.reviews.slice(state.baseReviewStart ?? 0).at(-1)?.result,
+  });
+  await guard();
   return models.run({
     agent: reviewer,
     mode: 'review',
     instructions: system + snapshot.instructions + reviewInstructions,
-    context: issueContext(issue, state, {
-      diffFirstPage: snapshot.inspect('read_diff', { line: 1 }),
-      priorReview: state.reviews.at(-1)?.result,
-    }),
+    context,
     inspect: snapshot.inspect,
   });
 }
@@ -242,11 +244,20 @@ async function main() {
     throw new Error('유효한 Issue 번호가 필요합니다.');
   const actor = event.sender?.login;
   const dependencyResume = resume ? event.inputs?.dependency_resume : undefined;
+  const baseRecovery = resume ? event.inputs?.base_recovery : undefined;
+  const confirmedHead = resume ? event.inputs?.confirmed_head : undefined;
+  if (dependencyResume && baseRecovery) return;
+  const reservation = dependencyResume || baseRecovery;
+  if (confirmedHead && (reservation || !/^[a-f0-9]{40}$/.test(confirmedHead)))
+    throw new Error(
+      '게시 결과 확인에는 수동 재개와 확인한 작업 브랜치의 전체 HEAD SHA가 필요합니다.',
+    );
   const botResume =
-    dependencyResume &&
-    /^[0-9a-f-]{36}$/.test(dependencyResume) &&
+    reservation &&
+    /^[0-9a-f-]{36}$/.test(reservation) &&
     actor === 'github-actions[bot]' &&
     event.sender.type === 'Bot';
+  if (reservation && !botResume) return;
   if (!botResume && (!actor || !(await github.canStart(actor)))) {
     console.log('저장소 쓰기 권한이 없는 사용자의 이벤트입니다.');
     return;
@@ -268,6 +279,8 @@ async function main() {
       issueNumber,
       resume,
       dependencyResume,
+      baseRecovery,
+      confirmedHead,
       eventLabel: event.label?.name,
       runId: Number(env.GITHUB_RUN_ID),
       attempt: Number(env.GITHUB_RUN_ATTEMPT),
