@@ -1,5 +1,5 @@
 name: AI development
-run-name: 'AI development for Issue #${{ github.event.issue.number || inputs.issue }}'
+run-name: "AI development for Issue #${{ github.event.issue.number || inputs.issue }}${{ inputs.base_recovery && format(' · base recovery {0}', inputs.base_recovery) || '' }}"
 
 on:
   issues:
@@ -16,6 +16,10 @@ on:
         type: string
       base_recovery:
         description: 'Reservation ID for automatic base recovery'
+        required: false
+        type: string
+      confirmed_head:
+        description: 'Verified full branch HEAD after an uncertain publication'
         required: false
         type: string
 

@@ -263,6 +263,7 @@ export async function runPipeline({
   ciCompletion,
   dependencyResume,
   baseRecovery,
+  confirmedHead,
   runId,
   attempt,
 }) {
@@ -348,6 +349,12 @@ export async function runPipeline({
   let awaitingCI = false;
   let displayedCheck;
   let previousCheck = reviewCheck(state);
+  const manualConfirmation =
+    resume && !ciCompletion && !dependencyResume && !baseRecovery
+      ? confirmedHead
+      : undefined;
+  const confirmationHelp =
+    'Actions 실행과 작업 브랜치·PR을 확인한 뒤, 수동 재개의 confirmed_head에 현재 작업 브랜치의 전체 SHA를 입력하세요.';
 
   async function save(status, reason, detail) {
     Object.assign(state, { status, reason, detail, runId, attempt });
@@ -402,29 +409,37 @@ export async function runPipeline({
       throw new NeedsHuman(
         '작업 브랜치가 삭제되었습니다. 기존 PR과 브랜치를 수동으로 확인하세요.',
       );
+    const confirmed = recovering && remote && remote === manualConfirmation;
+    let recoveredCommit = false;
+    let refreshedBase;
     if (
       remote !== state.head &&
       (remote || state.head !== state.base || state.pull)
     ) {
-      if (
-        !recovering ||
-        !state.pendingCommit ||
-        !remote ||
-        !(await github.isOperation(remote, state.head, state.pendingCommit))
-      ) {
-        throw new NeedsHuman(
-          `작업 브랜치 HEAD가 변경되었거나 브랜치가 삭제되었습니다. 확인한 HEAD ${remote ?? '없음'}. 현재 PR을 수동으로 검토하세요.`,
+      if (confirmed && state.pendingRefresh) {
+        refreshedBase =
+          state.head === state.base && !state.pull
+            ? remote === state.pendingRefresh && remote
+            : await github.mergedRefreshBase(state, remote, config.base);
+      } else if (recovering && state.pendingCommit && remote) {
+        recoveredCommit = await github.isOperation(
+          remote,
+          state.head,
+          state.pendingCommit,
         );
-      } else {
-        state.head = remote;
-        state.branchCreated = true;
-        delete state.pendingCommit;
-        await save(state.status, '직전 실행이 기록한 커밋을 복구했습니다.');
       }
+      if (!refreshedBase && !recoveredCommit)
+        throw new NeedsHuman(
+          state.pendingRefresh && !confirmed && remote
+            ? `직전 브랜치 갱신 결과를 확인해야 합니다. ${confirmationHelp}`
+            : `작업 브랜치 HEAD가 변경되었거나 브랜치가 삭제되었습니다. 확인한 HEAD ${remote ?? '없음'}. 현재 PR을 수동으로 검토하세요.`,
+        );
     }
-    if (recovering && (state.pendingCommit || state.pendingRefresh))
+    const unfinishedWrite =
+      recovering && (state.pendingCommit || state.pendingRefresh);
+    if (unfinishedWrite && !confirmed && !recoveredCommit)
       throw new NeedsHuman(
-        '직전 커밋 게시 또는 브랜치 갱신 결과를 확인할 수 없습니다. 작업 브랜치를 직접 확인하세요.',
+        `직전 커밋 게시 또는 브랜치 갱신 결과를 확인할 수 없습니다. ${confirmationHelp}`,
       );
     if (remote === state.base && !state.branchCreated)
       throw new NeedsHuman(
@@ -435,7 +450,7 @@ export async function runPipeline({
     if (state.pull) {
       pr = await github.pull(state.pull);
       if (
-        !github.matchesPull(pr, state, config.base, {
+        !github.matchesPull(pr, { ...state, head: remote }, config.base, {
           allowReady: state.readied === true,
         }) ||
         (state.readied && pr.draft) ||
@@ -445,6 +460,25 @@ export async function runPipeline({
           'PR이 닫혔거나 제목·본문·초안·대상 브랜치·HEAD가 변경되었습니다. 기존 PR을 수동으로 확인하세요.',
         );
       }
+    }
+    if (refreshedBase) {
+      applyRefresh({ head: remote, base: refreshedBase });
+      await save(
+        'reviewing',
+        '사람이 확인한 브랜치 갱신을 복구했습니다. 새 HEAD의 리뷰와 CI를 진행합니다.',
+      );
+    } else if (recoveredCommit) {
+      state.head = remote;
+      state.branchCreated = true;
+      delete state.pendingCommit;
+      await save(state.status, '직전 실행이 기록한 커밋을 복구했습니다.');
+    } else if (unfinishedWrite) {
+      delete state.pendingCommit;
+      delete state.pendingRefresh;
+      await save(
+        state.status,
+        '확인한 작업 브랜치 HEAD에서 이전 게시 예약을 해제했습니다.',
+      );
     }
     const currentBase = await github.ref(config.base);
     if (!currentBase)
@@ -601,9 +635,9 @@ export async function runPipeline({
         '기록되지 않은 작업 브랜치의 PR을 발견했습니다. 기존 PR을 직접 확인하세요.',
       );
     if (!pr) {
-      if (state.pendingPull)
+      if (state.pendingPull && manualConfirmation !== state.head)
         throw new NeedsHuman(
-          '직전 PR 생성 결과를 확인할 수 없습니다. GitHub에서 작업 브랜치의 PR을 확인하세요.',
+          `직전 PR 생성 결과를 확인할 수 없습니다. ${confirmationHelp}`,
         );
       await guard({ staleBase });
       state.pendingPull = true;
@@ -884,12 +918,34 @@ export async function runPipeline({
 }
 
 export async function reconcile(github, run, base) {
-  const match = /^AI development for Issue #([1-9]\d*)$/.exec(
-    run.display_title,
-  );
+  const match =
+    /^AI development for Issue #([1-9]\d*)(?: · base recovery ([0-9a-f-]{36}))?$/.exec(
+      run.display_title,
+    );
   if (!match || !run.id || !run.run_attempt) return;
   const issue = Number(match[1]);
   const record = await github.loadState(issue);
+  const reservation = match[2];
+  if (
+    reservation &&
+    run.actor?.login === 'github-actions[bot]' &&
+    record?.state.status === 'recovering_base' &&
+    record.state.baseRecovery === reservation
+  ) {
+    const state = record.state;
+    delete state.baseRecovery;
+    Object.assign(state, {
+      status: run.conclusion === 'cancelled' ? 'needs_human' : 'failed',
+      reason:
+        '예약된 기준 브랜치 복구가 시작 상태를 기록하기 전에 중단되었습니다. Actions 로그를 확인한 뒤 수동 재개하세요.',
+      runId: run.id,
+      attempt: run.run_attempt,
+    });
+    await github.saveState(issue, state, record.id);
+    await syncReviewCheck(github, state, reviewCheck(state));
+    await notifyStop(github, issue, state);
+    return;
+  }
   if (
     !record ||
     !activeStates.has(record.state.status) ||

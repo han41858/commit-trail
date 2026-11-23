@@ -138,6 +138,20 @@ export function createGitHub({
     return comparison.status === 'ahead';
   }
 
+  async function mergedRefreshBase(state, head, baseRef) {
+    const base = await refreshedBase(head, state.head);
+    const target =
+      state.pendingRefresh === true ? state.base : state.pendingRefresh;
+    if (!base || base === state.base) return null;
+    if (!target || base === target) return base;
+    const live = await branchHead(baseRef);
+    return live &&
+      (await baseAdvanced(target, base)) &&
+      (base === live || (await baseAdvanced(base, live)))
+      ? base
+      : null;
+  }
+
   async function branchHead(branch) {
     try {
       const ref = await api(`/git/ref/heads/${branch}`);
@@ -350,7 +364,10 @@ export function createGitHub({
             if (
               runs.some(
                 (run) =>
-                  run.display_title === title &&
+                  (run.display_title === title ||
+                    run.display_title?.startsWith(
+                      `${title} · base recovery `,
+                    )) &&
                   // The run that already saved the waiting state may still be closing.
                   (run.id !== runId || run.run_attempt !== attempt),
               )
@@ -372,7 +389,7 @@ export function createGitHub({
       return ['admin', 'maintain', 'write'].includes(permission);
     },
     ref: branchHead,
-    refreshedBase,
+    mergedRefreshBase,
     baseAdvanced,
     async advanceEmptyBranch(state, current, beforeWrite) {
       const ref = await api(`/git/refs/heads/${state.branch}`, {
@@ -408,16 +425,8 @@ export function createGitHub({
         await sleep(2000);
         const head = await branchHead(state.branch);
         if (!head || head === state.head) continue;
-        const base = await refreshedBase(head, state.head);
-        if (base && state.pendingRefresh && base !== state.pendingRefresh) {
-          const live = await branchHead(config.base);
-          if (
-            live &&
-            (await baseAdvanced(state.pendingRefresh, base)) &&
-            (base === live || (await baseAdvanced(base, live)))
-          )
-            return { head, base };
-        } else if (base) return { head, base };
+        const base = await mergedRefreshBase(state, head, config.base);
+        if (base) return { head, base };
         throw new NeedsHuman(
           '작업 브랜치에 예상하지 못한 커밋이 있습니다. PR을 수동으로 확인하세요.',
         );

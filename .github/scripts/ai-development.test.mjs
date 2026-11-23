@@ -239,9 +239,12 @@ function fixture({
       }
       return { head: sha, base: data.base };
     },
-    refreshedBase: async (sha, previous) =>
+    mergedRefreshBase: async ({ head: previous, pendingRefresh }, sha) =>
       data.commits.find(
-        (commit) => commit.sha === sha && commit.parent === previous,
+        (commit) =>
+          commit.sha === sha &&
+          commit.parent === previous &&
+          commit.mergedBase === pendingRefresh,
       )?.mergedBase ?? null,
     async notice(number, message, key) {
       data.notes.set(`${number}:${key}`, message);
@@ -1171,13 +1174,14 @@ test('a failed CI can schedule recovery and a stopped or manually resumed Issue 
   }
 });
 
-test('an unconfirmed commit or PR without a matching publication is never replayed', async () => {
+test('an unconfirmed commit or PR is retried only after verifying the unchanged HEAD', async () => {
   for (const method of ['commit', 'createPull']) {
     const { data, github, run } = fixture();
     let calls = 0;
-    github[method] = async () => {
-      calls++;
-      throw new Error('response lost');
+    const original = github[method];
+    github[method] = async (...args) => {
+      if (++calls === 1) throw new Error('response lost');
+      return original(...args);
     };
     assert.equal((await run()).status, 'failed');
     data.base = 'f'.repeat(40);
@@ -1186,6 +1190,16 @@ test('an unconfirmed commit or PR without a matching publication is never replay
     assert.match(resumed.reason, /결과를 확인할 수 없습니다/);
     assert.equal(calls, 1);
     assert.equal(data.reviews.size, 0);
+    const wrongHead = await run({ resume: true, confirmedHead: heads[5] });
+    assert.equal(wrongHead.status, 'needs_human');
+    assert.equal(calls, 1);
+    const confirmed = await run({
+      resume: true,
+      confirmedHead: data.remote,
+      checkCI: async () => ({ ok: true }),
+    });
+    assert.equal(confirmed.status, 'merged');
+    assert.equal(calls, 2);
   }
 });
 
@@ -1205,6 +1219,16 @@ test('a lost branch refresh response requires confirmation and never repeats the
   assert.equal(state.baseRefreshes, 1);
   assert.equal(data.commits.length, 2);
   assert.deepEqual(data.mergeRequests, []);
+  const resumed = await run({
+    resume: true,
+    confirmedHead: data.remote,
+    checkCI: async () => ({ ok: true }),
+  });
+  assert.equal(resumed.status, 'merged');
+  assert.equal(resumed.pendingRefresh, undefined);
+  assert.equal(resumed.baseRefreshes, 1);
+  assert.equal(data.commits.length, 2);
+  assert.deepEqual(data.mergeRequests, [heads[1]]);
 });
 
 test('a lost commit or PR response is recovered on explicit resume without double publication', async () => {
@@ -1217,6 +1241,50 @@ test('a lost commit or PR response is recovered on explicit resume without doubl
     assert.equal(data.events.filter((item) => item?.developer).length, 1);
     assert.equal(data.pull.number, 99);
   }
+});
+
+test('cleanup stops only the matching reserved recovery that failed before startup', async () => {
+  const { data, github, run } = fixture({
+    results: [pass, pass],
+    ci: { ok: false, reason: 'CI approval needed' },
+  });
+  await run();
+  data.base = 'f'.repeat(40);
+  const { baseRecovery: reservation } = await run({
+    resume: true,
+    ciCompletion: { head_sha: heads[0], head_branch: 'ai/issue-13-codex' },
+    runId: 101,
+  });
+  const reservedRun = {
+    display_title: `AI development for Issue #13 · base recovery ${reservation}`,
+    actor: { login: 'github-actions[bot]' },
+    id: 102,
+    run_attempt: 1,
+    conclusion: 'cancelled',
+  };
+  await reconcile(
+    github,
+    { ...reservedRun, actor: { login: 'contributor' } },
+    'dev',
+  );
+  assert.equal(data.record.state.baseRecovery, reservation);
+  await reconcile(github, reservedRun, 'dev');
+  assert.equal(data.record.state.status, 'needs_human');
+  assert.equal(data.record.state.baseRecovery, undefined);
+  assert.match(
+    data.notes.get('13:stop-102-1'),
+    /복구가 시작 상태를 기록하기 전에/,
+  );
+  assert.equal(
+    await run({ resume: true, baseRecovery: reservation }),
+    undefined,
+  );
+  assert.equal(
+    (await run({ resume: true, checkCI: async () => ({ ok: true }) })).status,
+    'merged',
+  );
+  await reconcile(github, reservedRun, 'dev');
+  assert.equal(data.record.state.status, 'merged');
 });
 
 test('a conflicting branch cannot be claimed even after explicit resume', async () => {
@@ -1593,7 +1661,10 @@ test('GitHub branch refresh publishes with the exact HEAD and returns the merged
     expected_head_sha: previous,
   });
   // A commit that is not a merge of the recorded HEAD is never treated as a refresh.
-  assert.equal(await github.refreshedBase(merged, dev), null);
+  assert.equal(
+    await github.mergedRefreshBase({ ...state, head: dev }, merged, 'dev'),
+    null,
+  );
   status = 422;
   await assert.rejects(github.updateBranch(state), NeedsHuman);
 });
