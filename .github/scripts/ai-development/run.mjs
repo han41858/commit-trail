@@ -134,16 +134,18 @@ export async function develop(
   );
 }
 
-async function review(models, workspace, { reviewer, issue, state }) {
+async function review(models, workspace, { reviewer, issue, state, guard }) {
   const snapshot = workspace.snapshot(state);
+  const context = issueContext(issue, state, {
+    diffFirstPage: snapshot.inspect('read_diff', { line: 1 }),
+    priorReview: state.reviews.slice(state.baseReviewStart ?? 0).at(-1)?.result,
+  });
+  await guard();
   return models.run({
     agent: reviewer,
     mode: 'review',
     instructions: system + snapshot.instructions + reviewInstructions,
-    context: issueContext(issue, state, {
-      diffFirstPage: snapshot.inspect('read_diff', { line: 1 }),
-      priorReview: state.reviews.at(-1)?.result,
-    }),
+    context,
     inspect: snapshot.inspect,
   });
 }
@@ -242,11 +244,15 @@ async function main() {
     throw new Error('유효한 Issue 번호가 필요합니다.');
   const actor = event.sender?.login;
   const dependencyResume = resume ? event.inputs?.dependency_resume : undefined;
+  const baseRecovery = resume ? event.inputs?.base_recovery : undefined;
+  if (dependencyResume && baseRecovery) return;
+  const reservation = dependencyResume || baseRecovery;
   const botResume =
-    dependencyResume &&
-    /^[0-9a-f-]{36}$/.test(dependencyResume) &&
+    reservation &&
+    /^[0-9a-f-]{36}$/.test(reservation) &&
     actor === 'github-actions[bot]' &&
     event.sender.type === 'Bot';
+  if (reservation && !botResume) return;
   if (!botResume && (!actor || !(await github.canStart(actor)))) {
     console.log('저장소 쓰기 권한이 없는 사용자의 이벤트입니다.');
     return;
@@ -268,6 +274,7 @@ async function main() {
       issueNumber,
       resume,
       dependencyResume,
+      baseRecovery,
       eventLabel: event.label?.name,
       runId: Number(env.GITHUB_RUN_ID),
       attempt: Number(env.GITHUB_RUN_ATTEMPT),

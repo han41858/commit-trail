@@ -5,6 +5,8 @@ export const config = {
   ciWorkflow: 'ci.yml',
   requiredJob: 'Test and build',
   maxReviews: 3,
+  maxUnpublishedRestarts: 1,
+  maxBaseRefreshes: 2,
   models: {
     codex: process.env.AI_CODEX_MODEL || 'gpt-6.2-sol',
     claude: process.env.AI_CLAUDE_MODEL || 'claude-sonnet-5-5',
