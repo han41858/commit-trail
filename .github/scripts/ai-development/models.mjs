@@ -12,7 +12,7 @@ const integer = { type: 'integer' };
 const nullableText = { anyOf: [string, { type: 'null' }] };
 
 export const developmentSchema = object({
-  status: { type: 'string', enum: ['completed', 'needs_human'] },
+  status: { type: 'string', enum: ['completed', 'in_progress', 'needs_human'] },
   title: string,
   summary: string,
   edits: {
@@ -50,6 +50,11 @@ const tools = {
     description:
       'Read tracked UTF-8 text with line numbers. Use line 1 to start.',
     input: object({ path: string, line: integer }),
+  },
+  search_text: {
+    description:
+      'Find literal text or symbols in tracked files. Use offset 0 for the first page.',
+    input: object({ query: string, offset: integer }),
   },
   read_diff: {
     description:
@@ -142,6 +147,13 @@ function providerField(error) {
 
 function streamError(reason) {
   return Object.assign(new Error(reason), { streamReason: reason });
+}
+
+function providerRequestId(response) {
+  const id =
+    response?.headers.get('request-id') ??
+    response?.headers.get('x-request-id');
+  return id && /^[a-zA-Z0-9_-]{6,100}$/.test(id) ? id : undefined;
 }
 
 function claudeAssistantContent(blocks) {
@@ -383,8 +395,11 @@ export function createModels({
               (response
                 ? '응답 본문 수신 또는 해석 실패'
                 : 'HTTP 응답 수신 실패'));
-        throw new Error(
-          `${name} API 응답을 확인할 수 없습니다. (${stage}, ${reason})`,
+        throw Object.assign(
+          new Error(
+            `${name} API 응답을 확인할 수 없습니다. (${stage}, ${reason})`,
+          ),
+          { requestId: providerRequestId(response) },
         );
       } finally {
         clearTimeout(timer);
@@ -400,7 +415,10 @@ export function createModels({
       }
       throw Object.assign(
         new Error(`${name} API HTTP ${status}. (${stage}, ${rejectionReason})`),
-        { requestRejected: [400, 401, 403, 404, 422, 429].includes(status) },
+        {
+          requestRejected: [400, 401, 403, 404, 422, 429].includes(status),
+          requestId: providerRequestId(response),
+        },
       );
     }
   }
@@ -413,7 +431,11 @@ export function createModels({
         mode === 'development'
           ? (value) => validateDevelopment(value, limits.edits)
           : validateReview;
-      const input = [{ role: 'user', content: context }];
+      const input = [];
+      let corrected = false;
+      let requiredStatus;
+      let originalFindings = [];
+      let nextMessage = context;
       const isCodex = agent === 'codex';
       const model = modelNames[agent];
       const turnLimit =
@@ -421,17 +443,28 @@ export function createModels({
       for (let turn = 1; turn <= turnLimit; turn++) {
         const started = performance.now();
         const finalTurn = turn === turnLimit;
-        const turnInstructions = finalTurn
-          ? `${instructions}
-Return the final structured result now. If evidence is insufficient, return needs_human with the specific blocker.`
-          : `${instructions}
-API requests remaining, including this one: ${turnLimit - turn + 1}. Return the final structured result once you have enough evidence.`;
+        // When possible, leave the last call available for one format correction.
+        const finalOutput =
+          finalTurn || (turnLimit > 2 && turn === turnLimit - 1);
+        const guidance = finalOutput
+          ? 'Return the final structured result now. If evidence is insufficient, return needs_human with the specific blocker.'
+          : `API requests remaining, including this one: ${turnLimit - turn + 1}. Return the final structured result once you have enough evidence.`;
+        if (isCodex) {
+          if (nextMessage) input.push({ role: 'user', content: nextMessage });
+        } else {
+          const note = [nextMessage, guidance].filter(Boolean).join('\n\n');
+          const latest = input.at(-1);
+          if (latest?.role === 'user' && Array.isArray(latest.content))
+            latest.content.push({ type: 'text', text: note });
+          else input.push({ role: 'user', content: note });
+        }
+        nextMessage = undefined;
         const data = await call(
           agent,
           isCodex
             ? {
                 model,
-                instructions: turnInstructions,
+                instructions: instructions + `\n${guidance}`,
                 input,
                 store: false,
                 include: ['reasoning.encrypted_content'],
@@ -445,7 +478,7 @@ API requests remaining, including this one: ${turnLimit - turn + 1}. Return the 
                     strict: true,
                   },
                 },
-                ...(finalTurn ? { tool_choice: 'none' } : {}),
+                ...(finalOutput ? { tool_choice: 'none' } : {}),
                 tools: Object.entries(tools).map(
                   ([name, { description, input }]) => ({
                     type: 'function',
@@ -458,11 +491,11 @@ API requests remaining, including this one: ${turnLimit - turn + 1}. Return the 
               }
             : {
                 model,
-                system: turnInstructions,
+                system: instructions,
                 messages: input,
                 max_tokens: limits.outputTokens,
                 output_config: { format: { type: 'json_schema', schema } },
-                ...(finalTurn ? { tool_choice: { type: 'none' } } : {}),
+                ...(finalOutput ? { tool_choice: { type: 'none' } } : {}),
                 tools: Object.entries(tools).map(
                   ([name, { description, input }]) => ({
                     name,
@@ -482,6 +515,7 @@ API requests remaining, including this one: ${turnLimit - turn + 1}. Return the 
               model,
               turn,
               ok: false,
+              requestId: error.requestId,
               elapsedMs: Math.round(performance.now() - started),
             }),
           );
@@ -512,57 +546,118 @@ API requests remaining, including this one: ${turnLimit - turn + 1}. Return the 
             ),
             { outputLimitReached: true },
           );
+        let text;
+        let remember;
         if (isCodex) {
           const output = data.output ?? [];
           if (data.status !== 'completed')
             throw new Error('Codex 응답이 완료되지 않았습니다.');
           const calls = output.filter(({ type }) => type === 'function_call');
-          if (!calls.length) {
-            const text = output
-              .flatMap(({ content }) => content ?? [])
-              .filter(({ type }) => type === 'output_text')
-              .map(({ text }) => text)
-              .join('');
-            return verifyResult(parseJSON(text));
+          if (calls.length) {
+            input.push(
+              ...output,
+              ...calls.map(({ name, arguments: args, call_id }) => ({
+                type: 'function_call_output',
+                call_id,
+                output: invokeTool(inspect, name, parseJSON(args)),
+              })),
+            );
+            continue;
           }
-          input.push(
-            ...output,
-            ...calls.map(({ name, arguments: args, call_id }) => ({
-              type: 'function_call_output',
-              call_id,
-              output: invokeTool(inspect, name, parseJSON(args)),
-            })),
-          );
+          text = output
+            .flatMap(({ content }) => content ?? [])
+            .filter(({ type }) => type === 'output_text')
+            .map(({ text }) => text)
+            .join('');
+          remember = () => input.push(...output);
         } else {
           const output = data.content ?? [];
+          remember = () =>
+            input.push({
+              role: 'assistant',
+              content: claudeAssistantContent(output),
+            });
           if (data.stop_reason === 'tool_use') {
             const calls = output.filter(({ type }) => type === 'tool_use');
             if (!calls.length)
               throw new Error(
                 'Claude 도구 호출 응답에 실행할 도구가 없습니다.',
               );
-            const results = calls.map(({ name, input: args, id }) => ({
-              type: 'tool_result',
-              tool_use_id: id,
-              content: invokeTool(inspect, name, args) || 'No matching lines.',
-            }));
-            input.push(
-              { role: 'assistant', content: claudeAssistantContent(output) },
-              { role: 'user', content: results },
-            );
-          } else if (data.stop_reason === 'end_turn') {
-            return verifyResult(
-              parseJSON(
-                output
-                  .filter(({ type }) => type === 'text')
-                  .map(({ text }) => text)
-                  .join(''),
-              ),
-            );
-          } else {
-            throw new Error('Claude 응답이 완료되지 않았습니다.');
+            remember();
+            input.push({
+              role: 'user',
+              content: calls.map(({ name, input: args, id }) => ({
+                type: 'tool_result',
+                tool_use_id: id,
+                content:
+                  invokeTool(inspect, name, args) || 'No matching lines.',
+              })),
+            });
+            continue;
           }
+          if (data.stop_reason !== 'end_turn')
+            throw new Error('Claude 응답이 완료되지 않았습니다.');
+          text = output
+            .filter(({ type }) => type === 'text')
+            .map(({ text }) => text)
+            .join('');
         }
+
+        let value;
+        try {
+          value = parseJSON(text);
+          const result = verifyResult(value);
+          if (
+            (requiredStatus && result.status !== requiredStatus) ||
+            originalFindings.some(
+              (finding) =>
+                !result.findings?.some(
+                  ({ path, defect }) =>
+                    path === finding.path &&
+                    defect.trim() === finding.defect.trim(),
+                ),
+            )
+          )
+            throw new Error(
+              '형식 교정에서 기존 중단 결정과 리뷰 지적을 보존해야 합니다.',
+            );
+          if (result.status !== 'in_progress') return result;
+        } catch (error) {
+          if (corrected || finalTurn || (mode === 'review' && !value))
+            throw error;
+          corrected = true;
+          if (
+            value?.status === 'needs_human' ||
+            value?.status === 'changes_requested'
+          )
+            requiredStatus = value.status;
+          const findings = Array.isArray(value?.findings) ? value.findings : [];
+          originalFindings = findings.filter(
+            (finding) =>
+              typeof finding?.path === 'string' &&
+              typeof finding.defect === 'string' &&
+              finding.defect.trim(),
+          );
+          if (findings.length && !requiredStatus)
+            requiredStatus = 'changes_requested';
+          const correction = requiredStatus
+            ? ` Keep status ${requiredStatus}.`
+            : '';
+          nextMessage = `Fix only the output format or explain the existing blocker. ${error.message}${correction} Preserve all existing review findings.`;
+          remember();
+          continue;
+        }
+        if (finalTurn)
+          return {
+            status: 'needs_human',
+            title: '',
+            summary:
+              '개발 에이전트가 호출 한도 안에 수정안을 완성하지 못했습니다.',
+            edits: [],
+          };
+        remember();
+        nextMessage =
+          'Continue the same task. Return a complete edit plan from the original snapshot once it is ready. No partial edits have been applied.';
       }
       throw new Error(
         'AI의 저장소 탐색 최대 횟수에 도달했습니다. Issue 범위를 좁힌 뒤 수동 재개하세요.',

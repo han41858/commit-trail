@@ -19,10 +19,10 @@ npm run dev
 `npm run build`는 TypeScript 검사와 Vite 빌드를 실행하며, `npm run preview -- --port 4173`으로 빌드 결과를 로컬에서 확인한다.
 
 ```sh
-npm run format:check
-npm test
+./node_modules/.bin/prettier . --check
+./node_modules/.bin/tsx --test "src/**/*.test.ts"
 node --test --test-isolation=none .github/scripts/*.test.mjs
-npm run build
+./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build
 npm run preview -- --port 4173
 ```
 
@@ -238,6 +238,11 @@ push 검증을 유지한다. 저장소의 JSON을 변경해도 GitHub에서 활�
 
 ### AI 개발과 교차 리뷰
 
+공통 [자동화 지침과 체크리스트](https://github.com/han41858/ai-native/tree/16eb8b0655251017a04e0bdc7f8ab5b2afee930d/docs)를
+Commit Trail의 `dev` 기준으로 적용한다. 실행 라벨은 작업과 `dev` 자동 머지를 승인하며, 라벨 해제나 개발 역할 변경 시
+개발·게시·자동 머지를 중단한다. 자동화나 검증 정책을 바꾸는 PR은 Draft 게시와 교차 리뷰까지 수행하고, 필수 CI가
+통과한 뒤 담당자가 정책 변경을 검토해 직접 머지한다.
+
 저장소 쓰기 권한자가 열린 Issue에 실행 라벨 하나를 추가하면 기본 브랜치 `dev`에서 `AI development`가 GitHub
 호스팅 Ubuntu 러너로 실행한다. 필요한 라벨은 저장소에 미리 만든다. 실행 라벨이 여러 개면 시작하지 않는다.
 
@@ -257,9 +262,22 @@ PR의 **AI review** 검사는 현재 커밋의 교차 리뷰 상태를 **Test an
 
 리뷰가 통과하면 현재 PR HEAD의 **Test and build**를 확인한다. CI가 없거나 승인 대기 또는 실패 상태라면
 `needs_human`으로 멈춘다. 저장소 정책에 따라 **Approve workflows to run**을 눌러야 할 수 있다. 같은 SHA의
-교차 리뷰와 CI가 모두 통과하면 Draft를 해제하고 그 SHA로 `dev`에 스쿼시 머지를 요청한다. GitHub가 기존 브랜치
-규칙을 적용하며, 성공하면 Issue에 `merged`와 머지 커밋을 기록하고 연결된 Issue가 닫힌다. 충돌·PR 또는 HEAD
-변경·머지 거부는 사람의 확인이 필요하다. `main` 승격은 AI 스쿼시 머지와 별도의 수동 절차다.
+교차 리뷰와 CI가 모두 통과하면 Draft를 해제한다. 머지 직전에 현재 HEAD의 승인·의존성·CI·교차 리뷰를 다시
+확인하고 그 SHA로 `dev`에 스쿼시 머지를 요청한다. PR과 머지 커밋, Issue의 `completed` 종료를 확인하면
+Issue에 `merged`를 기록한다. 필수 CI 실패 시 실패 단계와 실행 링크를 기록한다. 충돌·PR 또는 HEAD 변경·머지
+거부는 사람이 확인한다. `main` 승격은 기존 수동 절차를 따른다.
+
+실행 상태 댓글은 `version`, `status`, `reasonCode`, `head`, `pull`, 모델 예약 및 복구 횟수를 기록한다.
+기존 상태는 다음 대응 관계로 해석한다.
+
+| 표시 또는 기록                                             | 의미                                                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| `queued`, `developing`, `reviewing`, `revising`, `merging` | 대기 중이거나 해당 단계 진행 중                                       |
+| `needs_human` + `waitingForDependencies`                   | 선행 PR 확인 대기                                                     |
+| `needs_human` + `awaitingCI`                               | 현재 HEAD의 CI 대기. `ciStatus`에서 실패·취소·승인 필요·미확인을 구분 |
+| `recovering_base`, `awaiting_preview`                      | 기준 갱신 복구 중이거나 사람이 프리뷰를 확인하는 중                   |
+| `reasonCode: stopped`, `needs_human`, `failed`             | 명시적으로 중단, 사람 조치 필요, 자동화 오류                          |
+| `mergeCommit` + `needs_human`, 또는 `merged`               | 각각 머지 확인 후 Issue 종료 대기, 머지와 Issue 종료 완료             |
 
 #### 공유 큐와 한 Issue의 CI 후속 처리
 
@@ -349,6 +367,11 @@ Environment에는 브랜치 제한이 필요하지 않다. 검사는 개인 소�
 무응답으로 결과를 알 수 없는 스트림은 자동으로 다시 요청하지 않는다. 공급자가 토큰 사용량을 반환하면 Actions
 로그에 기록한다. 모델 요청의 소요 시간도 함께 기록한다.
 
+Issue당 개발·리뷰 모델 세션은 합계 26개까지 예약할 수 있다. 예약은 호출 전에 상태 댓글에 저장되며 수동 재개와
+기준 갱신 이후에도 누적된다. 이전 상태 댓글에 세션 수가 없으면 확인 가능한 완료 리뷰 수부터 계산한다. 마지막 호출
+기회를 남겨 형식 교정을 최대 한 번 시도한다. 개발의 `in_progress` 결과는 같은 대화에서 이어가며, 완료된 수정안만
+격리 검사에 넘긴다. 리뷰 형식 교정은 기존 지적이나 중단 결정을 승인으로 바꿀 수 없다.
+
 컨트롤러는 수정된 `package.json`과 `package-lock.json`에서 Docker로 `npm ci --ignore-scripts --no-audit --no-fund`를
 실행해 의존성을 설치하고, 두 파일의 내용으로 이미지를 캐시한다. 잠금 파일 불일치나 설치 실패는 수정 시도에
 검증 결과로 돌려준다. 그다음 자격 증명과 네트워크가 없는 별도 컨테이너에서 격리 검사를 실행한다.
@@ -359,6 +382,8 @@ AI 워크플로는 일반 CI의 npm 다운로드 캐시를 복원해 의존성 �
 격리 컨테이너에서는 변경한 파일만 Prettier로 포맷한 뒤 선택된 검사를 실행한다.
 무시 설정과 삭제한 파일은 그대로 처리하며, 검사에 사용한 포맷 결과를 커밋한다.
 Actions 로그에서 의존성 준비 시간과 같은 실행 내 캐시 적중 여부, 각 검사에 걸린 시간을 확인한다.
+격리 검사는 신뢰된 기준의 고정 명령으로 실행한다. PR이 후보 `package.json`의 스크립트를 바꾸면 로컬 검증과
+교차 리뷰 이후에도 사람이 검사 정책을 검토한다.
 
 ```sh
 npm run format:check
@@ -376,8 +401,9 @@ Issue에 `ai:stop`을 붙이면 컨트롤러가 다음 상태 점검에서 멈�
 
 1. 중단 댓글, 상태 댓글의 상세 사유, 필요한 경우 PR 지적 사항과 Actions 로그를 확인한다. 권한·격리 설정·CI 승인
    등 보고된 원인을 먼저 해결한다. 컨트롤러 수정이 필요하면 그 변경을 먼저 `dev`에 반영한다.
-2. Issue가 닫혔다면 다시 열고 `ai:stop`을 제거한다. **Actions → AI development → Run workflow**에서 **dev**를
-   선택하고 기존 Issue 번호를 입력한다. 실행 라벨을 다시 붙이는 것만으로는 재개하지 않는다.
+2. Issue가 닫혔다면 다시 열고 `ai:stop`을 제거한다. 처음 승인한 개발 역할과 일치하는 실행 라벨 하나를 확인한다.
+   **Actions → AI development → Run workflow**에서 **dev**와 기존 Issue 번호를 입력한다. 실행 라벨만 붙이는
+   동작은 이후 수동 재개를 대신하지 않는다.
 3. 자동화는 원래 역할과 작업 브랜치·PR을 재사용하며 Issue 제목·본문 및 PR·HEAD의 동시 변경이나 닫힌 PR을
    확인한다. 요청 자체를 바꾸려면 새 Issue를 사용한다. 기준 변경 복구 한도는 같은 Issue를 재개해도 유지된다.
 4. 커밋·브랜치 갱신·PR 게시 결과를 확인하라는 안내가 나오면 이전 실행이 종료됐는지 먼저 확인한다. GitHub에서

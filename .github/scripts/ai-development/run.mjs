@@ -25,18 +25,21 @@ Trusted repository instructions:
 const development = `
 You are the developer. Only propose edits for the provided Issue and the actionable review feedback.
 The controller applies edits and runs the configured project checks in a separate environment.
+For UI changes, read the existing UI tests and update them if the behavior changes.
 Use before and after strings for exact unique replacements, null before for a new file, and null
 after with the full original text to delete a file. Read actual source with tools before editing.
 Regular text files throughout the repository may be changed, including workflows, automation scripts,
 dependency configuration and AGENTS.md. Keep edits within the Issue's scope. Do not edit Git internals,
 node_modules, or .env secret files; .env.example may be edited.
 Title format is GitMoji plus Korean, following AGENTS.md. Summarize what changed, or the specific
-blocker if you return needs_human. Do not claim test outcomes you have not been given.`;
+blocker if you return needs_human. Return in_progress only if you need to continue the same edit plan before completion. Do not claim test outcomes you have not been given.`;
 
 const reviewInstructions = `
 You are an independent read-only reviewer. Always inspect read_diff and relevant files. Evaluate the
 full PR against the Issue, covering correctness, regressions, tests, edge cases, defensive security,
 performance, scope and repository rules. Do not require subjective style changes. Report only material
+defects. For UI changes, read existing UI tests and verify that the relevant coverage was preserved.
+Report
 issues introduced by the PR, one per finding, with file, line, defect, impact, evidence, and fix.
 Summarize validation limits, and use consistent defect wording for a repeated issue across revisions.
 Keep the summary within 900 characters and report at most six material findings, prioritizing the
@@ -64,12 +67,14 @@ function issueContext(issue, state, extra = {}) {
 export async function develop(
   models,
   workspace,
-  { developer, issue, state, feedback, guard },
+  { developer, issue, state, feedback, guard, reserveModel = async () => {} },
 ) {
   const snapshot = workspace.snapshot(state);
   let failure;
   const failedSteps = [];
   for (let attempt = 0; attempt < 2; attempt++) {
+    await guard();
+    await reserveModel();
     await guard();
     const plan = await models.run({
       agent: developer,
@@ -134,12 +139,18 @@ export async function develop(
   );
 }
 
-async function review(models, workspace, { reviewer, issue, state, guard }) {
+async function review(
+  models,
+  workspace,
+  { reviewer, issue, state, guard, reserveModel },
+) {
   const snapshot = workspace.snapshot(state);
   const context = issueContext(issue, state, {
     diffFirstPage: snapshot.inspect('read_diff', { line: 1 }),
     priorReview: state.reviews.slice(state.baseReviewStart ?? 0).at(-1)?.result,
   });
+  await guard();
+  await reserveModel();
   await guard();
   return models.run({
     agent: reviewer,
@@ -303,7 +314,8 @@ async function main() {
       },
       develop: (args) => develop(models, workspace, args),
       review: (args) => review(models, workspace, args),
-      checkCI: (current, guard) => waitForCI(github, config, current, guard),
+      checkCI: (current, guard, options) =>
+        waitForCI(github, config, current, guard, options),
     });
     if (!state) return;
     console.log(
@@ -312,6 +324,8 @@ async function main() {
         head: state.head,
         pull: state.pull,
         reason: state.reason,
+        reasonCode: state.reasonCode,
+        modelSessions: state.modelSessions,
       }),
     );
     process.exitCode = pipelineExitCode(state);

@@ -244,10 +244,21 @@ export function createGitHub({
       const issue = await api(`/issues/${number}`);
       if (issue.state === 'closed' && issue.state_reason === 'completed')
         return;
-      const closed = await api(`/issues/${number}`, {
-        method: 'PATCH',
-        payload: { state: 'closed', state_reason: 'completed' },
-      });
+      if (issue.state !== 'open')
+        throw new NeedsHuman(
+          'Issue가 completed 이외의 사유로 닫혀 있습니다. 현재 종료 상태를 확인하세요.',
+        );
+      let closed;
+      try {
+        closed = await api(`/issues/${number}`, {
+          method: 'PATCH',
+          payload: { state: 'closed', state_reason: 'completed' },
+        });
+      } catch (error) {
+        closed = await api(`/issues/${number}`);
+        if (closed.state !== 'closed' || closed.state_reason !== 'completed')
+          throw error;
+      }
       if (closed.state !== 'closed' || closed.state_reason !== 'completed')
         throw new Error('Issue 종료 상태를 확인할 수 없습니다.');
     },
@@ -449,6 +460,75 @@ export function createGitHub({
     },
     pull(number) {
       return api(`/pulls/${number}`);
+    },
+    async pullAtHead(number, previous) {
+      let pr = await api(`/pulls/${number}`);
+      for (
+        let retry = 0;
+        retry < 2 && pr.state === 'open' && pr.head?.sha === previous;
+        retry++
+      ) {
+        await sleep(1000);
+        pr = await api(`/pulls/${number}`);
+      }
+      return pr;
+    },
+    async pullAfterMerge(number) {
+      let pr = await api(`/pulls/${number}`);
+      for (
+        let retry = 0;
+        retry < 2 && pr.state === 'open' && !pr.merged;
+        retry++
+      ) {
+        await sleep(1000);
+        pr = await api(`/pulls/${number}`);
+      }
+      return pr;
+    },
+    async changesAutomationPolicy(state, pr) {
+      const policy =
+        /^(?:AGENTS\.md|\.npmrc|\.nvmrc|(?:\.github\/(?:workflows|rulesets|scripts)\/)(?!.*\.test\.mjs$).+|\.prettierignore|prettier\.config\.mjs|vercel\.json)$/;
+      let scanned = 0;
+      let packageChanged = false;
+      if (
+        !Number.isSafeInteger(pr.changed_files) ||
+        pr.changed_files < 1 ||
+        pr.changed_files > 3000
+      )
+        throw new NeedsHuman('PR의 정책 변경 범위를 모두 확인할 수 없습니다.');
+      for (let page = 1; scanned < pr.changed_files; page++) {
+        const files = await api(
+          `/pulls/${state.pull}/files?per_page=100&page=${page}`,
+        );
+        if (!files.length)
+          throw new NeedsHuman(
+            'PR의 정책 변경 범위를 모두 확인할 수 없습니다.',
+          );
+        scanned += files.length;
+        for (const { filename, previous_filename } of files) {
+          if (
+            [filename, previous_filename].some(
+              (path) => path && policy.test(path),
+            )
+          )
+            return true;
+          if ([filename, previous_filename].includes('package.json'))
+            packageChanged = true;
+        }
+      }
+      if (!packageChanged) return false;
+      const scripts = async (sha) => {
+        const file = await api(`/contents/package.json?ref=${sha}`);
+        if (file.encoding !== 'base64')
+          throw new NeedsHuman(
+            'package.json의 검증 명령을 확인할 수 없습니다.',
+          );
+        const { scripts } = JSON.parse(
+          Buffer.from(file.content, 'base64').toString('utf8'),
+        );
+        return JSON.stringify(Object.entries(scripts ?? {}).sort());
+      };
+      return (await scripts(state.base)) !== (await scripts(state.head));
     },
     async canStart(actor) {
       const { permission } = await api(
@@ -814,6 +894,23 @@ export function createGitHub({
       );
       return jobs;
     },
+    async ciLocations(job) {
+      const id = job?.check_run_url?.match(/\/check-runs\/(\d+)$/)?.[1];
+      if (!id) return [];
+      const annotations = await api(
+        `/check-runs/${id}/annotations?per_page=20`,
+      );
+      return annotations
+        .filter(
+          ({ annotation_level, path, start_line }) =>
+            annotation_level === 'failure' &&
+            /^[\p{L}\p{N}_.\/-]{1,160}$/u.test(path) &&
+            Number.isSafeInteger(start_line) &&
+            start_line > 0,
+        )
+        .slice(0, 3)
+        .map(({ path, start_line }) => `${plain(path)}:${start_line}`);
+    },
   };
 }
 
@@ -830,29 +927,45 @@ export async function waitForCI(
     if (run?.conclusion === 'action_required' || run?.status === 'waiting')
       return {
         ok: false,
+        status: 'approval_required',
         reason:
           '필수 CI 실행에 승인이 필요합니다. PR에서 Approve workflows to run을 누르면 CI 통과 후 자동으로 이어집니다.',
       };
     if (run?.status === 'completed') {
       const jobs = await github.ciJobs(run);
-      if (
-        run.conclusion === 'success' &&
-        jobs.some(
-          ({ name, conclusion }) =>
-            name === config.requiredJob && conclusion === 'success',
-        )
-      )
+      const job = jobs.find(({ name }) => name === config.requiredJob);
+      if (run.conclusion === 'success' && job?.conclusion === 'success')
         return { ok: true, url: run.html_url };
+      const canceled =
+        run.conclusion === 'cancelled' || job?.conclusion === 'cancelled';
+      const step = job?.steps?.find(
+        ({ conclusion }) => conclusion === 'failure',
+      );
+      const stage =
+        step?.name && /^[a-zA-Z0-9 ._()-]{1,80}$/.test(step.name)
+          ? ` 실패 단계 ${plain(step.name)}.`
+          : '';
+      const reason = canceled
+        ? '현재 HEAD의 필수 CI가 취소되었습니다.'
+        : '현재 HEAD의 필수 CI가 통과하지 못했습니다.';
+      const locations = canceled
+        ? []
+        : ((await github.ciLocations?.(job).catch(() => [])) ?? []);
+      const evidence = locations.length
+        ? ` GitHub가 기록한 위치 ${locations.join(', ')}.`
+        : '';
       return {
         ok: false,
-        failed: true,
-        reason: `현재 HEAD의 필수 CI가 통과하지 못했습니다. CI가 이 커밋에서 통과하면 자동으로 이어집니다. ${run.html_url}`,
+        failed: !canceled,
+        status: canceled ? 'cancelled' : 'failure',
+        reason: `${reason}${stage}${evidence} CI가 이 커밋에서 통과하면 자동으로 이어집니다. ${job?.html_url ?? run.html_url}`,
       };
     }
     if (attempt + 1 < attempts) await sleep();
   }
   return {
     ok: false,
+    status: 'unconfirmed',
     reason:
       '현재 HEAD의 필수 CI 성공을 확인하지 못했습니다. PR에서 실행·승인 상태를 확인하세요. CI 통과 후 자동으로 이어집니다.',
   };
