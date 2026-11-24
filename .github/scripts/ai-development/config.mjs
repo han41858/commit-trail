@@ -1,4 +1,4 @@
-const formatCheck = 'npm run format:check';
+const formatCheck = './node_modules/.bin/prettier . --check';
 
 export const config = {
   base: 'dev',
@@ -7,6 +7,7 @@ export const config = {
   maxReviews: 3,
   maxUnpublishedRestarts: 1,
   maxBaseRefreshes: 2,
+  maxModelSessions: 26,
   models: {
     codex: process.env.AI_CODEX_MODEL || 'gpt-6.2-sol',
     claude: process.env.AI_CLAUDE_MODEL || 'claude-sonnet-5-5',
@@ -27,9 +28,9 @@ export const config = {
   docsOnlyChecks: [formatCheck],
   checks: [
     formatCheck,
-    'npm test',
+    './node_modules/.bin/tsx --test "src/**/*.test.ts"',
     'node --test --test-isolation=none .github/scripts/*.test.mjs',
-    'npm run build',
+    './node_modules/.bin/tsc -b && ./node_modules/.bin/vite build',
   ],
 };
 

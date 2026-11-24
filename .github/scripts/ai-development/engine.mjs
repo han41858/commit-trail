@@ -25,9 +25,10 @@ const retryableReviewFailures = new Set([
 ]);
 
 export class NeedsHuman extends Error {
-  constructor(message, detail) {
+  constructor(message, detail, reasonCode) {
     super(message);
     this.detail = detail;
+    this.reasonCode = reasonCode;
   }
 }
 
@@ -88,11 +89,14 @@ function commitMessage(plan, developer, operation) {
   };
 }
 
-async function confirmedMerge(github, state, base) {
-  const pr = await github.pull(state.pull);
+async function confirmedMerge(github, state, base, expected) {
+  const pr = expected
+    ? await github.pullAfterMerge(state.pull)
+    : await github.pull(state.pull);
   if (
     github.matchesPull(pr, state, base, { merged: true }) &&
-    fingerprint(pr) === state.pullFingerprint
+    fingerprint(pr) === state.pullFingerprint &&
+    (!expected || pr.merge_commit_sha === expected)
   )
     return pr.merge_commit_sha;
 }
@@ -134,6 +138,8 @@ async function finishMerge(github, state, base, save) {
     await save(
       'needs_human',
       `${message} Issue 종료를 확인하지 못했습니다. 같은 Issue를 수동 재개하면 종료를 다시 시도합니다.`,
+      undefined,
+      'issue_close_failed',
     );
     await notifyStop(github, state.issue, state);
     return;
@@ -145,6 +151,7 @@ export function pipelineExitCode(state) {
   if (state?.status === 'failed') return 1;
   if (
     state?.status === 'needs_human' &&
+    state.reasonCode !== 'manual_policy_merge' &&
     !state.waitingForDependencies &&
     (!state.awaitingCI || state.ciFailed)
   )
@@ -202,6 +209,26 @@ export async function wakeDependents(github, { number, sha }, base) {
   const closingIssues = await github.closingIssues(number, sha, base);
   const dependents = new Set();
   for (const issue of closingIssues) {
+    const record = await github.loadState(issue);
+    const state = record?.state;
+    if (
+      state?.manualPolicyMerge &&
+      state.issue === issue &&
+      state.pull === number &&
+      state.status !== 'merged' &&
+      (await confirmedMerge(github, state, base, sha))
+    ) {
+      state.mergeCommit = sha;
+      await finishMerge(
+        github,
+        state,
+        base,
+        async (status, reason, detail, reasonCode) => {
+          Object.assign(state, { status, reason, detail, reasonCode });
+          await github.saveState(issue, state, record.id);
+        },
+      );
+    }
     for (const dependency of await github.blocking(issue)) {
       if (dependency.local) dependents.add(dependency.number);
     }
@@ -256,6 +283,7 @@ export async function runPipeline({
   develop,
   review,
   checkCI,
+  recheckCI = checkCI,
   verifyConfiguration,
   config,
   issueNumber,
@@ -363,8 +391,15 @@ export async function runPipeline({
   const confirmationHelp =
     'Actions 실행과 작업 브랜치·PR을 확인한 뒤, 수동 재개의 confirmed_head에 현재 작업 브랜치의 전체 SHA를 입력하세요.';
 
-  async function save(status, reason, detail) {
-    Object.assign(state, { status, reason, detail, runId, attempt });
+  async function save(status, reason, detail, reasonCode) {
+    Object.assign(state, {
+      status,
+      reason,
+      detail,
+      reasonCode,
+      runId,
+      attempt,
+    });
     recordId = await github.saveState(issueNumber, state, recordId);
     const check = reviewCheck(state);
     if (
@@ -393,6 +428,8 @@ export async function runPipeline({
     if (currentIssue.state !== 'open' || currentLabels.includes('ai:stop'))
       throw new NeedsHuman(
         'Issue가 닫혔거나 ai:stop 라벨이 적용되었습니다. 재개하려면 Issue를 열고 중지 라벨을 제거하세요.',
+        undefined,
+        currentLabels.includes('ai:stop') ? 'stopped' : 'issue_closed',
       );
     if (fingerprint(currentIssue) !== state.issueFingerprint)
       throw new NeedsHuman(
@@ -400,16 +437,18 @@ export async function runPipeline({
       );
     if (currentIssue.pull_request)
       throw new NeedsHuman('자동 개발 대상 Issue를 확인할 수 없습니다.');
-    if (baseRecovery) {
-      const execution = currentLabels.filter((label) =>
-        executionLabels.has(label),
+    const execution = currentLabels.filter((label) =>
+      executionLabels.has(label),
+    );
+    if (
+      execution.length !== 1 ||
+      executionLabels.get(execution[0]) !== developer
+    )
+      throw new NeedsHuman(
+        'Issue의 실행 라벨이 제거되었거나 승인한 개발 역할이 변경되었습니다.',
+        undefined,
+        'approval_changed',
       );
-      if (
-        execution.length !== 1 ||
-        executionLabels.get(execution[0]) !== developer
-      )
-        throw new NeedsHuman('자동 재개 전에 Issue의 실행 라벨을 확인하세요.');
-    }
 
     const remote = await github.ref(branch);
     if (!remote && state.branchCreated)
@@ -455,7 +494,12 @@ export async function runPipeline({
 
     let pr;
     if (state.pull) {
-      pr = await github.pull(state.pull);
+      const previous =
+        state.previousPublishedHead ??
+        (recoveredCommit || refreshedBase ? state.head : undefined);
+      pr = previous
+        ? await github.pullAtHead(state.pull, previous)
+        : await github.pull(state.pull);
       if (
         !github.matchesPull(pr, { ...state, head: remote }, config.base, {
           allowReady: state.readied === true,
@@ -467,6 +511,7 @@ export async function runPipeline({
           'PR이 닫혔거나 제목·본문·초안·대상 브랜치·HEAD가 변경되었습니다. 기존 PR을 수동으로 확인하세요.',
         );
       }
+      delete state.previousPublishedHead;
     }
     if (refreshedBase) {
       applyRefresh({ head: remote, base: refreshedBase });
@@ -495,6 +540,8 @@ export async function runPipeline({
   }
 
   function applyRefresh({ head, base }) {
+    if (state.pull && head !== state.head)
+      state.previousPublishedHead = state.head;
     state.base = base;
     state.head = head;
     state.branchCreated = true;
@@ -502,6 +549,7 @@ export async function runPipeline({
     delete state.pendingRefresh;
     delete state.awaitingCI;
     delete state.ciFailed;
+    delete state.ciStatus;
     delete state.mergeAttempted;
     delete state.previewApprovedHead;
   }
@@ -603,6 +651,14 @@ export async function runPipeline({
   async function completeMerge(ci) {
     let { pr, issue: currentIssue } = await guard();
     await requirePreview(currentIssue);
+    if (await github.changesAutomationPolicy(state, pr)) {
+      state.manualPolicyMerge = true;
+      throw new NeedsHuman(
+        '이 PR은 자동화 또는 검증 정책을 변경합니다. PR의 정책 변경을 사람이 검토하고 머지하세요.',
+        undefined,
+        'manual_policy_merge',
+      );
+    }
     if (pr.mergeable === false)
       throw new NeedsHuman(
         '현재 PR에 머지 충돌이 있습니다. PR을 수동으로 확인하세요.',
@@ -644,6 +700,19 @@ export async function runPipeline({
     let sha;
     try {
       sha = await github.squashMerge(state, config.base, async () => {
+        await guard();
+        await requireMergedDependencies(github, issueNumber, config.base);
+        if (!hasPassingReview(state))
+          throw new NeedsHuman(
+            '머지 직전 현재 HEAD의 교차 리뷰 성공을 확인할 수 없습니다.',
+          );
+        const currentCI = await recheckCI(state, guard, { attempts: 1 });
+        if (!currentCI.ok) {
+          awaitingCI = true;
+          state.ciFailed = !!currentCI.failed;
+          state.ciStatus = currentCI.status;
+          throw new NeedsHuman(currentCI.reason);
+        }
         const { issue: liveIssue } = await guard();
         await requirePreview(liveIssue);
       });
@@ -656,6 +725,10 @@ export async function runPipeline({
         throw error;
       }
     }
+    if (!(await confirmedMerge(github, state, config.base, sha)))
+      throw new NeedsHuman(
+        '머지 응답은 받았지만 실제 PR의 대상·HEAD·머지 커밋을 확인하지 못했습니다. 수동 재개에서 머지 상태를 다시 확인합니다.',
+      );
     await recordMerge(sha);
   }
 
@@ -713,7 +786,14 @@ export async function runPipeline({
         ? '리뷰 지적을 수정하고 있습니다.'
         : 'Issue 요구사항을 구현하고 있습니다.',
     );
-    const plan = await develop({ developer, issue, state, feedback, guard });
+    const plan = await develop({
+      developer,
+      issue,
+      state,
+      feedback,
+      guard,
+      reserveModel,
+    });
     const { remote } = await guard();
     if (!plan.changes.length)
       throw new NeedsHuman(
@@ -736,6 +816,7 @@ export async function runPipeline({
       throw error;
     }
     try {
+      const previous = state.head;
       state.head = await github.commit(
         branch,
         state.head,
@@ -743,6 +824,7 @@ export async function runPipeline({
         commitMessage(plan, developer, state.pendingCommit),
         guard,
       );
+      if (state.pull) state.previousPublishedHead = previous;
     } catch (error) {
       if (error.writeRejected) delete state.pendingCommit;
       throw error;
@@ -753,11 +835,24 @@ export async function runPipeline({
     await ensurePull();
   }
 
+  async function reserveModel() {
+    // Older state comments had only the number of completed reviews.
+    const used = state.modelSessions ?? state.reviews.length;
+    if (used >= config.maxModelSessions)
+      throw new NeedsHuman(
+        '이 Issue의 전체 모델 호출 한도에 도달했습니다. 현재 PR과 상태 댓글을 확인하세요.',
+        undefined,
+        'model_budget_exhausted',
+      );
+    state.modelSessions = used + 1;
+    await save(state.status, state.reason);
+  }
+
   if (!existing)
     await save('queued', 'Issue와 작업 브랜치를 확인하고 있습니다.');
   try {
     if (state.status === 'merged') return state;
-    if (state.mergeAttempted) {
+    if (state.mergeAttempted || state.manualPolicyMerge) {
       const sha = await confirmedMerge(github, state, config.base);
       if (sha) {
         await recordMerge(sha);
@@ -790,6 +885,10 @@ export async function runPipeline({
         if (ci.ok) await completeMerge(ci);
         else if (ci.failed) {
           state.ciFailed = true;
+          state.ciStatus = ci.status;
+          await save('needs_human', ci.reason);
+        } else if (!ci.ok) {
+          state.ciStatus = ci.status;
           await save('needs_human', ci.reason);
         }
       } catch (error) {
@@ -877,11 +976,13 @@ export async function runPipeline({
               issue,
               state,
               guard: beforeReview,
+              reserveModel,
             });
           } catch (error) {
             if (
               error.requestRejected === true ||
-              error.outputLimitReached === true
+              error.outputLimitReached === true ||
+              error instanceof NeedsHuman
             )
               delete state.reviewInProgress;
             throw error;
@@ -907,6 +1008,7 @@ export async function runPipeline({
           if (!ci.ok) {
             awaitingCI = true;
             state.ciFailed = !!ci.failed;
+            state.ciStatus = ci.status;
             throw new NeedsHuman(ci.reason);
           }
           await completeMerge(ci);
@@ -956,6 +1058,13 @@ export async function runPipeline({
       needsHuman ? 'needs_human' : 'failed',
       error.message,
       needsHuman ? error.detail : undefined,
+      (awaitingCI && state.ciStatus) ||
+        error.reasonCode ||
+        (error instanceof DependencyWait
+          ? 'waiting_dependency'
+          : needsHuman
+            ? 'action_required'
+            : 'automation_error'),
     );
     await notifyStop(github, issueNumber, state);
     return state;
@@ -981,6 +1090,7 @@ export async function reconcile(github, run, base) {
     delete state.baseRecovery;
     Object.assign(state, {
       status: run.conclusion === 'cancelled' ? 'needs_human' : 'failed',
+      reasonCode: run.conclusion === 'cancelled' ? 'stopped' : 'interrupted',
       reason:
         '예약된 기준 브랜치 복구가 시작 상태를 기록하기 전에 중단되었습니다. Actions 로그를 확인한 뒤 수동 재개하세요.',
       runId: run.id,
@@ -1014,6 +1124,7 @@ export async function reconcile(github, run, base) {
   const stopped = {
     ...record.state,
     status: run.conclusion === 'cancelled' ? 'needs_human' : 'failed',
+    reasonCode: run.conclusion === 'cancelled' ? 'stopped' : 'interrupted',
     reason:
       '워크플로가 종료 상태를 기록하기 전에 중단되었습니다. Actions 로그와 현재 커밋을 확인한 뒤 수동 재개하세요.',
   };

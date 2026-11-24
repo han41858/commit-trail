@@ -249,6 +249,32 @@ export function createWorkspace({
         }
         if (name === 'read_file')
           return outputPage(read(input.path), input.line, 150);
+        if (name === 'search_text') {
+          if (
+            !input.query.trim() ||
+            input.query.length > 200 ||
+            /[\r\n\0]/.test(input.query)
+          )
+            return 'Use a nonempty single-line literal of at most 200 characters.';
+          try {
+            const matches = gitText(
+              'grep',
+              '-n',
+              '-I',
+              '-F',
+              '-m',
+              '12',
+              '-e',
+              input.query,
+              state.head,
+              '--',
+            );
+            return outputPage(matches, Math.max(0, input.offset) + 1, 40);
+          } catch (error) {
+            if (error.status === 1) return 'No matching lines.';
+            throw error;
+          }
+        }
         diff ??= gitText(
           'diff',
           '--no-ext-diff',

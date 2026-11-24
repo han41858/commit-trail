@@ -6,6 +6,7 @@ import {
   runPipeline,
   reconcile,
   pullMarker,
+  pipelineExitCode,
   wakeDependents,
 } from './ai-development/engine.mjs';
 import { createGitHub, waitForCI } from './ai-development/github.mjs';
@@ -177,6 +178,9 @@ function fixture({
       return structuredClone(data.pull);
     },
     pull: async () => structuredClone(data.pull),
+    pullAtHead: async () => structuredClone(data.pull),
+    pullAfterMerge: async () => structuredClone(data.pull),
+    changesAutomationPolicy: async () => false,
     matchesPull: (
       pr,
       state,
@@ -276,6 +280,10 @@ function fixture({
     async review({ reviewer, state }) {
       data.events.push({ reviewer, head: state.head });
       return results[state.reviews.length];
+    },
+    async recheckCI(state, guard) {
+      await guard();
+      return { ok: true };
     },
     async checkCI(state, guard) {
       await guard();
@@ -425,18 +433,13 @@ test('a developer blocker explains the stop on the Issue without starting review
   assert.doesNotMatch(body, /@example|<!-- model text -->/);
 });
 
-test('Claude revises the existing PR using Codex feedback; later labels do not replace the roles', async () => {
+test('Claude revises the existing PR using Codex feedback', async () => {
   const issue = changes();
-  const { data, run, options } = fixture({
+  const { data, run } = fixture({
     label: 'ai:develop:claude',
     results: [issue, pass],
   });
-  const state = await run({
-    async review(args) {
-      data.issue.labels = [{ name: 'ai:develop:codex' }];
-      return options.review(args);
-    },
-  });
+  const state = await run();
   assert.equal(state.status, 'merged');
   assert.equal(state.pull, 99);
   assert.equal(state.head, heads[1]);
@@ -596,7 +599,7 @@ test('a chain reserves only the dependent whose immediate predecessor merged', a
     closingIssues: async (pr) => (pr === 31 ? [12] : [13]),
     blocking: async (issue) => [{ number: issue + 1, local: true }],
     issue: (issue) => jobs.get(issue).github.issue(issue),
-    loadState: (issue) => jobs.get(issue).github.loadState(issue),
+    loadState: (issue) => jobs.get(issue)?.github.loadState(issue) ?? null,
     saveState: (issue, state, id) =>
       jobs.get(issue).github.saveState(issue, state, id),
     hasActiveDevelopment: async () => false,
@@ -804,6 +807,173 @@ test('dependency merge lookup trusts only a verified same-repo merge and dispatc
       inputs: { issue: '13', dependency_resume: 'reservation' },
     },
   });
+});
+
+test('approval removal or reassignment blocks publication and merge', async () => {
+  const withdrawn = fixture();
+  const first = await withdrawn.run({
+    async develop(args) {
+      withdrawn.data.issue.labels = [];
+      return withdrawn.options.develop(args);
+    },
+  });
+  assert.equal(first.reasonCode, 'approval_changed');
+  assert.equal(withdrawn.data.commits.length, 0);
+
+  const reassigned = fixture();
+  const second = await reassigned.run({
+    async review(args) {
+      reassigned.data.issue.labels = [{ name: 'ai:develop:claude' }];
+      return reassigned.options.review(args);
+    },
+  });
+  assert.equal(second.reasonCode, 'approval_changed');
+  assert.equal(reassigned.data.mergeRequests.length, 0);
+});
+
+test('an automation-policy PR reaches review but only a human can merge it', async () => {
+  const { data, github, run } = fixture();
+  github.changesAutomationPolicy = async () => true;
+  const state = await run();
+  assert.equal(state.status, 'needs_human');
+  assert.match(state.reason, /검증 정책을 변경/);
+  assert.equal(state.manualPolicyMerge, true);
+  assert.equal(pipelineExitCode(state), 0);
+  assert.equal(data.reviews.size, 1);
+  assert.deepEqual(data.mergeRequests, []);
+});
+
+test('manual policy merge follow-up confirms the exact revision and closes the Issue once', async () => {
+  const { data, github, run } = fixture();
+  github.changesAutomationPolicy = async () => true;
+  github.closingIssues = async () => [13];
+  github.blocking = async () => [];
+  const close = github.closeIssue;
+  let closes = 0;
+  github.closeIssue = async (...args) => {
+    closes++;
+    return close(...args);
+  };
+  await run();
+  Object.assign(data.pull, {
+    state: 'closed',
+    merged: true,
+    merge_commit_sha: mergeCommit,
+  });
+  const original = data.pull.head;
+  data.pull.head = heads[1];
+  await wakeDependents(github, { number: 99, sha: mergeCommit }, 'dev');
+  assert.equal(data.record.state.status, 'needs_human');
+  assert.equal(closes, 0);
+  data.pull.head = original;
+  await wakeDependents(github, { number: 99, sha: mergeCommit }, 'dev');
+  await wakeDependents(github, { number: 99, sha: mergeCommit }, 'dev');
+  assert.equal(data.record.state.status, 'merged');
+  assert.equal(data.record.state.mergeCommit, mergeCommit);
+  assert.equal(data.issue.state_reason, 'completed');
+  assert.equal(closes, 1);
+});
+
+test('the policy comparison includes tool versions, build settings and renamed policy files', async () => {
+  let files = [{ filename: 'package.json' }];
+  let newTest = 'tsx --test';
+  let devDependencies = { typescript: '5.9.0' };
+  let overrides = {};
+  const github = createTestGitHub({
+    repository: 'owner/repo',
+    token: 'mock',
+    async request(url) {
+      if (url.includes('/pulls/99/files')) return Response.json(files);
+      const sha = new URL(url).searchParams.get('ref');
+      const manifest = {
+        scripts: { test: sha === base ? 'tsx --test' : newTest },
+        devDependencies:
+          sha === base ? { typescript: '5.9.0' } : devDependencies,
+        overrides: sha === base ? {} : overrides,
+        description: sha === base ? 'Previous description' : 'New description',
+      };
+      return Response.json({
+        encoding: 'base64',
+        content: Buffer.from(JSON.stringify(manifest)).toString('base64'),
+      });
+    },
+  });
+  const state = { pull: 99, base, head: heads[0] };
+  const pr = { changed_files: 1 };
+  assert.equal(await github.changesAutomationPolicy(state, pr), false);
+  newTest = 'echo passed';
+  assert.equal(await github.changesAutomationPolicy(state, pr), true);
+  newTest = 'tsx --test';
+  devDependencies = { typescript: '6.0.0' };
+  assert.equal(await github.changesAutomationPolicy(state, pr), true);
+  devDependencies = { typescript: '5.9.0' };
+  overrides = { typescript: '6.0.0' };
+  assert.equal(await github.changesAutomationPolicy(state, pr), true);
+  for (const filename of [
+    'package-lock.json',
+    'tsconfig.build.json',
+    'vite.config.ts',
+  ]) {
+    files = [{ filename }];
+    assert.equal(await github.changesAutomationPolicy(state, pr), true);
+  }
+  files = [
+    { filename: 'docs/ci.yml', previous_filename: '.github/workflows/ci.yml' },
+  ];
+  assert.equal(await github.changesAutomationPolicy(state, pr), true);
+});
+
+test('merge confirmation keeps polling after two stale reads but has a finite cap', async () => {
+  let reads = 0;
+  let mergedAfter = 3;
+  const github = createTestGitHub({
+    repository: 'owner/repo',
+    token: 'mock',
+    sleep: async (ms) => assert.equal(ms, 2000),
+    async request() {
+      const merged = ++reads > mergedAfter;
+      return Response.json({ state: merged ? 'closed' : 'open', merged });
+    },
+  });
+  assert.equal((await github.pullAfterMerge(99)).merged, true);
+  assert.equal(reads, 4);
+  reads = 0;
+  mergedAfter = Infinity;
+  assert.equal((await github.pullAfterMerge(99)).merged, false);
+  assert.equal(reads, 6);
+});
+
+test('a failed last-minute CI recheck keeps the current HEAD waiting', async () => {
+  const { data, run } = fixture();
+  const state = await run({
+    recheckCI: async () => ({
+      ok: false,
+      failed: true,
+      status: 'failure',
+      reason: 'Build failed',
+    }),
+  });
+  assert.equal(state.awaitingCI, true);
+  assert.equal(state.ciFailed, true);
+  assert.equal(state.reasonCode, 'failure');
+  assert.deepEqual(data.mergeRequests, []);
+});
+
+test('model budget reservations survive failed runs and block additional calls', async () => {
+  const { data, run } = fixture();
+  let calls = 0;
+  const develop = async ({ reserveModel }) => {
+    await reserveModel();
+    calls++;
+    throw new Error('deliberate interruption');
+  };
+  const limits = { ...config, maxModelSessions: 1 };
+  assert.equal((await run({ config: limits, develop })).status, 'failed');
+  assert.equal(data.record.state.modelSessions, 1);
+  const resumed = await run({ config: limits, develop, resume: true });
+  assert.equal(resumed.reasonCode, 'model_budget_exhausted');
+  assert.equal(calls, 1);
+  assert.equal(data.commits.length, 0);
 });
 
 test('a preview-labeled Issue requires both a successful preview and a human confirmation for the current head', async () => {
@@ -1574,14 +1744,94 @@ test('provider requests use the configured turn, output and effort budget', asyn
   assert.equal(bodies[0].reasoning.effort, 'high');
   assert.equal(bodies[2].max_tokens, 1234);
   assert.match(bodies[0].instructions, /including this one: 2/);
-  assert.match(bodies[2].system, /including this one: 2/);
+  assert.equal(bodies[2].system, bodies[3].system);
+  assert.match(bodies[2].messages[0].content, /including this one: 2/);
   assert.match(bodies[1].instructions, /final structured result now/);
-  assert.match(bodies[3].system, /final structured result now/);
+  assert.match(
+    bodies[3].messages.at(-1).content.at(-1).text,
+    /final structured result now/,
+  );
   assert.deepEqual(
     bodies.map(({ tools }) => tools.length),
-    [3, 3, 3, 3],
+    [4, 4, 4, 4],
   );
   assert.equal(config.limits.turns >= 10, true);
+});
+
+test('an incomplete development plan continues in the same conversation before one format correction', async () => {
+  const plan = {
+    status: 'completed',
+    title: '🐛 계산: 빈 값 수정',
+    summary: '수정',
+    edits: [{ path: 'src/math.ts', before: 'old', after: 'new' }],
+  };
+  const plans = [
+    { ...plan, status: 'in_progress' },
+    { ...plan, title: 'invalid' },
+    plan,
+  ];
+  const requests = [];
+  const models = createModels({
+    keys: { codex: 'mock', claude: 'mock' },
+    modelNames: config.models,
+    limits: { ...config.limits, turns: 3 },
+    log() {},
+    async request(_, options) {
+      requests.push(JSON.parse(options.body));
+      return Response.json({
+        status: 'completed',
+        output: [
+          {
+            type: 'message',
+            role: 'assistant',
+            content: [
+              { type: 'output_text', text: JSON.stringify(plans.shift()) },
+            ],
+          },
+        ],
+      });
+    },
+  });
+  assert.deepEqual(
+    await models.run({
+      agent: 'codex',
+      mode: 'development',
+      instructions: 'Develop',
+      context: 'Issue',
+      inspect: () => '',
+    }),
+    plan,
+  );
+  assert.match(requests[1].input.at(-1).content, /No partial edits/);
+  assert.match(requests[2].input.at(-1).content, /제목/);
+  assert.equal(requests[2].tool_choice, 'none');
+});
+
+test('review format correction cannot change existing findings into an approval', async () => {
+  const invalid = changes();
+  invalid.findings[0].line = 0;
+  const results = [invalid, pass];
+  const models = createModels({
+    keys: { codex: 'mock', claude: 'mock' },
+    modelNames: config.models,
+    log() {},
+    async request() {
+      return Response.json({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: JSON.stringify(results.shift()) }],
+      });
+    },
+  });
+  await assert.rejects(
+    models.run({
+      agent: 'claude',
+      mode: 'review',
+      instructions: 'Review',
+      context: 'Issue',
+      inspect: () => '',
+    }),
+    /형식 교정에서 기존/,
+  );
 });
 
 test('CI requires the configured job to succeed on the specific PR HEAD', async () => {
@@ -2136,20 +2386,21 @@ test('Claude continuation preserves signed blocks and always sends a valid tool-
       });
     }
     assert.match(body.system, /^review/);
-    assert.deepEqual(body.messages.slice(1), [
-      { role: 'assistant', content: [signed, redacted, ...calls] },
+    assert.deepEqual(body.messages[1], {
+      role: 'assistant',
+      content: [signed, redacted, ...calls],
+    });
+    const result = body.messages[2];
+    assert.equal(result.role, 'user');
+    assert.deepEqual(result.content.slice(0, 2), [
+      { type: 'tool_result', tool_use_id: 'toolu_1', content: 'diff' },
       {
-        role: 'user',
-        content: [
-          { type: 'tool_result', tool_use_id: 'toolu_1', content: 'diff' },
-          {
-            type: 'tool_result',
-            tool_use_id: 'toolu_2',
-            content: 'No matching lines.',
-          },
-        ],
+        type: 'tool_result',
+        tool_use_id: 'toolu_2',
+        content: 'No matching lines.',
       },
     ]);
+    assert.equal(result.content[2].type, 'text');
     return Response.json({
       stop_reason: 'end_turn',
       content: [{ type: 'text', text: JSON.stringify(pass) }],
