@@ -6,6 +6,7 @@ import {
   runPipeline,
   reconcile,
   pullMarker,
+  pipelineExitCode,
   wakeDependents,
 } from './ai-development/engine.mjs';
 import { createGitHub, waitForCI } from './ai-development/github.mjs';
@@ -598,7 +599,7 @@ test('a chain reserves only the dependent whose immediate predecessor merged', a
     closingIssues: async (pr) => (pr === 31 ? [12] : [13]),
     blocking: async (issue) => [{ number: issue + 1, local: true }],
     issue: (issue) => jobs.get(issue).github.issue(issue),
-    loadState: (issue) => jobs.get(issue).github.loadState(issue),
+    loadState: (issue) => jobs.get(issue)?.github.loadState(issue) ?? null,
     saveState: (issue, state, id) =>
       jobs.get(issue).github.saveState(issue, state, id),
     hasActiveDevelopment: async () => false,
@@ -837,13 +838,47 @@ test('an automation-policy PR reaches review but only a human can merge it', asy
   assert.equal(state.status, 'needs_human');
   assert.match(state.reason, /검증 정책을 변경/);
   assert.equal(state.manualPolicyMerge, true);
+  assert.equal(pipelineExitCode(state), 0);
   assert.equal(data.reviews.size, 1);
   assert.deepEqual(data.mergeRequests, []);
 });
 
-test('the policy comparison covers renamed files and changes to package scripts without blocking dependency updates', async () => {
+test('manual policy merge follow-up confirms the exact revision and closes the Issue once', async () => {
+  const { data, github, run } = fixture();
+  github.changesAutomationPolicy = async () => true;
+  github.closingIssues = async () => [13];
+  github.blocking = async () => [];
+  const close = github.closeIssue;
+  let closes = 0;
+  github.closeIssue = async (...args) => {
+    closes++;
+    return close(...args);
+  };
+  await run();
+  Object.assign(data.pull, {
+    state: 'closed',
+    merged: true,
+    merge_commit_sha: mergeCommit,
+  });
+  const original = data.pull.head;
+  data.pull.head = heads[1];
+  await wakeDependents(github, { number: 99, sha: mergeCommit }, 'dev');
+  assert.equal(data.record.state.status, 'needs_human');
+  assert.equal(closes, 0);
+  data.pull.head = original;
+  await wakeDependents(github, { number: 99, sha: mergeCommit }, 'dev');
+  await wakeDependents(github, { number: 99, sha: mergeCommit }, 'dev');
+  assert.equal(data.record.state.status, 'merged');
+  assert.equal(data.record.state.mergeCommit, mergeCommit);
+  assert.equal(data.issue.state_reason, 'completed');
+  assert.equal(closes, 1);
+});
+
+test('the policy comparison includes tool versions, build settings and renamed policy files', async () => {
   let files = [{ filename: 'package.json' }];
   let newTest = 'tsx --test';
+  let devDependencies = { typescript: '5.9.0' };
+  let overrides = {};
   const github = createTestGitHub({
     repository: 'owner/repo',
     token: 'mock',
@@ -852,7 +887,10 @@ test('the policy comparison covers renamed files and changes to package scripts 
       const sha = new URL(url).searchParams.get('ref');
       const manifest = {
         scripts: { test: sha === base ? 'tsx --test' : newTest },
-        dependencies: sha === base ? {} : { react: '19.0.0' },
+        devDependencies:
+          sha === base ? { typescript: '5.9.0' } : devDependencies,
+        overrides: sha === base ? {} : overrides,
+        description: sha === base ? 'Previous description' : 'New description',
       };
       return Response.json({
         encoding: 'base64',
@@ -865,10 +903,44 @@ test('the policy comparison covers renamed files and changes to package scripts 
   assert.equal(await github.changesAutomationPolicy(state, pr), false);
   newTest = 'echo passed';
   assert.equal(await github.changesAutomationPolicy(state, pr), true);
+  newTest = 'tsx --test';
+  devDependencies = { typescript: '6.0.0' };
+  assert.equal(await github.changesAutomationPolicy(state, pr), true);
+  devDependencies = { typescript: '5.9.0' };
+  overrides = { typescript: '6.0.0' };
+  assert.equal(await github.changesAutomationPolicy(state, pr), true);
+  for (const filename of [
+    'package-lock.json',
+    'tsconfig.build.json',
+    'vite.config.ts',
+  ]) {
+    files = [{ filename }];
+    assert.equal(await github.changesAutomationPolicy(state, pr), true);
+  }
   files = [
     { filename: 'docs/ci.yml', previous_filename: '.github/workflows/ci.yml' },
   ];
   assert.equal(await github.changesAutomationPolicy(state, pr), true);
+});
+
+test('merge confirmation keeps polling after two stale reads but has a finite cap', async () => {
+  let reads = 0;
+  let mergedAfter = 3;
+  const github = createTestGitHub({
+    repository: 'owner/repo',
+    token: 'mock',
+    sleep: async (ms) => assert.equal(ms, 2000),
+    async request() {
+      const merged = ++reads > mergedAfter;
+      return Response.json({ state: merged ? 'closed' : 'open', merged });
+    },
+  });
+  assert.equal((await github.pullAfterMerge(99)).merged, true);
+  assert.equal(reads, 4);
+  reads = 0;
+  mergedAfter = Infinity;
+  assert.equal((await github.pullAfterMerge(99)).merged, false);
+  assert.equal(reads, 6);
 });
 
 test('a failed last-minute CI recheck keeps the current HEAD waiting', async () => {

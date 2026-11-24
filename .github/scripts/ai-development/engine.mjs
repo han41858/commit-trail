@@ -138,6 +138,8 @@ async function finishMerge(github, state, base, save) {
     await save(
       'needs_human',
       `${message} Issue 종료를 확인하지 못했습니다. 같은 Issue를 수동 재개하면 종료를 다시 시도합니다.`,
+      undefined,
+      'issue_close_failed',
     );
     await notifyStop(github, state.issue, state);
     return;
@@ -149,6 +151,7 @@ export function pipelineExitCode(state) {
   if (state?.status === 'failed') return 1;
   if (
     state?.status === 'needs_human' &&
+    state.reasonCode !== 'manual_policy_merge' &&
     !state.waitingForDependencies &&
     (!state.awaitingCI || state.ciFailed)
   )
@@ -206,6 +209,26 @@ export async function wakeDependents(github, { number, sha }, base) {
   const closingIssues = await github.closingIssues(number, sha, base);
   const dependents = new Set();
   for (const issue of closingIssues) {
+    const record = await github.loadState(issue);
+    const state = record?.state;
+    if (
+      state?.manualPolicyMerge &&
+      state.issue === issue &&
+      state.pull === number &&
+      state.status !== 'merged' &&
+      (await confirmedMerge(github, state, base, sha))
+    ) {
+      state.mergeCommit = sha;
+      await finishMerge(
+        github,
+        state,
+        base,
+        async (status, reason, detail, reasonCode) => {
+          Object.assign(state, { status, reason, detail, reasonCode });
+          await github.saveState(issue, state, record.id);
+        },
+      );
+    }
     for (const dependency of await github.blocking(issue)) {
       if (dependency.local) dependents.add(dependency.number);
     }
@@ -632,6 +655,8 @@ export async function runPipeline({
       state.manualPolicyMerge = true;
       throw new NeedsHuman(
         '이 PR은 자동화 또는 검증 정책을 변경합니다. PR의 정책 변경을 사람이 검토하고 머지하세요.',
+        undefined,
+        'manual_policy_merge',
       );
     }
     if (pr.mergeable === false)

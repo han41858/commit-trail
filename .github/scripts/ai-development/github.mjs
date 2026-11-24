@@ -1,4 +1,5 @@
 import { setTimeout as wait } from 'node:timers/promises';
+import { isDeepStrictEqual } from 'node:util';
 import { NeedsHuman, pullMarker, reviewMarker } from './engine.mjs';
 import { agents, config } from './config.mjs';
 import { verifyCredentialIsolation } from './credentials.mjs';
@@ -477,17 +478,17 @@ export function createGitHub({
       let pr = await api(`/pulls/${number}`);
       for (
         let retry = 0;
-        retry < 2 && pr.state === 'open' && !pr.merged;
+        retry < 5 && pr.state === 'open' && !pr.merged;
         retry++
       ) {
-        await sleep(1000);
+        await sleep(2000);
         pr = await api(`/pulls/${number}`);
       }
       return pr;
     },
     async changesAutomationPolicy(state, pr) {
       const policy =
-        /^(?:AGENTS\.md|\.npmrc|\.nvmrc|(?:\.github\/(?:workflows|rulesets|scripts)\/)(?!.*\.test\.mjs$).+|\.prettierignore|prettier\.config\.mjs|vercel\.json)$/;
+        /^(?:AGENTS\.md|\.npmrc|\.nvmrc|(?:\.github\/(?:workflows|rulesets|scripts)\/)(?!.*\.test\.mjs$).+|\.prettierignore|prettier\.config\.mjs|package-lock\.json|tsconfig[^/]*\.json|vite\.config\.[^/]+|vercel\.json)$/;
       let scanned = 0;
       let packageChanged = false;
       if (
@@ -517,18 +518,33 @@ export function createGitHub({
         }
       }
       if (!packageChanged) return false;
-      const scripts = async (sha) => {
+      const verificationSettings = async (sha) => {
         const file = await api(`/contents/package.json?ref=${sha}`);
         if (file.encoding !== 'base64')
           throw new NeedsHuman(
-            'package.json의 검증 명령을 확인할 수 없습니다.',
+            'package.json의 검증 명령과 의존성을 확인할 수 없습니다.',
           );
-        const { scripts } = JSON.parse(
-          Buffer.from(file.content, 'base64').toString('utf8'),
-        );
-        return JSON.stringify(Object.entries(scripts ?? {}).sort());
+        const {
+          scripts,
+          dependencies,
+          devDependencies,
+          optionalDependencies,
+          peerDependencies,
+          overrides,
+        } = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
+        return {
+          scripts,
+          dependencies,
+          devDependencies,
+          optionalDependencies,
+          peerDependencies,
+          overrides,
+        };
       };
-      return (await scripts(state.base)) !== (await scripts(state.head));
+      return !isDeepStrictEqual(
+        await verificationSettings(state.base),
+        await verificationSettings(state.head),
+      );
     },
     async canStart(actor) {
       const { permission } = await api(
