@@ -256,6 +256,7 @@ export const MonitorReorder = memo(function MonitorReorder({
               </svg>
             </button>
             <a
+              className="monitor-repository-name"
               href={`https://github.com/${entry.repository}`}
               target="_blank"
               rel="noopener noreferrer"
@@ -263,6 +264,7 @@ export const MonitorReorder = memo(function MonitorReorder({
             >
               {entry.repository}
             </a>
+            <span className="monitor-repository-spacer" aria-hidden="true" />
           </h2>
         ))}
       </div>

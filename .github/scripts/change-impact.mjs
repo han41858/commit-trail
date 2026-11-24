@@ -116,7 +116,12 @@ if (
   console.log(result.reason);
   if (vercel) {
     // Vercel Ignored Build Step: 0 cancels, 1 continues before install/build.
-    process.exitCode = result.docsOnly ? 0 : 1;
+    const branch = process.env.VERCEL_GIT_COMMIT_REF;
+    const requestedPreview =
+      process.env.VERCEL_ENV === 'preview' &&
+      branch &&
+      !['main', 'dev'].includes(branch);
+    process.exitCode = result.docsOnly && !requestedPreview ? 0 : 1;
   } else if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, `docs_only=${result.docsOnly}\n`);
   }

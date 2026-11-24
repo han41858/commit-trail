@@ -19,10 +19,10 @@ npm run dev
 `npm run build`는 TypeScript 검사와 Vite 빌드를 실행하며, `npm run preview -- --port 4173`으로 빌드 결과를 로컬에서 확인한다.
 
 ```sh
-npm run format:check
-npm test
+./node_modules/.bin/prettier . --check
+./node_modules/.bin/tsx --test "src/**/*.test.ts"
 node --test --test-isolation=none .github/scripts/*.test.mjs
-npm run build
+./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build
 npm run preview -- --port 4173
 ```
 
@@ -187,17 +187,37 @@ GitHub API 한도에 좌우된다.
 ### Git 연동
 
 Vercel 프로젝트 `commit-trail`을 `han41858/commit-trail`과 연결하고 Production Branch는 **main**, GitHub 기본
-브랜치는 **dev**로 유지한다. `vercel.json`의 `git.deploymentEnabled: true`는 Git 자동 배포를 활성화한다.
+브랜치는 **dev**로 유지한다. `vercel.json`의 `git.deploymentEnabled`는 `main`과 `dev`만 Git 자동 배포 대상으로 둔다.
 Vercel Preview도 켜 둔다(`previewDeploymentsDisabled: false`). `gitProviderOptions.createDeployments`는
 GitHub 배포 기록을 제어하며 Vercel 빌드 스위치와는 다르다.
 
-기능·수정·문서·설정 작업은 최신 `dev`에서 분기하고 `dev` 대상 PR로 먼저 반영한다. `feature/*`, 기존 `feat/*`
-및 `dev`는 Preview 대상이며 `main`에 승격 PR을 머지하면 Production 빌드를 시작한다. 확인된 빌드 비대상
-문서만 변경한 경우에는 아래의 문서 전용 규칙으로 빌드를 취소한다.
+기능·수정·문서·설정 작업은 최신 `dev`에서 분기하고 `dev` 대상 PR로 먼저 반영한다. `dev`는 통합 Preview,
+`main`은 Production을 배포한다. 확인된 빌드 비대상 문서만 변경한 경우에는 아래 규칙으로 자동 빌드를 취소한다.
 
-GitHub Actions는 검증을, Vercel Git Integration은 배포를 담당한다. Preview는 CI와 병렬로 빌드할 수 있다.
+자동 배포는 Vercel Git Integration이 처리한다. 요청형 PR 프리뷰는 필수 CI를 통과한 뒤 배포한다.
 `main` PR의 필수 검사는 머지를 제어할 뿐, 머지 후 검사까지 Production 도메인 반영을 보류하려면 별도의
 Vercel Deployment Checks가 필요하다.
+
+### 요청형 PR 프리뷰
+
+화면 배치, 그래프 렌더링, PWA처럼 머지 전에 실제 브라우저에서 확인할 변경은 Issue에 `preview` 라벨을 붙인다.
+AI 작업은 실행 라벨보다 먼저 붙인다. PR은 GitHub가 닫힐 이슈로 인식하는 방식으로 연결한다(예: `Closes #123`).
+문서·CI·자동화 변경은 기본적으로 라벨 없이 검증한다.
+
+**Vercel Preview**는 같은 저장소에서 `dev`를 대상으로 열려 있는 PR의 **Test and build**가 통과하면, 연결된 열린
+Issue의 라벨과 현재 HEAD를 확인하고 해당 SHA만 프리뷰로 요청한다. 같은 PR·SHA의 기존 배포를 재사용한다.
+라벨을 CI 이후에 붙였거나 프리뷰 상태 확인을 다시 하려면, Actions에서 **Vercel Preview → Run workflow**의
+`dev`와 PR 번호를 선택한다. 요청 결과가 불확실하면 워크플로가 Vercel에서 같은 프로젝트·SHA의 예약을 찾는다.
+배포가 없거나 기존 빌드가 실패한 경우 Vercel에서 확인한 뒤 수동 실행의 `retry`를 선택한다. 이미 배포를 만들었다면
+같은 SHA의 배포 ID를 `deployment`에 입력한다. 완료된 프리뷰는 PR 댓글과 검사에서 확인할 수 있다.
+
+PR의 **Vercel Preview** 검사에서 **Details**를 열어 확인한다. AI PR은 성공한 프리뷰를 확인한 사람이 Actions의
+**AI development → Run workflow**에서 `dev`, Issue 번호, `preview_approved_head`에 확인한 전체 SHA를 입력해
+자동 머지를 재개한다. 커밋이 바뀌면 프리뷰와 확인을 다시 거친다.
+
+활성화 전에 GitHub의 `vercel-preview` Environment를 만들고 배포 허용 브랜치를 `dev`로 제한한다. 이
+Environment에 `VERCEL_TOKEN` Secret과 `VERCEL_TEAM_ID`, `VERCEL_PROJECT_ID` 변수를 설정한다. 토큰은 해당
+프로젝트의 Preview용 Vercel API 요청에 쓰며 후보 PR 코드는 토큰을 가진 GitHub 작업에서 실행하지 않는다.
 
 ### CI 이벤트 처리
 
@@ -218,6 +238,12 @@ push 검증을 유지한다. 저장소의 JSON을 변경해도 GitHub에서 활�
 
 ### AI 개발과 교차 리뷰
 
+실행 라벨은 작업과 `dev` 자동 머지를 승인하며, 라벨 해제나 개발 역할 변경 시
+개발·게시·자동 머지를 중단한다. 자동화나 검증 정책을 바꾸는 PR은 Draft 게시와 교차 리뷰까지 수행하고, 필수 CI가
+통과한 뒤 담당자가 정책 변경을 검토해 직접 머지한다.
+이 상태는 `manual_policy_merge` 사유를 기록하고 실행을 정상 종료한다. 머지 후 기존 후속 워크플로가 PR과
+Issue 종료를 확인해 상태를 갱신한다. 후속 처리가 누락되면 기존 Issue 번호로 수동 재개해 종료만 확인할 수 있다.
+
 저장소 쓰기 권한자가 열린 Issue에 실행 라벨 하나를 추가하면 기본 브랜치 `dev`에서 `AI development`가 GitHub
 호스팅 Ubuntu 러너로 실행한다. 필요한 라벨은 저장소에 미리 만든다. 실행 라벨이 여러 개면 시작하지 않는다.
 
@@ -227,7 +253,7 @@ push 검증을 유지한다. 저장소의 JSON을 변경해도 GitHub에서 활�
 한 PR로 끝낼 변경과 완료·검증 조건을 Issue에 적는다. 첫 실행은 역할과 Issue·`dev`의 기준 상태를 기록한다.
 컨트롤러는 개발 모델의 편집을 검증한 뒤 `ai/issue-<number>-<developer>`에 커밋하고 `dev` 대상 Draft PR 하나를
 연다. 리뷰 모델은 Git 스냅샷과 전체 diff를 읽고, 컨트롤러는 구조화한 지적 사항을 PR 댓글로 남긴다. 수정 요청은
-원래 개발 모델에 돌려보내며 통과하지 못한 채 리뷰 한도 3회에 도달하거나, 같은 결함이 반복되거나, 모델이 사람의
+원래 개발 모델에 돌려보내며 같은 기준 커밋의 리뷰 한도 3회에 도달하거나, 같은 결함이 반복되거나, 모델이 사람의
 판단을 요청하면 멈춘다. 댓글만 요청하면 리뷰할 Draft PR이 없으므로 상태 댓글의 사유를 확인하고 구체적인 편집을
 새 Issue에 적는다.
 
@@ -237,9 +263,22 @@ PR의 **AI review** 검사는 현재 커밋의 교차 리뷰 상태를 **Test an
 
 리뷰가 통과하면 현재 PR HEAD의 **Test and build**를 확인한다. CI가 없거나 승인 대기 또는 실패 상태라면
 `needs_human`으로 멈춘다. 저장소 정책에 따라 **Approve workflows to run**을 눌러야 할 수 있다. 같은 SHA의
-교차 리뷰와 CI가 모두 통과하면 Draft를 해제하고 그 SHA로 `dev`에 스쿼시 머지를 요청한다. GitHub가 기존 브랜치
-규칙을 적용하며, 성공하면 Issue에 `merged`와 머지 커밋을 기록하고 연결된 Issue가 닫힌다. 충돌·PR 또는 HEAD
-변경·머지 거부는 사람의 확인이 필요하다. `main` 승격은 AI 스쿼시 머지와 별도의 수동 절차다.
+교차 리뷰와 CI가 모두 통과하면 Draft를 해제한다. 머지 직전에 현재 HEAD의 승인·의존성·CI·교차 리뷰를 다시
+확인하고 그 SHA로 `dev`에 스쿼시 머지를 요청한다. PR과 머지 커밋, Issue의 `completed` 종료를 확인하면
+Issue에 `merged`를 기록한다. 필수 CI 실패 시 실패 단계와 실행 링크를 기록한다. 충돌·PR 또는 HEAD 변경·머지
+거부는 사람이 확인한다. `main` 승격은 기존 수동 절차를 따른다.
+
+실행 상태 댓글은 `version`, `status`, `reasonCode`, `head`, `pull`, 모델 예약 및 복구 횟수를 기록한다.
+기존 상태는 다음 대응 관계로 해석한다.
+
+| 표시 또는 기록                                             | 의미                                                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| `queued`, `developing`, `reviewing`, `revising`, `merging` | 대기 중이거나 해당 단계 진행 중                                       |
+| `needs_human` + `waitingForDependencies`                   | 선행 PR 확인 대기                                                     |
+| `needs_human` + `awaitingCI`                               | 현재 HEAD의 CI 대기. `ciStatus`에서 실패·취소·승인 필요·미확인을 구분 |
+| `recovering_base`, `awaiting_preview`                      | 기준 갱신 복구 중이거나 사람이 프리뷰를 확인하는 중                   |
+| `reasonCode: stopped`, `needs_human`, `failed`             | 명시적으로 중단, 사람 조치 필요, 자동화 오류                          |
+| `mergeCommit` + `needs_human`, 또는 `merged`               | 각각 머지 확인 후 Issue 종료 대기, 머지와 Issue 종료 완료             |
 
 #### 공유 큐와 한 Issue의 CI 후속 처리
 
@@ -264,10 +303,21 @@ GitHub Issue의 **Blocked by**에 선행 Issue를 지정할 수 있다. 컨트�
 예약 결과가 불명확하거나 선행 관계를 확인하지 못하면 이슈 상태와 Actions 실행을 확인하고 필요할 때 수동으로 재개한다.
 이 기능을 도입하기 전에 멈춘 Issue는 기존 번호로 수동 재개해 대기 상태를 한 번 갱신한다.
 
-`AI development CI follow-up`은 `ai/issue-*` 브랜치에서 완료된 `CI`를 받는다. 성공한 같은 저장소의 PR 실행과
-정확한 `ai/issue-<number>-(codex|claude)` 이름을 확인한 뒤, 이미 리뷰를 통과해 CI를 기다리는 **같은 Issue의 같은
-HEAD**만 자동으로 이어서 처리한다. CI를 기다리는 사이 다른 머지 등으로 `dev`가 바뀌면 `needs_human`으로
-멈춘다. 후속 작업에는 모델 접근 권한이 없어 새 HEAD의 브랜치 갱신이나 리뷰를 대신하지 않는다.
+`AI development CI follow-up`은 `ai/issue-*` 브랜치에서 성공 또는 실패로 완료된 같은 저장소의 PR CI를 받는다.
+이미 리뷰를 통과해 CI를 기다리는 **같은 Issue의 같은 HEAD**만 이어서 처리한다. 다른 머지로 `dev`가 바뀌었다면
+후속 작업은 Issue에 `recovering_base` 상태를 기록하고 기존 개발 워크플로에 복구를 한 번 예약한다. 이전 CI 실행의
+성공·실패 기록은 그대로 남으며 현재 진행 상태는 Issue의 상태 댓글에서 확인한다.
+예약된 실행이 시작 상태를 남기기 전에 실패하거나 취소되면 정리 워크플로가 예약을 해제하고 중단 댓글을 남긴다.
+
+#### 기준 브랜치 변경 자동 복구
+
+- 게시 전이면 기존 수정안을 버리고 최신 `dev`의 지침과 코드로 개발·검증을 다시 시작한다. Issue당 1회 가능하다.
+- 작업 브랜치를 게시했다면 Issue당 최대 2회 갱신한다. 빈 브랜치는 fast-forward하고, 커밋만 게시된 경우에는
+  Draft PR을 만든 뒤 기존 GitHub update-branch API로 갱신한다. 새 HEAD는 자체 교차 리뷰와 필수 CI를 모두
+  통과해야 한다. 기준 갱신으로 바뀐 HEAD의 리뷰는 새 기준에서 최대 3회까지 진행한다.
+- 자동 복구 전에 의존성, Issue 내용과 중단 라벨, PR과 브랜치 HEAD를 확인하고 횟수와 작업 예약을 Issue 상태에
+  먼저 기록한다. GitHub가 기준 병합을 거부한 충돌, 기준 이력 재작성, 수동 변경, 불확실한 게시·리뷰 결과는
+  사람이 확인한다. 개발 모델의 정확한 편집 적용·격리 검증 재시도는 기존 절차를 따른다.
 
 `AI development cleanup`은 `dev`에서 완료된 `AI development`의 중단 상태를 정리한다. 성공·스킵한 실행에는
 정리 러너를 할당하지 않는다. 일반 PR과 `dev`·`main` push CI는 AI CI 후속 워크플로를 시작하지 않는다.
@@ -318,6 +368,11 @@ Environment에는 브랜치 제한이 필요하지 않다. 검사는 개인 소�
 무응답으로 결과를 알 수 없는 스트림은 자동으로 다시 요청하지 않는다. 공급자가 토큰 사용량을 반환하면 Actions
 로그에 기록한다. 모델 요청의 소요 시간도 함께 기록한다.
 
+Issue당 개발·리뷰 모델 세션은 합계 26개까지 예약할 수 있다. 예약은 호출 전에 상태 댓글에 저장되며 수동 재개와
+기준 갱신 이후에도 누적된다. 이전 상태 댓글에 세션 수가 없으면 확인 가능한 완료 리뷰 수부터 계산한다. 마지막 호출
+기회를 남겨 형식 교정을 최대 한 번 시도한다. 개발의 `in_progress` 결과는 같은 대화에서 이어가며, 완료된 수정안만
+격리 검사에 넘긴다. 리뷰 형식 교정은 기존 지적이나 중단 결정을 승인으로 바꿀 수 없다.
+
 컨트롤러는 수정된 `package.json`과 `package-lock.json`에서 Docker로 `npm ci --ignore-scripts --no-audit --no-fund`를
 실행해 의존성을 설치하고, 두 파일의 내용으로 이미지를 캐시한다. 잠금 파일 불일치나 설치 실패는 수정 시도에
 검증 결과로 돌려준다. 그다음 자격 증명과 네트워크가 없는 별도 컨테이너에서 격리 검사를 실행한다.
@@ -328,6 +383,8 @@ AI 워크플로는 일반 CI의 npm 다운로드 캐시를 복원해 의존성 �
 격리 컨테이너에서는 변경한 파일만 Prettier로 포맷한 뒤 선택된 검사를 실행한다.
 무시 설정과 삭제한 파일은 그대로 처리하며, 검사에 사용한 포맷 결과를 커밋한다.
 Actions 로그에서 의존성 준비 시간과 같은 실행 내 캐시 적중 여부, 각 검사에 걸린 시간을 확인한다.
+격리 검사는 신뢰된 기준의 고정 명령으로 실행한다. `package.json`의 스크립트·의존성·오버라이드,
+`package-lock.json`, TypeScript·Vite 설정이 바뀌면 실행 도구나 검사 범위도 달라질 수 있어 사람이 머지를 결정한다.
 
 ```sh
 npm run format:check
@@ -345,17 +402,32 @@ Issue에 `ai:stop`을 붙이면 컨트롤러가 다음 상태 점검에서 멈�
 
 1. 중단 댓글, 상태 댓글의 상세 사유, 필요한 경우 PR 지적 사항과 Actions 로그를 확인한다. 권한·격리 설정·CI 승인
    등 보고된 원인을 먼저 해결한다. 컨트롤러 수정이 필요하면 그 변경을 먼저 `dev`에 반영한다.
-2. Issue가 닫혔다면 다시 열고 `ai:stop`을 제거한다. **Actions → AI development → Run workflow**에서 **dev**를
-   선택하고 기존 Issue 번호를 입력한다. 실행 라벨을 다시 붙이는 것만으로는 재개하지 않는다.
+2. Issue가 닫혔다면 다시 열고 `ai:stop`을 제거한다. 처음 승인한 개발 역할과 일치하는 실행 라벨 하나를 확인한다.
+   **Actions → AI development → Run workflow**에서 **dev**와 기존 Issue 번호를 입력한다. 실행 라벨만 붙이는
+   동작은 이후 수동 재개를 대신하지 않는다.
 3. 자동화는 원래 역할과 작업 브랜치·PR을 재사용하며 Issue 제목·본문 및 PR·HEAD의 동시 변경이나 닫힌 PR을
-   확인한다. 요청 자체를 바꾸려면 새 Issue를 사용한다. 기존 PR에 새 `dev`가 필요하면 GitHub의 update-branch
-   API로 반영하고 새 HEAD의 리뷰와 CI를 다시 거친다. 새 리뷰도 총 3회 한도에 포함하며 충돌은 사람이 확인한다.
+   확인한다. 요청 자체를 바꾸려면 새 Issue를 사용한다. 기준 변경 복구 한도는 같은 Issue를 재개해도 유지된다.
+4. 커밋·브랜치 갱신·PR 게시 결과를 확인하라는 안내가 나오면 이전 실행이 종료됐는지 먼저 확인한다. GitHub에서
+   작업 브랜치의 현재 커밋과 PR을 대조한 뒤, 수동 재개의 `confirmed_head`에 확인한 작업 브랜치의 전체 SHA를
+   입력한다. 현재 SHA가 달라졌거나 기록한 작업으로 설명할 수 없는 변경이 있으면 자동화가 멈춘다.
 
 탐색 한도나 결과 형식 검증으로 중단된 리뷰는 같은 이슈 번호로 수동 재개한다. API 응답을 확인할 수 없어
 직접 PR 검토를 요청하는 안내가 나오면 사람이 검토한다. 실제 호출 결과를 알 수 없는 리뷰는 자동으로 다시
 요청하지 않는다. 모델 API 오류는 상태 댓글에서 단계·회차·오류 분류를 확인한다.
 편집 원문이 없거나 여러 곳에 일치하면 파일과 편집 번호를 알려 개발 모델이 한 번 다시 시도한다.
 두 시도 모두 편집 적용이나 격리 검증에 실패하면 상태 댓글에 각 시도의 실패 단계를 기록한다.
+
+#### AI 자동화 변경 검토
+
+영향받는 경로의 구현·설정과 테스트를 함께 확인한다.
+
+- 실행 라벨, Issue 본문, 중단 요청, 선행 작업과 PR·브랜치의 기준 및 HEAD를 모델 호출·게시·머지 전에 확인하는가.
+- 재실행 후에도 모델·복구 한도와 실행 상태가 유지되며, 중복 이벤트나 게시 응답 유실로 작업을 반복하지 않는가.
+- 개발과 리뷰 역할이 분리되고, 미완성 수정안이나 확인되지 않은 리뷰를 게시·승인에 사용하지 않는가. 후보 검증과
+  자격 증명 사용 경계가 분리되고, 자동화·검증 정책 변경은 사람이 머지를 결정하는가.
+- 현재 HEAD의 독립 리뷰·필수 CI·해당하는 프리뷰 승인과 브랜치 보호를 유지하는가. 머지와 Issue 종료를 각각 확인하고,
+  오류나 사람 확인 요청이 생기면 상태 댓글·PR 검사에서 확인할 수 있는가.
+- 관련 회귀 테스트를 실행했는가. 모의 테스트, 실제 격리 검사, 운영 환경에서 확인한 범위와 미확인 사항을 구분했는가.
 
 ### 문서 전용 변경 판정
 
@@ -392,8 +464,8 @@ Vercel 대시보드와 Git 배포에서 검증하며, 이 규칙은 CLI 배포 �
    브랜치를 `dev`로 합치지 않고 별도 릴리즈 브랜치로 우회하지 않는다. [AGENTS.md](../AGENTS.md)의 프로젝트
    전용 브랜치 규칙을 따른다.
 
-일반 배포 경로는 Git 연동이다. 수동 CLI 배포는 명시적인 예외이며 같은 SHA로 중복 배포하거나 커밋하지 않은
-파일이 포함될 수 있다. CI에는 Vercel CLI 배포 단계나 Vercel 자격 증명을 추가하지 않는다.
+Production은 Git 연동으로 배포한다. 수동 CLI 배포는 명시적인 예외이며 같은 SHA로 중복 배포하거나 커밋하지 않은
+파일이 포함될 수 있다. PR 프리뷰의 Vercel 자격 증명은 전용 워크플로에서만 사용한다.
 
 ### Production 릴리즈 발행과 정리
 

@@ -39,23 +39,21 @@ test('side paths and their merge connectors keep one color until joining the bas
   assert.notEqual(colors.paths.nodes.get('root'), path);
 });
 
-test('pagination with the same named paths keeps their colors and fills parent reservations', () => {
+test('pagination fills parent reservations and colors the expanded paths deterministically', () => {
   const first = [c('m', 'base'), c('f', 'unloaded')];
   const before = graphColors(first, refs, 'main');
   const next = [...first, c('base'), c('unloaded', 'older'), c('older')];
-  const after = graphColors([...next].reverse(), [...refs].reverse(), 'main');
+  const after = graphColors(next, refs, 'main');
+  const fresh = graphColors([...next].reverse(), [...refs].reverse(), 'main');
 
   assert.equal(before.nodes.get('unloaded'), before.nodes.get('f'));
   for (const sha of ['f', 'unloaded', 'older']) {
-    assert.equal(after.nodes.get(sha), before.nodes.get('f'));
+    assert.equal(after.nodes.get(sha), after.branches.get('feature'));
     assert.equal(after.paths.nodes.get(sha), after.paths.nodes.get('f'));
   }
-  for (const branch of refs) {
-    assert.equal(
-      after.branches.get(branch.name),
-      before.branches.get(branch.name),
-    );
-  }
+  assert.equal(after.branches.get('main'), 0);
+  for (const kind of ['nodes', 'edges', 'branches'] as const)
+    assert.deepEqual(after[kind], fresh[kind]);
 });
 
 test('a late reference inside anonymous merged history is an alias of that path', () => {
@@ -85,33 +83,66 @@ test('a late reference inside anonymous merged history is an alias of that path'
   assert.equal(after.edges.get('m:f'), before.edges.get('m:f'));
 });
 
-test('a named path retains its color as its head advances with the same neighbors', () => {
+test('path colors survive tip extensions and ref changes with the same neighbors', () => {
   const first = [
     c('m', 'root'),
     c('f', 'older'),
     c('older', 'root'),
     c('root'),
   ];
-  const before = graphColors(first, refs, 'main');
-  const after = graphColors(
-    [c('feature-next', 'f'), ...first],
-    [ref('feature', 'feature-next'), ref('main', 'm')],
-    'main',
-  );
+  const next = [c('feature-next', 'f'), ...first];
+  const base = ref('main', 'm');
+  const feature = ref('feature', 'f');
+  const cases = [
+    { name: 'anonymous extension', commits: next, from: [], to: [] },
+    {
+      name: 'same branch advances',
+      commits: next,
+      from: [feature],
+      to: [ref('feature', 'feature-next')],
+    },
+    {
+      name: 'new branch at the extended tip',
+      commits: next,
+      from: [feature],
+      to: [feature, ref('new-feature', 'feature-next')],
+    },
+    {
+      name: 'intermediate ref',
+      commits: first,
+      from: [feature],
+      to: [feature, ref('middle-ref', 'older')],
+    },
+    {
+      name: 'alias at the same tip',
+      commits: first,
+      from: [feature],
+      to: [feature, ref('aaa-feature', 'f')],
+    },
+  ];
 
-  assert.equal(after.branches.get('feature'), before.branches.get('feature'));
-  for (const sha of ['feature-next', 'f', 'older']) {
-    assert.equal(after.nodes.get(sha), before.branches.get('feature'));
-    assert.equal(
-      after.paths.nodes.get(sha),
-      after.paths.nodes.get('feature-next'),
-    );
+  for (const { name, commits, from, to } of cases) {
+    const before = graphColors(first, [base, ...from], 'main');
+    const after = graphColors(commits, [base, ...to], 'main');
+    for (const kind of ['nodes', 'edges'] as const)
+      for (const [id, color] of before[kind])
+        assert.equal(after[kind].get(id), color, `${name}: ${kind} ${id}`);
+
+    const tip = commits === next ? 'feature-next' : 'f';
+    const color = before.nodes.get('f');
+    const owner = after.paths.nodes.get(tip);
+    for (const sha of [tip, 'f', 'older']) {
+      assert.equal(after.nodes.get(sha), color, name);
+      assert.equal(after.paths.nodes.get(sha), owner, name);
+    }
+    if (commits === next)
+      assert.equal(after.edges.get('feature-next:f'), color);
+    for (const { name: label } of to) {
+      assert.equal(after.branches.get(label), color, name);
+      assert.equal(after.paths.branches.get(label), owner, name);
+    }
+    assert.equal(after.branches.get('main'), 0, name);
   }
-  assert.equal(
-    after.edges.get('feature-next:f'),
-    before.branches.get('feature'),
-  );
-  assert.equal(after.nodes.get('root'), before.nodes.get('root'));
 });
 
 test('each base selection is deterministic and returning to a base restores its allocation', () => {
@@ -142,33 +173,44 @@ test('each base selection is deterministic and returning to a base restores its 
 
 test('a newly adjacent colliding path may recolor an existing path deterministically', () => {
   const seen = new Map<number, string>();
-  let names: [string, string] | undefined;
-  for (let index = 0; index < GRAPH_COLOR_COUNT * 4 && !names; index++) {
-    const name = `topic-${index}`;
+  let shas: [string, string] | undefined;
+  for (let index = 0; index < GRAPH_COLOR_COUNT * 4 && !shas; index++) {
+    const sha = `side-${index}`;
     const colors = graphColors(
-      [c('m', 'root', 'probe'), c('probe', 'root'), c('root')],
-      [ref('main', 'm'), ref(name, 'probe')],
+      [c('m', 'root', sha), c(sha, 'root'), c('root')],
+      [ref('main', 'm'), ref('probe', sha)],
       'main',
     );
-    const color = colors.branches.get(name)!;
+    const color = colors.nodes.get(sha)!;
     const existing = seen.get(color);
-    if (existing) names = [existing, name];
-    else seen.set(color, name);
+    if (existing) shas = [existing, sha];
+    else seen.set(color, sha);
   }
 
-  assert.ok(names);
-  const [existingName, incomingName] = names;
-  const first = [c('m', 'root', 'z-side'), c('z-side', 'root'), c('root')];
+  assert.ok(shas);
+  // The incoming path sorts first and gets the shared preferred color.
+  const [incomingSha, existingSha] = shas.sort();
+  const existingName = 'existing';
+  const incomingName = 'incoming';
+  const first = [
+    c('m', 'root', existingSha),
+    c(existingSha, 'root'),
+    c('root'),
+  ];
   const before = graphColors(
     first,
-    [ref('main', 'm'), ref(existingName, 'z-side')],
+    [ref('main', 'm'), ref(existingName, existingSha)],
     'main',
   );
-  const next = [c('main-next', 'm', 'a-side'), c('a-side', 'root'), ...first];
+  const next = [
+    c('main-next', 'm', incomingSha),
+    c(incomingSha, 'root'),
+    ...first,
+  ];
   const branches = [
     ref('main', 'main-next'),
-    ref(existingName, 'z-side'),
-    ref(incomingName, 'a-side'),
+    ref(existingName, existingSha),
+    ref(incomingName, incomingSha),
   ];
   const after = graphColors(next, branches, 'main');
   const fresh = graphColors(

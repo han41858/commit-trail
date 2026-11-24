@@ -6,6 +6,7 @@ import { createWorkspace, EditConflict, resolveEdits } from './workspace.mjs';
 import {
   NeedsHuman,
   executionLabels,
+  pipelineExitCode,
   reconcile,
   runPipeline,
   wakeDependents,
@@ -24,18 +25,21 @@ Trusted repository instructions:
 const development = `
 You are the developer. Only propose edits for the provided Issue and the actionable review feedback.
 The controller applies edits and runs the configured project checks in a separate environment.
+For UI changes, read the existing UI tests and update them if the behavior changes.
 Use before and after strings for exact unique replacements, null before for a new file, and null
 after with the full original text to delete a file. Read actual source with tools before editing.
 Regular text files throughout the repository may be changed, including workflows, automation scripts,
 dependency configuration and AGENTS.md. Keep edits within the Issue's scope. Do not edit Git internals,
 node_modules, or .env secret files; .env.example may be edited.
 Title format is GitMoji plus Korean, following AGENTS.md. Summarize what changed, or the specific
-blocker if you return needs_human. Do not claim test outcomes you have not been given.`;
+blocker if you return needs_human. Return in_progress only if you need to continue the same edit plan before completion. Do not claim test outcomes you have not been given.`;
 
 const reviewInstructions = `
 You are an independent read-only reviewer. Always inspect read_diff and relevant files. Evaluate the
 full PR against the Issue, covering correctness, regressions, tests, edge cases, defensive security,
 performance, scope and repository rules. Do not require subjective style changes. Report only material
+defects. For UI changes, read existing UI tests and verify that the relevant coverage was preserved.
+Report
 issues introduced by the PR, one per finding, with file, line, defect, impact, evidence, and fix.
 Summarize validation limits, and use consistent defect wording for a repeated issue across revisions.
 Keep the summary within 900 characters and report at most six material findings, prioritizing the
@@ -63,12 +67,14 @@ function issueContext(issue, state, extra = {}) {
 export async function develop(
   models,
   workspace,
-  { developer, issue, state, feedback, guard },
+  { developer, issue, state, feedback, guard, reserveModel = async () => {} },
 ) {
   const snapshot = workspace.snapshot(state);
   let failure;
   const failedSteps = [];
   for (let attempt = 0; attempt < 2; attempt++) {
+    await guard();
+    await reserveModel();
     await guard();
     const plan = await models.run({
       agent: developer,
@@ -133,16 +139,24 @@ export async function develop(
   );
 }
 
-async function review(models, workspace, { reviewer, issue, state }) {
+async function review(
+  models,
+  workspace,
+  { reviewer, issue, state, guard, reserveModel },
+) {
   const snapshot = workspace.snapshot(state);
+  const context = issueContext(issue, state, {
+    diffFirstPage: snapshot.inspect('read_diff', { line: 1 }),
+    priorReview: state.reviews.slice(state.baseReviewStart ?? 0).at(-1)?.result,
+  });
+  await guard();
+  await reserveModel();
+  await guard();
   return models.run({
     agent: reviewer,
     mode: 'review',
     instructions: system + snapshot.instructions + reviewInstructions,
-    context: issueContext(issue, state, {
-      diffFirstPage: snapshot.inspect('read_diff', { line: 1 }),
-      priorReview: state.reviews.at(-1)?.result,
-    }),
+    context,
     inspect: snapshot.inspect,
   });
 }
@@ -204,7 +218,7 @@ async function main() {
       run.event !== 'pull_request' ||
       run.head_repository?.full_name !== repository ||
       run.status !== 'completed' ||
-      run.conclusion !== 'success' ||
+      !['success', 'failure'].includes(run.conclusion) ||
       !Number.isSafeInteger(issueNumber)
     )
       return;
@@ -219,7 +233,7 @@ async function main() {
       checkCI: (current, guard) =>
         waitForCI(github, config, current, guard, { attempts: 1 }),
     });
-    if (state?.status === 'failed') throw new Error(state.reason);
+    process.exitCode = pipelineExitCode(state);
     return;
   }
 
@@ -241,11 +255,32 @@ async function main() {
     throw new Error('유효한 Issue 번호가 필요합니다.');
   const actor = event.sender?.login;
   const dependencyResume = resume ? event.inputs?.dependency_resume : undefined;
+  const baseRecovery = resume ? event.inputs?.base_recovery : undefined;
+  const confirmedHead = resume ? event.inputs?.confirmed_head : undefined;
+  const previewApprovedHead = resume
+    ? event.inputs?.preview_approved_head
+    : undefined;
+  if (dependencyResume && baseRecovery) return;
+  const reservation = dependencyResume || baseRecovery;
+  if (
+    previewApprovedHead &&
+    (reservation ||
+      confirmedHead ||
+      !/^[a-f0-9]{40}$/.test(previewApprovedHead))
+  )
+    throw new Error(
+      '프리뷰 확인에는 다른 예약 없이 수동 재개와 확인한 PR의 전체 HEAD SHA가 필요합니다.',
+    );
+  if (confirmedHead && (reservation || !/^[a-f0-9]{40}$/.test(confirmedHead)))
+    throw new Error(
+      '게시 결과 확인에는 수동 재개와 확인한 작업 브랜치의 전체 HEAD SHA가 필요합니다.',
+    );
   const botResume =
-    dependencyResume &&
-    /^[0-9a-f-]{36}$/.test(dependencyResume) &&
+    reservation &&
+    /^[0-9a-f-]{36}$/.test(reservation) &&
     actor === 'github-actions[bot]' &&
     event.sender.type === 'Bot';
+  if (reservation && !botResume) return;
   if (!botResume && (!actor || !(await github.canStart(actor)))) {
     console.log('저장소 쓰기 권한이 없는 사용자의 이벤트입니다.');
     return;
@@ -267,6 +302,9 @@ async function main() {
       issueNumber,
       resume,
       dependencyResume,
+      baseRecovery,
+      confirmedHead,
+      previewApprovedHead,
       eventLabel: event.label?.name,
       runId: Number(env.GITHUB_RUN_ID),
       attempt: Number(env.GITHUB_RUN_ATTEMPT),
@@ -276,7 +314,8 @@ async function main() {
       },
       develop: (args) => develop(models, workspace, args),
       review: (args) => review(models, workspace, args),
-      checkCI: (current, guard) => waitForCI(github, config, current, guard),
+      checkCI: (current, guard, options) =>
+        waitForCI(github, config, current, guard, options),
     });
     if (!state) return;
     console.log(
@@ -285,9 +324,11 @@ async function main() {
         head: state.head,
         pull: state.pull,
         reason: state.reason,
+        reasonCode: state.reasonCode,
+        modelSessions: state.modelSessions,
       }),
     );
-    if (state.status === 'failed') process.exitCode = 1;
+    process.exitCode = pipelineExitCode(state);
   } finally {
     workspace.close();
   }
