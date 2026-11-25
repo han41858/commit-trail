@@ -930,59 +930,54 @@ export function createGitHub({
   };
 }
 
-export async function waitForCI(
-  github,
-  config,
-  state,
-  guard,
-  { attempts = 49, sleep = () => wait(15_000) } = {},
-) {
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    await guard();
-    const run = await github.ciRun(state, config.ciWorkflow);
-    if (run?.conclusion === 'action_required' || run?.status === 'waiting')
-      return {
-        ok: false,
-        status: 'approval_required',
-        reason:
-          '필수 CI 실행에 승인이 필요합니다. PR에서 Approve workflows to run을 누르면 CI 통과 후 자동으로 이어집니다.',
-      };
-    if (run?.status === 'completed') {
-      const jobs = await github.ciJobs(run);
-      const job = jobs.find(({ name }) => name === config.requiredJob);
-      if (run.conclusion === 'success' && job?.conclusion === 'success')
-        return { ok: true, url: run.html_url };
-      const canceled =
-        run.conclusion === 'cancelled' || job?.conclusion === 'cancelled';
-      const step = job?.steps?.find(
-        ({ conclusion }) => conclusion === 'failure',
-      );
-      const stage =
-        step?.name && /^[a-zA-Z0-9 ._()-]{1,80}$/.test(step.name)
-          ? ` 실패 단계 ${plain(step.name)}.`
-          : '';
-      const reason = canceled
-        ? '현재 HEAD의 필수 CI가 취소되었습니다.'
-        : '현재 HEAD의 필수 CI가 통과하지 못했습니다.';
-      const locations = canceled
-        ? []
-        : ((await github.ciLocations?.(job).catch(() => [])) ?? []);
-      const evidence = locations.length
-        ? ` GitHub가 기록한 위치 ${locations.join(', ')}.`
+export async function checkRequiredCI(github, config, state, guard) {
+  await guard();
+  const run = await github.ciRun(state, config.ciWorkflow);
+  if (run?.conclusion === 'action_required' || run?.status === 'waiting')
+    return {
+      ok: false,
+      status: 'approval_required',
+      reason:
+        '필수 CI 실행에 승인이 필요합니다. PR에서 Approve workflows to run을 누르면 CI 통과 후 자동으로 이어집니다.',
+    };
+  if (run?.status === 'completed') {
+    const jobs = await github.ciJobs(run);
+    const job = jobs.find(({ name }) => name === config.requiredJob);
+    if (run.conclusion === 'success' && job?.conclusion === 'success')
+      return { ok: true, url: run.html_url };
+    const canceled =
+      run.conclusion === 'cancelled' || job?.conclusion === 'cancelled';
+    const step = job?.steps?.find(({ conclusion }) => conclusion === 'failure');
+    const stage =
+      step?.name && /^[a-zA-Z0-9 ._()-]{1,80}$/.test(step.name)
+        ? ` 실패 단계 ${plain(step.name)}.`
         : '';
-      return {
-        ok: false,
-        failed: !canceled,
-        status: canceled ? 'cancelled' : 'failure',
-        reason: `${reason}${stage}${evidence} CI가 이 커밋에서 통과하면 자동으로 이어집니다. ${job?.html_url ?? run.html_url}`,
-      };
-    }
-    if (attempt + 1 < attempts) await sleep();
+    const reason = canceled
+      ? '현재 HEAD의 필수 CI가 취소되었습니다.'
+      : '현재 HEAD의 필수 CI가 통과하지 못했습니다.';
+    const locations = canceled
+      ? []
+      : ((await github.ciLocations?.(job).catch(() => [])) ?? []);
+    const evidence = locations.length
+      ? ` GitHub가 기록한 위치 ${locations.join(', ')}.`
+      : '';
+    return {
+      ok: false,
+      failed: !canceled,
+      status: canceled ? 'cancelled' : 'failure',
+      reason: `${reason}${stage}${evidence} CI가 이 커밋에서 통과하면 자동으로 이어집니다. ${job?.html_url ?? run.html_url}`,
+    };
   }
+  if (run)
+    return {
+      ok: false,
+      status: 'pending',
+      reason: `현재 HEAD의 필수 CI가 진행 중입니다. 완료 이벤트에서 자동으로 이어집니다. ${run.html_url}`,
+    };
   return {
     ok: false,
     status: 'unconfirmed',
     reason:
-      '현재 HEAD의 필수 CI 성공을 확인하지 못했습니다. PR에서 실행·승인 상태를 확인하세요. CI 통과 후 자동으로 이어집니다.',
+      '현재 HEAD의 필수 CI 실행을 아직 확인하지 못했습니다. 완료 이벤트에서 자동으로 이어집니다. CI가 시작되지 않으면 PR을 확인하고 필요할 때 수동 재개하세요.',
   };
 }

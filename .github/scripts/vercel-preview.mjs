@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 import { config } from './ai-development/config.mjs';
-import { createGitHub, waitForCI } from './ai-development/github.mjs';
+import { createGitHub, checkRequiredCI } from './ai-development/github.mjs';
 
 const shaPattern = /^[a-f0-9]{40}$/;
 const deploymentPattern = /^dpl_[A-Za-z0-9]+$/;
@@ -56,9 +56,7 @@ export async function deployPreview({
   }
 
   if (!(await eligible())) return;
-  const ci = await waitForCI(github, config, state, async () => {}, {
-    attempts: 1,
-  });
+  const ci = await checkRequiredCI(github, config, state, async () => {});
   if (!ci.ok) return;
   async function notifyReady(url) {
     await github.notice(

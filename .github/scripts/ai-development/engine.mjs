@@ -130,6 +130,7 @@ function mergedMessage(state, base) {
 async function finishMerge(github, state, base, save) {
   delete state.awaitingCI;
   delete state.ciFailed;
+  delete state.ciStatus;
   const message = mergedMessage(state, base);
   try {
     await github.closeIssue(state.issue);
@@ -162,6 +163,12 @@ export function pipelineExitCode(state) {
 class DependencyWait extends NeedsHuman {}
 class PreviewWait extends NeedsHuman {}
 class BaseChanged extends Error {}
+class CIWait extends Error {
+  constructor(ci) {
+    super(ci.reason);
+    this.ci = ci;
+  }
+}
 
 function canWake(issue, state) {
   const labels = labelNames(issue);
@@ -302,7 +309,7 @@ export async function runPipeline({
     const previous = existing?.state;
     if (
       !previous?.awaitingCI ||
-      !['needs_human', 'failed'].includes(previous.status) ||
+      !['awaiting_ci', 'needs_human', 'failed'].includes(previous.status) ||
       !previous.pull ||
       previous.reviewInProgress ||
       previous.head !== ciCompletion.head_sha ||
@@ -381,7 +388,6 @@ export async function runPipeline({
     reviews: [],
   };
   let recordId = existing?.id;
-  let awaitingCI = false;
   let displayedCheck;
   let previousCheck = reviewCheck(state);
   const manualConfirmation =
@@ -688,6 +694,7 @@ export async function runPipeline({
     await requireMergedDependencies(github, issueNumber, config.base);
     delete state.awaitingCI;
     delete state.ciFailed;
+    delete state.ciStatus;
     state.mergeAttempted = true;
     await save(
       'merging',
@@ -706,18 +713,17 @@ export async function runPipeline({
           throw new NeedsHuman(
             '머지 직전 현재 HEAD의 교차 리뷰 성공을 확인할 수 없습니다.',
           );
-        const currentCI = await recheckCI(state, guard, { attempts: 1 });
-        if (!currentCI.ok) {
-          awaitingCI = true;
-          state.ciFailed = !!currentCI.failed;
-          state.ciStatus = currentCI.status;
-          throw new NeedsHuman(currentCI.reason);
-        }
+        const currentCI = await recheckCI(state, guard);
+        if (!currentCI.ok) throw new CIWait(currentCI);
         const { issue: liveIssue } = await guard();
         await requirePreview(liveIssue);
       });
     } catch (error) {
-      if (error instanceof BaseChanged || error instanceof PreviewWait)
+      if (
+        error instanceof BaseChanged ||
+        error instanceof PreviewWait ||
+        error instanceof CIWait
+      )
         throw error;
       sha = await confirmedMerge(github, state, config.base);
       if (!sha) {
@@ -877,20 +883,16 @@ export async function runPipeline({
     }
     await requireMergedDependencies(github, issueNumber, config.base);
     if (ciCompletion) {
+      const canceled = ciCompletion.conclusion === 'cancelled';
+      const ciGuard = canceled ? () => guard({ staleBase: true }) : guard;
       try {
-        await guard();
+        await ciGuard();
         if (state.ciFailed && ciCompletion.conclusion === 'failure') return;
-        const ci = await checkCI(state, guard);
-        await guard();
-        if (ci.ok) await completeMerge(ci);
-        else if (ci.failed) {
-          state.ciFailed = true;
-          state.ciStatus = ci.status;
-          await save('needs_human', ci.reason);
-        } else if (!ci.ok) {
-          state.ciStatus = ci.status;
-          await save('needs_human', ci.reason);
-        }
+        const ci = await checkCI(state, ciGuard);
+        await ciGuard();
+        if (canceled && ci.status !== 'cancelled') return state;
+        if (!ci.ok) throw new CIWait(ci);
+        await completeMerge(ci);
       } catch (error) {
         if (!(error instanceof BaseChanged)) throw error;
         await guard({ staleBase: true });
@@ -1005,12 +1007,7 @@ export async function runPipeline({
         if (result.status === 'pass') {
           const ci = await checkCI(state, guard);
           await guard();
-          if (!ci.ok) {
-            awaitingCI = true;
-            state.ciFailed = !!ci.failed;
-            state.ciStatus = ci.status;
-            throw new NeedsHuman(ci.reason);
-          }
+          if (!ci.ok) throw new CIWait(ci);
           await completeMerge(ci);
           return state;
         }
@@ -1041,6 +1038,26 @@ export async function runPipeline({
       }
     }
   } catch (error) {
+    if (error instanceof CIWait) {
+      const { ci } = error;
+      const pending = ci.status === 'pending' || ci.status === 'unconfirmed';
+      const notify =
+        !pending &&
+        (state.status !== 'needs_human' ||
+          state.ciStatus !== ci.status ||
+          state.reason !== ci.reason);
+      state.awaitingCI = true;
+      state.ciFailed = !!ci.failed;
+      state.ciStatus = ci.status;
+      await save(
+        pending ? 'awaiting_ci' : 'needs_human',
+        ci.reason,
+        undefined,
+        ci.status,
+      );
+      if (notify) await notifyStop(github, issueNumber, state);
+      return state;
+    }
     if (error instanceof PreviewWait) {
       delete state.awaitingCI;
       delete state.ciFailed;
@@ -1052,14 +1069,12 @@ export async function runPipeline({
     if (error instanceof DependencyWait) state.waitingForDependencies = true;
     else delete state.waitingForDependencies;
     delete state.dependencyDispatch;
-    if (awaitingCI) state.awaitingCI = true;
-    else if (needsHuman) delete state.awaitingCI;
+    if (needsHuman) delete state.awaitingCI;
     await save(
       needsHuman ? 'needs_human' : 'failed',
       error.message,
       needsHuman ? error.detail : undefined,
-      (awaitingCI && state.ciStatus) ||
-        error.reasonCode ||
+      error.reasonCode ||
         (error instanceof DependencyWait
           ? 'waiting_dependency'
           : needsHuman
