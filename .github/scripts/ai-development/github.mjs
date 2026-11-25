@@ -955,6 +955,12 @@ export async function checkRequiredCI(github, config, state, guard) {
     const reason = canceled
       ? '현재 HEAD의 필수 CI가 취소되었습니다.'
       : '현재 HEAD의 필수 CI가 통과하지 못했습니다.';
+    const result =
+      !canceled &&
+      /^[a-z_]{1,30}$/.test(run.conclusion ?? '') &&
+      !['success', 'failure'].includes(run.conclusion)
+        ? ` 워크플로 결과 ${plain(run.conclusion)}.`
+        : '';
     const locations = canceled
       ? []
       : ((await github.ciLocations?.(job).catch(() => [])) ?? []);
@@ -965,7 +971,7 @@ export async function checkRequiredCI(github, config, state, guard) {
       ok: false,
       failed: !canceled,
       status: canceled ? 'cancelled' : 'failure',
-      reason: `${reason}${stage}${evidence} CI가 이 커밋에서 통과하면 자동으로 이어집니다. ${job?.html_url ?? run.html_url}`,
+      reason: `${reason}${result}${stage}${evidence} CI가 이 커밋에서 통과하면 자동으로 이어집니다. ${job?.html_url ?? run.html_url}`,
     };
   }
   if (run)
@@ -978,6 +984,6 @@ export async function checkRequiredCI(github, config, state, guard) {
     ok: false,
     status: 'unconfirmed',
     reason:
-      '현재 HEAD의 필수 CI 실행을 아직 확인하지 못했습니다. 완료 이벤트에서 자동으로 이어집니다. CI가 시작되지 않으면 PR을 확인하고 필요할 때 수동 재개하세요.',
+      '현재 HEAD의 필수 CI 실행을 확인하지 못했습니다. PR에서 실행·승인 상태를 확인하고 필요할 때 수동 재개하세요. 같은 HEAD의 CI 완료 이벤트로도 이어갈 수 있습니다.',
   };
 }

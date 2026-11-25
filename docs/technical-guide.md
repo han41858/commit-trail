@@ -261,9 +261,9 @@ PR의 **AI review** 검사는 현재 커밋의 교차 리뷰 상태를 **Test an
 대기·진행·통과 또는 실패·조치 필요 상태를 확인할 수 있다. 작업이 멈추면 검사에서 연결된 Issue의 사유를 확인한다.
 교차 리뷰를 통과한 뒤 필수 CI에서 멈추면 리뷰 검사는 통과로 유지한다.
 
-리뷰가 통과하면 현재 PR HEAD의 **Test and build** 상태를 한 번 확인한다. CI가 진행 중이거나 아직 조회되지 않으면
-`awaiting_ci`를 기록하고 실행을 종료해 공유 큐를 비운다. CI가 시작되지 않으면 PR에서 상태를 확인하고 필요할 때
-같은 Issue를 수동 재개한다. 승인 필요·실패·취소는 `needs_human`으로 표시한다. 저장소 정책에 따라
+리뷰가 통과하면 현재 PR HEAD의 **Test and build** 상태를 한 번 확인한다. CI가 진행 중이면
+`awaiting_ci`를 기록하고 실행을 종료해 공유 큐를 비운다. CI가 아직 조회되지 않거나 승인 필요·실패·취소 상태면
+`needs_human`을 기록하고 알린다. PR에서 CI를 확인하고 필요할 때 같은 Issue를 수동 재개한다. 저장소 정책에 따라
 **Approve workflows to run**을 눌러야 할 수 있다. 같은 SHA의
 교차 리뷰와 CI가 모두 통과하면 Draft를 해제한다. 머지 직전에 현재 HEAD의 승인·의존성·CI·교차 리뷰를 다시
 확인하고 그 SHA로 `dev`에 스쿼시 머지를 요청한다. PR과 머지 커밋, Issue의 `completed` 종료를 확인하면
@@ -273,15 +273,15 @@ Issue에 `merged`를 기록한다. 필수 CI 실패 시 실패 단계와 실행 
 실행 상태 댓글은 `version`, `status`, `reasonCode`, `head`, `pull`, 모델 예약 및 복구 횟수를 기록한다.
 기존 상태는 다음 대응 관계로 해석한다.
 
-| 표시 또는 기록                                             | 의미                                                      |
-| ---------------------------------------------------------- | --------------------------------------------------------- |
-| `queued`, `developing`, `reviewing`, `revising`, `merging` | 대기 중이거나 해당 단계 진행 중                           |
-| `needs_human` + `waitingForDependencies`                   | 선행 PR 확인 대기                                         |
-| `awaiting_ci`                                              | 현재 HEAD의 CI 실행 중 또는 아직 미확인                   |
-| `needs_human` + `awaitingCI`                               | CI에 조치 필요. `ciStatus`에서 실패·취소·승인 필요를 구분 |
-| `recovering_base`, `awaiting_preview`                      | 기준 갱신 복구 중이거나 사람이 프리뷰를 확인하는 중       |
-| `reasonCode: stopped`, `needs_human`, `failed`             | 명시적으로 중단, 사람 조치 필요, 자동화 오류              |
-| `mergeCommit` + `needs_human`, 또는 `merged`               | 각각 머지 확인 후 Issue 종료 대기, 머지와 Issue 종료 완료 |
+| 표시 또는 기록                                             | 의미                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| `queued`, `developing`, `reviewing`, `revising`, `merging` | 대기 중이거나 해당 단계 진행 중                                  |
+| `needs_human` + `waitingForDependencies`                   | 선행 PR 확인 대기                                                |
+| `awaiting_ci`                                              | 현재 HEAD의 CI 진행 중                                           |
+| `needs_human` + `awaitingCI`                               | CI에 조치 필요. `ciStatus`에서 실패·취소·승인 필요·미확인을 구분 |
+| `recovering_base`, `awaiting_preview`                      | 기준 갱신 복구 중이거나 사람이 프리뷰를 확인하는 중              |
+| `reasonCode: stopped`, `needs_human`, `failed`             | 명시적으로 중단, 사람 조치 필요, 자동화 오류                     |
+| `mergeCommit` + `needs_human`, 또는 `merged`               | 각각 머지 확인 후 Issue 종료 대기, 머지와 Issue 종료 완료        |
 
 #### 공유 큐와 한 Issue의 CI 후속 처리
 
@@ -306,9 +306,9 @@ GitHub Issue의 **Blocked by**에 선행 Issue를 지정할 수 있다. 컨트�
 예약 결과가 불명확하거나 선행 관계를 확인하지 못하면 이슈 상태와 Actions 실행을 확인하고 필요할 때 수동으로 재개한다.
 이 기능을 도입하기 전에 멈춘 Issue는 기존 번호로 수동 재개해 대기 상태를 한 번 갱신한다.
 
-`AI development CI follow-up`은 `ai/issue-*` 브랜치에서 성공·실패·취소로 완료된 같은 저장소의 PR CI를 받는다.
+`AI development CI follow-up`은 `ai/issue-*` 브랜치에서 완료된 같은 저장소의 PR CI를 받는다.
 이미 리뷰를 통과해 CI를 기다리는 **같은 Issue의 같은 HEAD**만 이어서 처리한다. 다른 머지로 `dev`가 바뀌었다면
-성공·실패 이벤트를 처리하는 후속 작업은 Issue에 `recovering_base` 상태를 기록하고 기존 개발 워크플로에 복구를
+취소 이외의 완료 이벤트를 처리하는 후속 작업은 Issue에 `recovering_base` 상태를 기록하고 기존 개발 워크플로에 복구를
 한 번 예약한다. 취소 이벤트는 현재 CI가 취소된 상태일 때 그 상태를 기록한다. 이전 CI 실행의
 성공·실패 기록은 그대로 남으며 현재 진행 상태는 Issue의 상태 댓글에서 확인한다.
 예약된 실행이 시작 상태를 남기기 전에 실패하거나 취소되면 정리 워크플로가 예약을 해제하고 중단 댓글을 남긴다.

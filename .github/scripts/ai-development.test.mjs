@@ -1081,7 +1081,7 @@ test('CI completion merges the verified PR without a manual run or another revie
 
 test('a cancelled CI completion records cancellation without triggering a merge', async () => {
   const { data, run } = fixture({
-    ci: { ok: false, status: 'unconfirmed', reason: 'CI 실행 확인 중' },
+    ci: { ok: false, status: 'pending', reason: 'CI 진행 중' },
   });
   assert.equal((await run()).status, 'awaiting_ci');
   data.base = 'f'.repeat(40);
@@ -1108,6 +1108,74 @@ test('a cancelled CI completion records cancellation without triggering a merge'
     'needs_human',
   );
   assert.deepEqual(data.mergeRequests, []);
+});
+
+test('a missing CI run asks for human attention and still accepts later CI success', async () => {
+  const { data, run } = fixture({
+    ci: {
+      ok: false,
+      status: 'unconfirmed',
+      reason: 'CI 실행을 찾을 수 없습니다.',
+    },
+  });
+  const missing = await run();
+  assert.equal(missing.status, 'needs_human');
+  assert.equal(missing.ciStatus, 'unconfirmed');
+  assert.equal(missing.awaitingCI, true);
+  assert.match(data.notes.get('13:stop-100-1'), /CI 실행을 찾을 수 없습니다/);
+  const resumed = await run({
+    resume: true,
+    ciCompletion: {
+      head_sha: heads[0],
+      head_branch: 'ai/issue-13-codex',
+      conclusion: 'success',
+    },
+    checkCI: async () => ({ ok: true, url: 'https://github.com/ci' }),
+    runId: 101,
+  });
+  assert.equal(resumed.status, 'merged');
+  assert.equal(data.events.filter((event) => event?.reviewer).length, 1);
+});
+
+test('nonstandard terminal CI conclusions produce a failure and an Issue notification', async () => {
+  for (const conclusion of ['timed_out', 'startup_failure']) {
+    const { data, run } = fixture({
+      ci: { ok: false, status: 'pending', reason: 'CI 진행 중' },
+    });
+    await run();
+    const result = await run({
+      resume: true,
+      ciCompletion: {
+        head_sha: heads[0],
+        head_branch: 'ai/issue-13-codex',
+        conclusion,
+      },
+      checkCI: (state, guard) =>
+        checkRequiredCI(
+          {
+            ciRun: async () => ({
+              status: 'completed',
+              conclusion,
+              html_url: 'https://github.com/ci',
+            }),
+            ciJobs: async () => [],
+          },
+          config,
+          state,
+          guard,
+        ),
+      runId: 101,
+    });
+    assert.equal(result.status, 'needs_human');
+    assert.equal(result.ciStatus, 'failure');
+    assert.equal(pipelineExitCode(result), 1);
+    assert.ok(
+      data.notes
+        .get('13:stop-101-1')
+        ?.includes(conclusion.replaceAll('_', '\\_')),
+    );
+    assert.deepEqual(data.mergeRequests, []);
+  }
 });
 
 test('a successful CI event cannot merge a stopped or manually changed PR', async () => {
@@ -1696,10 +1764,7 @@ test('AI follow-up triggers exclude ordinary CI before jobs are queued', () => {
     /workflow_run:\n\s+workflows: \[CI\]\n\s+branches: \['ai\/issue-\*'\]\n\s+types: \[completed\]/,
   );
   assert.match(followup, /workflow_run\.event == 'pull_request'/);
-  assert.match(
-    followup,
-    /contains\(fromJSON\('\["success","failure","cancelled"\]'\), github\.event\.workflow_run\.conclusion\)/,
-  );
+  assert.match(followup, /workflow_run\.conclusion != ''/);
   assert.match(
     followup,
     /workflow_run\.head_repository\.full_name == github\.repository/,

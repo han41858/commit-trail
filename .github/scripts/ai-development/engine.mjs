@@ -1040,7 +1040,7 @@ export async function runPipeline({
   } catch (error) {
     if (error instanceof CIWait) {
       const { ci } = error;
-      const pending = ci.status === 'pending' || ci.status === 'unconfirmed';
+      const pending = ci.status === 'pending';
       const notify =
         !pending &&
         (state.status !== 'needs_human' ||
