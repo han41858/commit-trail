@@ -31,7 +31,7 @@ function outputPage(text, start, span) {
   // The next page offset describes the lines actually served, including long minified lines.
   while (result.join('\n').length > 5500) result.pop();
   if (offset + result.length < lines.length)
-    result.push(`Next line: ${offset + result.length + 1}`);
+    result.push(`다음 줄 번호는 ${offset + result.length + 1}입니다.`);
   return result.join('\n');
 }
 
@@ -243,7 +243,7 @@ export function createWorkspace({
           const offset = Math.max(0, input.offset);
           const paths = matching.slice(offset, offset + 65);
           paths.push(
-            `${matching.length} total. ${offset + 65 < matching.length ? `Next offset: ${offset + 65}` : 'End of paths.'}`,
+            `총 ${matching.length}개 경로입니다. ${offset + 65 < matching.length ? `다음 offset은 ${offset + 65}입니다.` : '경로 목록이 끝났습니다.'}`,
           );
           return paths.join('\n');
         }
@@ -255,7 +255,7 @@ export function createWorkspace({
             input.query.length > 200 ||
             /[\r\n\0]/.test(input.query)
           )
-            return 'Use a nonempty single-line literal of at most 200 characters.';
+            return '검색어는 비어 있지 않은 한 줄 문자열이어야 하며, 최대 200자까지 입력할 수 있습니다.';
           try {
             const matches = gitText(
               'grep',
@@ -271,7 +271,7 @@ export function createWorkspace({
             );
             return outputPage(matches, Math.max(0, input.offset) + 1, 40);
           } catch (error) {
-            if (error.status === 1) return 'No matching lines.';
+            if (error.status === 1) return '일치하는 줄이 없습니다.';
             throw error;
           }
         }

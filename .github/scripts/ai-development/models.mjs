@@ -43,22 +43,22 @@ export const reviewSchema = object({
 const tools = {
   list_files: {
     description:
-      'Find tracked paths by case-insensitive substring. Use offset 0 for the first page.',
+      '추적 중인 파일 경로에서 대소문자를 구분하지 않고 부분 문자열을 검색합니다. 첫 페이지는 offset에 0을 넣으세요.',
     input: object({ query: string, offset: integer }),
   },
   read_file: {
     description:
-      'Read tracked UTF-8 text with line numbers. Use line 1 to start.',
+      '추적 중인 UTF-8 텍스트를 줄 번호와 함께 읽습니다. 처음부터 읽으려면 line에 1을 넣으세요.',
     input: object({ path: string, line: integer }),
   },
   search_text: {
     description:
-      'Find literal text or symbols in tracked files. Use offset 0 for the first page.',
+      '추적 중인 파일에서 입력한 문구나 심볼을 그대로 검색합니다. 첫 페이지는 offset에 0을 넣으세요.',
     input: object({ query: string, offset: integer }),
   },
   read_diff: {
     description:
-      'Read the complete PR diff from the original base to the current HEAD, paged by line.',
+      '최초 기준 커밋부터 현재 HEAD까지의 전체 PR diff를 줄 단위로 나누어 읽습니다.',
     input: object({ line: integer }),
   },
 };
@@ -447,8 +447,8 @@ export function createModels({
         const finalOutput =
           finalTurn || (turnLimit > 2 && turn === turnLimit - 1);
         const guidance = finalOutput
-          ? 'Return the final structured result now. If evidence is insufficient, return needs_human with the specific blocker.'
-          : `API requests remaining, including this one: ${turnLimit - turn + 1}. Return the final structured result once you have enough evidence.`;
+          ? '지금 최종 구조화 결과를 반환하세요. 근거가 부족하면 needs_human을 반환하고 진행을 막는 구체적인 이유를 설명하세요.'
+          : `이번 요청을 포함해 남은 API 요청 횟수는 ${turnLimit - turn + 1}회입니다. 근거가 충분해지면 최종 구조화 결과를 반환하세요.`;
         if (isCodex) {
           if (nextMessage) input.push({ role: 'user', content: nextMessage });
         } else {
@@ -590,7 +590,7 @@ export function createModels({
                 type: 'tool_result',
                 tool_use_id: id,
                 content:
-                  invokeTool(inspect, name, args) || 'No matching lines.',
+                  invokeTool(inspect, name, args) || '일치하는 줄이 없습니다.',
               })),
             });
             continue;
@@ -641,9 +641,9 @@ export function createModels({
           if (findings.length && !requiredStatus)
             requiredStatus = 'changes_requested';
           const correction = requiredStatus
-            ? ` Keep status ${requiredStatus}.`
+            ? ` 상태는 ${requiredStatus}로 유지하세요.`
             : '';
-          nextMessage = `Fix only the output format or explain the existing blocker. ${error.message}${correction} Preserve all existing review findings.`;
+          nextMessage = `출력 형식만 수정하거나 기존 작업을 막는 이유를 설명하세요. ${error.message}${correction} 기존 리뷰 지적은 모두 유지하세요.`;
           remember();
           continue;
         }
@@ -657,7 +657,7 @@ export function createModels({
           };
         remember();
         nextMessage =
-          'Continue the same task. Return a complete edit plan from the original snapshot once it is ready. No partial edits have been applied.';
+          '같은 작업을 이어가세요. 계획이 완성되면 원래 스냅샷을 기준으로 전체 편집 계획을 반환하세요. 작성 중인 편집은 아직 적용되지 않았습니다.';
       }
       throw new Error(
         'AI의 저장소 탐색 최대 횟수에 도달했습니다. Issue 범위를 좁힌 뒤 수동 재개하세요.',
@@ -675,11 +675,11 @@ function parseJSON(text) {
 }
 
 function invokeTool(inspect, name, input) {
-  if (!Object.hasOwn(tools, name)) return 'Unknown tool.';
+  if (!Object.hasOwn(tools, name)) return '알 수 없는 도구입니다.';
   try {
     validate(input, tools[name].input, 'tool');
     return inspect(name, input);
   } catch {
-    return 'Invalid arguments or requested material is unavailable.';
+    return '인자가 올바르지 않거나 요청한 자료를 가져올 수 없습니다.';
   }
 }
