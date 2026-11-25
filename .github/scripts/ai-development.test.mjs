@@ -9,7 +9,7 @@ import {
   pipelineExitCode,
   wakeDependents,
 } from './ai-development/engine.mjs';
-import { createGitHub, waitForCI } from './ai-development/github.mjs';
+import { createGitHub, checkRequiredCI } from './ai-development/github.mjs';
 import {
   createModels,
   validateDevelopment,
@@ -1042,10 +1042,13 @@ test('approval wait pauses merging and resumes CI without repeating the same rev
 
 test('CI completion merges the verified PR without a manual run or another review', async () => {
   const { data, github, run } = fixture({
-    ci: { ok: false, reason: 'CI 승인 필요' },
+    ci: { ok: false, status: 'pending', reason: 'CI 진행 중' },
   });
-  assert.equal((await run()).status, 'needs_human');
+  const waiting = await run();
+  assert.equal(waiting.status, 'awaiting_ci');
+  assert.equal(pipelineExitCode(waiting), 0);
   assert.equal(data.record.state.awaitingCI, true);
+  assert.equal(data.notes.size, 0);
   assert.equal(data.pull.draft, true);
   const completion = {
     github,
@@ -1074,6 +1077,105 @@ test('CI completion merges the verified PR without a manual run or another revie
   assert.equal((await run({ resume: true })).status, 'merged');
   assert.deepEqual(data.mergeRequests, [heads[0]]);
   assert.equal(data.readyRequests.length, 1);
+});
+
+test('a cancelled CI completion records cancellation without triggering a merge', async () => {
+  const { data, run } = fixture({
+    ci: { ok: false, status: 'pending', reason: 'CI 진행 중' },
+  });
+  assert.equal((await run()).status, 'awaiting_ci');
+  data.base = 'f'.repeat(40);
+  const completion = {
+    resume: true,
+    ciCompletion: {
+      head_sha: heads[0],
+      head_branch: 'ai/issue-13-codex',
+      conclusion: 'cancelled',
+    },
+    checkCI: async () => ({
+      ok: false,
+      status: 'cancelled',
+      reason: 'CI 취소',
+    }),
+  };
+  const canceled = await run(completion);
+  assert.equal(canceled.status, 'needs_human');
+  assert.equal(canceled.ciStatus, 'cancelled');
+  assert.equal(canceled.awaitingCI, true);
+  assert.equal(canceled.baseRecovery, undefined);
+  assert.equal(
+    (await run({ ...completion, checkCI: async () => ({ ok: true }) })).status,
+    'needs_human',
+  );
+  assert.deepEqual(data.mergeRequests, []);
+});
+
+test('a missing CI run asks for human attention and still accepts later CI success', async () => {
+  const { data, run } = fixture({
+    ci: {
+      ok: false,
+      status: 'unconfirmed',
+      reason: 'CI 실행을 찾을 수 없습니다.',
+    },
+  });
+  const missing = await run();
+  assert.equal(missing.status, 'needs_human');
+  assert.equal(missing.ciStatus, 'unconfirmed');
+  assert.equal(missing.awaitingCI, true);
+  assert.match(data.notes.get('13:stop-100-1'), /CI 실행을 찾을 수 없습니다/);
+  const resumed = await run({
+    resume: true,
+    ciCompletion: {
+      head_sha: heads[0],
+      head_branch: 'ai/issue-13-codex',
+      conclusion: 'success',
+    },
+    checkCI: async () => ({ ok: true, url: 'https://github.com/ci' }),
+    runId: 101,
+  });
+  assert.equal(resumed.status, 'merged');
+  assert.equal(data.events.filter((event) => event?.reviewer).length, 1);
+});
+
+test('nonstandard terminal CI conclusions produce a failure and an Issue notification', async () => {
+  for (const conclusion of ['timed_out', 'startup_failure']) {
+    const { data, run } = fixture({
+      ci: { ok: false, status: 'pending', reason: 'CI 진행 중' },
+    });
+    await run();
+    const result = await run({
+      resume: true,
+      ciCompletion: {
+        head_sha: heads[0],
+        head_branch: 'ai/issue-13-codex',
+        conclusion,
+      },
+      checkCI: (state, guard) =>
+        checkRequiredCI(
+          {
+            ciRun: async () => ({
+              status: 'completed',
+              conclusion,
+              html_url: 'https://github.com/ci',
+            }),
+            ciJobs: async () => [],
+          },
+          config,
+          state,
+          guard,
+        ),
+      runId: 101,
+    });
+    assert.equal(result.status, 'needs_human');
+    assert.equal(result.ciStatus, 'failure');
+    assert.equal(pipelineExitCode(result), 1);
+    assert.ok(
+      data.notes
+        .get('13:stop-101-1')
+        ?.includes(conclusion.replaceAll('_', '\\_')),
+    );
+    assert.deepEqual(data.mergeRequests, []);
+  }
 });
 
 test('a successful CI event cannot merge a stopped or manually changed PR', async () => {
@@ -1662,10 +1764,7 @@ test('AI follow-up triggers exclude ordinary CI before jobs are queued', () => {
     /workflow_run:\n\s+workflows: \[CI\]\n\s+branches: \['ai\/issue-\*'\]\n\s+types: \[completed\]/,
   );
   assert.match(followup, /workflow_run\.event == 'pull_request'/);
-  assert.match(
-    followup,
-    /contains\(fromJSON\('\["success","failure"\]'\), github\.event\.workflow_run\.conclusion\)/,
-  );
+  assert.match(followup, /workflow_run\.conclusion != ''/);
   assert.match(
     followup,
     /workflow_run\.head_repository\.full_name == github\.repository/,
@@ -1857,12 +1956,32 @@ test('CI requires the configured job to succeed on the specific PR HEAD', async 
     ciJobs: async () => [{ name: 'Another job', conclusion: 'success' }],
   };
   const verify = () =>
-    waitForCI(fake, config, { head: heads[0] }, () => {}, { attempts: 1 });
+    checkRequiredCI(fake, config, { head: heads[0] }, () => {});
   assert.equal((await verify()).ok, false);
   fake.ciJobs = async () => [{ name: 'Test and build', conclusion: 'success' }];
   assert.equal((await verify()).ok, true);
   fake.ciRun = async () => undefined;
   assert.equal((await verify()).ok, false);
+});
+
+test('checking an active CI run reads it once and never fetches its jobs early', async () => {
+  let lookups = 0;
+  const result = await checkRequiredCI(
+    {
+      async ciRun() {
+        lookups++;
+        return { status: 'in_progress', html_url: 'https://github.com/ci' };
+      },
+      async ciJobs() {
+        assert.fail('Jobs are consulted only after the run completes');
+      },
+    },
+    config,
+    { head: heads[0] },
+    () => {},
+  );
+  assert.equal(lookups, 1);
+  assert.equal(result.status, 'pending');
 });
 
 test('GitHub adapter requires exact CI identity and uses compare-and-swap for publishing', async () => {

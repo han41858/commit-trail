@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { config } from './config.mjs';
-import { createGitHub, waitForCI } from './github.mjs';
+import { createGitHub, checkRequiredCI } from './github.mjs';
 import { createModels } from './models.mjs';
 import { createWorkspace, EditConflict, resolveEdits } from './workspace.mjs';
 import {
@@ -218,7 +218,7 @@ async function main() {
       run.event !== 'pull_request' ||
       run.head_repository?.full_name !== repository ||
       run.status !== 'completed' ||
-      !['success', 'failure'].includes(run.conclusion) ||
+      !run.conclusion ||
       !Number.isSafeInteger(issueNumber)
     )
       return;
@@ -231,7 +231,7 @@ async function main() {
       runId: Number(env.GITHUB_RUN_ID),
       attempt: Number(env.GITHUB_RUN_ATTEMPT),
       checkCI: (current, guard) =>
-        waitForCI(github, config, current, guard, { attempts: 1 }),
+        checkRequiredCI(github, config, current, guard),
     });
     process.exitCode = pipelineExitCode(state);
     return;
@@ -314,8 +314,8 @@ async function main() {
       },
       develop: (args) => develop(models, workspace, args),
       review: (args) => review(models, workspace, args),
-      checkCI: (current, guard, options) =>
-        waitForCI(github, config, current, guard, options),
+      checkCI: (current, guard) =>
+        checkRequiredCI(github, config, current, guard),
     });
     if (!state) return;
     console.log(
