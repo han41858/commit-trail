@@ -1743,13 +1743,19 @@ test('provider requests use the configured turn, output and effort budget', asyn
   assert.equal(bodies[0].max_output_tokens, 1234);
   assert.equal(bodies[0].reasoning.effort, 'high');
   assert.equal(bodies[2].max_tokens, 1234);
-  assert.match(bodies[0].instructions, /including this one: 2/);
+  assert.match(
+    bodies[0].instructions,
+    /이번 요청을 포함해 남은 API 요청 횟수는 2회/,
+  );
   assert.equal(bodies[2].system, bodies[3].system);
-  assert.match(bodies[2].messages[0].content, /including this one: 2/);
-  assert.match(bodies[1].instructions, /final structured result now/);
+  assert.match(
+    bodies[2].messages[0].content,
+    /이번 요청을 포함해 남은 API 요청 횟수는 2회/,
+  );
+  assert.match(bodies[1].instructions, /지금 최종 구조화 결과를 반환/);
   assert.match(
     bodies[3].messages.at(-1).content.at(-1).text,
-    /final structured result now/,
+    /지금 최종 구조화 결과를 반환/,
   );
   assert.deepEqual(
     bodies.map(({ tools }) => tools.length),
@@ -1802,7 +1808,10 @@ test('an incomplete development plan continues in the same conversation before o
     }),
     plan,
   );
-  assert.match(requests[1].input.at(-1).content, /No partial edits/);
+  assert.match(
+    requests[1].input.at(-1).content,
+    /작성 중인 편집은 아직 적용되지 않았습니다/,
+  );
   assert.match(requests[2].input.at(-1).content, /제목/);
   assert.equal(requests[2].tool_choice, 'none');
 });
@@ -2397,7 +2406,7 @@ test('Claude continuation preserves signed blocks and always sends a valid tool-
       {
         type: 'tool_result',
         tool_use_id: 'toolu_2',
-        content: 'No matching lines.',
+        content: '일치하는 줄이 없습니다.',
       },
     ]);
     assert.equal(result.content[2].type, 'text');
