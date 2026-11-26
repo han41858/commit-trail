@@ -12,6 +12,7 @@ import { debug } from './shared/debug/debug';
 import { DebugRoot } from './shared/debug/DebugRoot';
 import { PwaUpdatePrompt } from './app/pwa/PwaUpdatePrompt';
 import { AppNotices } from './app/AppNotices';
+import { updateTokenSession } from './app/tokenSession';
 import { registerPwa } from './app/pwa/pwa';
 import { useMeasuredOpen } from './shared/debug/measuredOperations';
 import { Graph } from './graph/Graph';
@@ -55,11 +56,7 @@ import darkLogo from '../assets/logo.svg';
 import lightLogo from '../assets/logo-light.svg';
 import darkAnimatedLogo from '../assets/logo-animated.svg';
 import lightAnimatedLogo from '../assets/logo-light-animated.svg';
-import {
-  readStoredToken,
-  saveStoredToken,
-  TOKEN_STORAGE_KEY,
-} from './token/tokenStorage';
+import { readStoredToken, TOKEN_STORAGE_KEY } from './token/tokenStorage';
 import { AccessTokenPanel } from './token/AccessTokenPanel';
 import { PopupBackdrop } from './shared/ui/PopupBackdrop';
 import { ViewOptions } from './app/ViewOptions';
@@ -663,27 +660,38 @@ function App() {
       document.removeEventListener('keydown', escape);
     };
   }, [options, auth, selection, monitorSetup, monitorState.active]);
-  function applyToken() {
-    const value = token.trim();
-    if (value !== appliedToken) lastMonitorSelection.current = undefined;
+  function prepareTokenChange(value: string, removing = false) {
+    const resetMonitor = removing || value !== appliedToken;
+    if (resetMonitor) lastMonitorSelection.current = undefined;
     leaveMonitor();
-    if (value !== appliedToken) lastMonitorBranches.current.clear();
+    if (resetMonitor) lastMonitorBranches.current.clear();
     setMonitorSetup(false);
-    monitor.authenticationChanged(appliedToken, value);
-    branchSelections.authenticationChanged(appliedToken, value);
-    monitorRepositories.authenticationChanged(appliedToken, value);
-    recent.authenticationChanged(appliedToken, value);
-    const error = saveStoredToken(value);
-    authToken.current = value;
-    ownerRepositories.setToken(value);
-    recent.reload();
-    monitorRepositories.reconcile();
+    return updateTokenSession(
+      {
+        authToken,
+        monitor,
+        branchSelections,
+        monitorRepositories,
+        recent,
+        ownerRepositories,
+      },
+      appliedToken,
+      value,
+      removing ? measured.cancel : undefined,
+    );
+  }
+  function setTokenState(value: string, error: string) {
     setToken(value);
     setAppliedToken(value);
     setAuthRevision((v) => v + 1);
     setTokenStorageError(error);
-    history.setToken(value);
     setTokenApplied(value !== '');
+  }
+  function applyToken() {
+    const value = token.trim();
+    const error = prepareTokenChange(value);
+    setTokenState(value, error);
+    history.setToken(value);
     setAuth(true);
     if (state.repo) {
       setSelection(null);
@@ -697,27 +705,10 @@ function App() {
     }
   }
   function removeToken() {
-    lastMonitorSelection.current = undefined;
-    leaveMonitor();
-    lastMonitorBranches.current.clear();
-    setMonitorSetup(false);
-    monitor.authenticationChanged(appliedToken, '');
-    branchSelections.authenticationChanged(appliedToken, '');
-    monitorRepositories.authenticationChanged(appliedToken, '');
-    recent.authenticationChanged(appliedToken, '');
-    measured.cancel();
-    const error = saveStoredToken('');
-    authToken.current = '';
-    ownerRepositories.setToken('');
-    recent.reload();
-    monitorRepositories.reconcile();
+    const error = prepareTokenChange('', true);
     history.clear();
     void info.open('', '');
-    setToken('');
-    setAppliedToken('');
-    setAuthRevision((v) => v + 1);
-    setTokenApplied(false);
-    setTokenStorageError(error);
+    setTokenState('', error);
     setSelection(null);
     setAuth(!!error);
   }
