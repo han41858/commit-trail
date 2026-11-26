@@ -325,7 +325,7 @@ GitHub Issue의 **Blocked by**에 선행 Issue를 지정할 수 있다. 컨트�
   먼저 기록한다. GitHub가 기준 병합을 거부한 충돌, 기준 이력 재작성, 수동 변경, 불확실한 게시·리뷰 결과는
   사람이 확인한다. 개발 모델의 정확한 편집 적용·격리 검증 재시도는 기존 절차를 따른다.
 
-`AI development interruption recovery`은 `dev`에서 완료된 `AI development`의 중단 상태를 정리한다. 성공·스킵한 실행에는
+`AI development interruption recovery`는 `dev`에서 완료된 `AI development`의 중단 상태를 정리한다. 성공·스킵한 실행에는
 정리 러너를 할당하지 않는다. 일반 PR과 `dev`·`main` push CI는 AI CI 후속 워크플로를 시작하지 않는다.
 `workflow_run`은 트리거에서 결론을 거를 수 없으므로 관련 AI 실행에 스킵 기록은 남을 수 있다.
 
