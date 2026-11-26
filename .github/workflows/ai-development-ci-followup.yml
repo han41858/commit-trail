@@ -9,31 +9,16 @@ on:
 permissions: {}
 
 jobs:
-  identify-ci-issue:
+  complete-ci:
     if: >-
       github.event.workflow_run.path == '.github/workflows/ci.yml' &&
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.status == 'completed' &&
       github.event.workflow_run.conclusion != '' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      startsWith(github.event.workflow_run.head_branch, 'ai/issue-')
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    outputs:
-      issue: ${{ steps.identify.outputs.issue }}
-    steps:
-      - id: identify
-        shell: bash
-        env:
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-        run: |
-          if [[ "$HEAD_BRANCH" =~ ^ai/issue-([1-9][0-9]*)-(codex|claude)$ ]]; then
-            printf 'issue=%s\n' "${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-          fi
-
-  complete-ci:
-    needs: identify-ci-issue
-    if: needs.identify-ci-issue.outputs.issue != ''
+      startsWith(github.event.workflow_run.head_branch, 'ai/issue-') &&
+      (endsWith(github.event.workflow_run.head_branch, '-codex') ||
+       endsWith(github.event.workflow_run.head_branch, '-claude'))
     concurrency:
       group: ai-development-${{ github.repository }}
       queue: max

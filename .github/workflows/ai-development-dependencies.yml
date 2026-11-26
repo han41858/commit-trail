@@ -1,4 +1,4 @@
-name: AI development dependency follow-up
+name: AI development merge follow-up
 
 on:
   pull_request_target:
