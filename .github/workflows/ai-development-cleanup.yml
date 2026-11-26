@@ -1,4 +1,4 @@
-name: AI development cleanup
+name: AI development interruption recovery
 
 on:
   workflow_run:

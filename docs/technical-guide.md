@@ -299,14 +299,16 @@ GitHub Issue의 **Blocked by**에 선행 Issue를 지정할 수 있다. 컨트�
 해결한 뒤 기존 번호로 [수동 재개](#중단과-수동-재개)한다. 교차 리뷰를 통과했더라도 병합 직전에 의존성을
 다시 확인한다.
 
-선행 PR이 `dev`에 머지되면 **AI development dependency follow-up**이 GitHub에서 연결된 Issue와 실제 머지를
-확인한다. 의존성 때문에 멈춘 열린 후속 Issue에 대해 모든 선행 PR의 머지와 실행 라벨을 다시 확인한 뒤
+선행 PR이 `dev`에 머지되면 **AI development merge follow-up**이 GitHub에서 연결된 Issue와 실제 머지를
+확인한다. 사람이 정책 변경 PR을 머지한 경우 Issue 종료도 확인한다. 의존성 때문에 멈춘 열린 후속 Issue에 대해
+모든 선행 PR의 머지와 실행 라벨을 다시 확인한 뒤
 기존 큐에 재개를 예약한다. `ai:stop`을 붙인 Issue는 예약하지 않는다. 중복 이벤트는 저장된 예약을 재사용하며
 수동 재개가 먼저 시작되면 대기 중인 자동 예약은 실행하지 않는다.
 예약 결과가 불명확하거나 선행 관계를 확인하지 못하면 이슈 상태와 Actions 실행을 확인하고 필요할 때 수동으로 재개한다.
 이 기능을 도입하기 전에 멈춘 Issue는 기존 번호로 수동 재개해 대기 상태를 한 번 갱신한다.
 
 `AI development CI follow-up`은 `ai/issue-*` 브랜치에서 완료된 같은 저장소의 PR CI를 받는다.
+후속 job은 스크립트에서 작업 브랜치 이름과 Issue 번호를 검증한 뒤 상태를 읽는다.
 이미 리뷰를 통과해 CI를 기다리는 **같은 Issue의 같은 HEAD**만 이어서 처리한다. 다른 머지로 `dev`가 바뀌었다면
 취소 이외의 완료 이벤트를 처리하는 후속 작업은 Issue에 `recovering_base` 상태를 기록하고 기존 개발 워크플로에 복구를
 한 번 예약한다. 취소 이벤트는 현재 CI가 취소된 상태일 때 그 상태를 기록한다. 이전 CI 실행의
@@ -323,7 +325,7 @@ GitHub Issue의 **Blocked by**에 선행 Issue를 지정할 수 있다. 컨트�
   먼저 기록한다. GitHub가 기준 병합을 거부한 충돌, 기준 이력 재작성, 수동 변경, 불확실한 게시·리뷰 결과는
   사람이 확인한다. 개발 모델의 정확한 편집 적용·격리 검증 재시도는 기존 절차를 따른다.
 
-`AI development cleanup`은 `dev`에서 완료된 `AI development`의 중단 상태를 정리한다. 성공·스킵한 실행에는
+`AI development interruption recovery`는 `dev`에서 완료된 `AI development`의 중단 상태를 정리한다. 성공·스킵한 실행에는
 정리 러너를 할당하지 않는다. 일반 PR과 `dev`·`main` push CI는 AI CI 후속 워크플로를 시작하지 않는다.
 `workflow_run`은 트리거에서 결론을 거를 수 없으므로 관련 AI 실행에 스킵 기록은 남을 수 있다.
 
