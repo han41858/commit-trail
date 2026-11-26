@@ -1751,6 +1751,10 @@ test('AI follow-up triggers exclude ordinary CI before jobs are queued', () => {
     new URL('../workflows/ai-development-ci-followup.yml', import.meta.url),
     'utf8',
   );
+  const entrypoint = readFileSync(
+    new URL('./ai-development/run.mjs', import.meta.url),
+    'utf8',
+  );
   assert.match(
     cleanup,
     /workflow_run:\n\s+workflows: \[AI development\]\n\s+branches: \[dev\]\n\s+types: \[completed\]/,
@@ -1769,9 +1773,18 @@ test('AI follow-up triggers exclude ordinary CI before jobs are queued', () => {
     followup,
     /workflow_run\.head_repository\.full_name == github\.repository/,
   );
-  assert.match(
-    followup,
-    /\^ai\/issue-\(\[1-9\]\[0-9\]\*\)-\(codex\|claude\)\$/,
+  assert.deepEqual(
+    [...followup.matchAll(/^  ([\w-]+):$/gm)].map((match) => match[1]),
+    ['workflow_run', 'complete-ci'],
+  );
+  for (const suffix of ['-codex', '-claude'])
+    assert.ok(
+      followup.includes(
+        `endsWith(github.event.workflow_run.head_branch, '${suffix}')`,
+      ),
+    );
+  assert.ok(
+    entrypoint.includes(String.raw`/^ai\/issue-([1-9]\d*)-(codex|claude)$/`),
   );
   assert.match(followup, /ref: refs\/heads\/dev/);
   assert.match(followup, /AI_AUTOMATION_TOKEN:/);

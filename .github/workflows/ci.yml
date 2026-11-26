@@ -54,7 +54,7 @@ jobs:
         if: steps.impact.outputs.docs_only != 'true'
         run: npm test
 
-      - name: Test release automation
+      - name: Test workflow scripts
         if: steps.impact.outputs.docs_only != 'true'
         run: node --test --test-isolation=none .github/scripts/*.test.mjs
 
